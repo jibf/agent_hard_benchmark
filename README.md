@@ -7,7 +7,7 @@ The initial version of DrafterBench
 First, download the repository.
 
 ```shell
-git repo clone Eason-Li-AIS/DrafterBench
+git clone Eason-Li-AIS/DrafterBench
 cd Drafter_Bench
 ```
 
