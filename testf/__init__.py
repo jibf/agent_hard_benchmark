@@ -1,11 +1,15 @@
-from Drafter_bench.testf.test_types import (
+import sys
+import os
+sys.path.append(os.path.abspath('../..'))
+
+from Drafter_Bench.testf.test_types import (
     fileobject,
     TEXT_ALIGN_LEFT,
     TEXT_ALIGN_RIGHT,
     TEXT_ALIGN_JUSTIFY,
     TEXT_ALIGN_CENTER,
 )
-from Drafter_bench.testf.functions import (
+from Drafter_Bench.testf.functions import (
     open,
     extractanno,
     selector,
@@ -21,5 +25,5 @@ from Drafter_bench.testf.functions import (
     Projector,
     project_draw,
 )
-from Drafter_bench.testf.metric import groundcheck, cross_check
+from Drafter_Bench.testf.metric import groundcheck, cross_check
 

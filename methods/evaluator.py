@@ -2,14 +2,18 @@ import json
 import re
 import signal
 import copy
+import sys
+import os
 from datetime import datetime
-
 from . import task_sets
-from Drafter_bench import testf
-from Drafter_bench.methods.agent import Drafter_agent
-from Drafter_bench.prompts.prompt import Prommt
-from Drafter_bench.utils.types import Score_builder
-from Drafter_bench.methods.collect_result import collect_result
+
+sys.path.append(os.path.abspath('..'))
+
+from Drafter_Bench import testf
+from Drafter_Bench.methods.agent import Drafter_agent
+from Drafter_Bench.prompts.prompt import Prommt
+from Drafter_Bench.utils.types import Score_builder
+from Drafter_Bench.methods.collect_result import collect_result
 
 
 def timeout_handler(signum, frame):

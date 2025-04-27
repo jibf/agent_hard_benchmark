@@ -1,4 +1,8 @@
-from Drafter_bench.utils.types import Score_builder
+import sys
+import os
+sys.path.append(os.path.abspath(".."))
+
+from Drafter_Bench.utils.types import Score_builder
 
 
 def collect_result(

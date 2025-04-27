@@ -3,6 +3,10 @@ import multiprocessing
 import os
 import numpy as np
 import datetime
+import sys
+import os
+sys.path.append(os.path.abspath('../..'))
+
 from tqdm import tqdm
 from functools import partial
 from datasets import DatasetDict, Dataset, load_dataset
@@ -11,7 +15,7 @@ from . import task_sets
 from .evaluator import evaluator
 
 
-import logging
+
 
 
 def average_award(results: list):

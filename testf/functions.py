@@ -2,9 +2,11 @@ import ast
 import copy
 import re
 import fitz
+import sys
+import os
+sys.path.append(os.path.abspath('../..'))
 
-
-from Drafter_bench.testf.test_types import (
+from Drafter_Bench.testf.test_types import (
     extrracted_anno,
     fontlist,
     TEXT_ALIGN_CENTER,

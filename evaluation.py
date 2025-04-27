@@ -1,11 +1,13 @@
 import argparse
 import os
 import time
+import sys
 from litellm import provider_list
 from methods.evaluate import evaluate
 
 os.environ["DEEPINFRA_API_KEY"] = "u4VcQxbxgWZFxsAQXKAp1uJpQOaTqahj"
 os.environ["HUGGINGFACE_TOKEN"] = "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"
+sys.path.append(os.path.abspath('..'))
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -32,7 +34,7 @@ def parse_args():
     parser.add_argument("--log_dir", type=str, default="logs/")
     parser.add_argument("--result_dir", type=str, default="results/")
     parser.add_argument("--proc_num", type=int, default=16)
-    parser.add_argument("--debug", type=bool, default=False)
+    parser.add_argument("--debug", type=bool, default=True)
     parser.add_argument(
         "--task_group",
         type=str,
