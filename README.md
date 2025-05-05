@@ -1,9 +1,12 @@
-# DrafterBench
+# :wrench: DrafterBench
 This repository is the offical implementation of DrafterBench. We provides evaluation data, evaluation code and a brief introduction about DrafterBench.
+
+![Static Badge](https://img.shields.io/badge/Code_License-MIT_License-blue) ![Static Badge](https://img.shields.io/badge/Linux_%2F_OSX-passing-green) ![Static Badge](https://img.shields.io/badge/Window-failing-red) ![Static Badge](https://img.shields.io/badge/python-3.10%2B-purple)
+
 
 ---
 
-## Introducing DrafterBench
+## :star: Introducing DrafterBench
 
 The DrafterBench is designed to evaluate language language models (LLMs) as a agent to automating monotonous, low-tech, and high-labor-intensity tasks in industry. The drawing revision task, in Civil Engineering, complained by drafters and engineers is our start point. We took a deep dive into the expected workflow of automation agents on this tasks, simulated the works situation, and evaluate the strenghts and limitations of LLMs as automation agents.
 
@@ -17,7 +20,7 @@ DrafterBench focues on four essential capabilities:
 
 DrafterBench provide a comprehensive evaulation on the LLMs with a total of 1920 user instructions over 12 types if drawing revision tasks.
 
-## Table of Content
+## :ski: Table of Content
 
 - [Dataset Summary](#dataset-summary)
 - [Quick Start](#quick-start)
@@ -25,7 +28,7 @@ DrafterBench provide a comprehensive evaulation on the LLMs with a total of 1920
 
 ---
 
-## Dataset Summary
+## :clipboard: Dataset Summary
 
 The DrafterBench is constructed on tasks over three object elements, four operations and six complexity controllers.
 
@@ -40,7 +43,7 @@ The DrafterBench is constructed on tasks over three object elements, four operat
 
 The dataset is [available](https://huggingface.co/datasets/Eason666/DrafterBenchmark) on Huggingface Hub
 
-## Quick Start
+## :fire: Quick Start
 
 ### Preparation
 First, download the repository.
@@ -92,7 +95,7 @@ python evaluation.py --model gpt-4o --model-provider openai --temperature 0.0 --
   python evaluation.py --model gpt-4o --model-provider openai --task_group structured --push_result_to xxx/xxxx(Your dataset)
   ```
 
-## LeaderBoard
+## :mortar_board: LeaderBoard
 
 | Metric  |  OpenAI o1 | ChatGPT-4o | Claude3.5-sonnet | Deepseek v3 | Qwen 2.5 | Llama3-Instruct |
 |---------|-----------|------------|------------------|-------------|----------|-----------------|
