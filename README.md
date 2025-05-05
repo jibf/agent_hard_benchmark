@@ -7,7 +7,7 @@ This repository is the offical implementation of DrafterBench. We provides evalu
 
 The DrafterBench is designed to evaluate language language models (LLMs) as a agent to automating monotonous, low-tech, and high-labor-intensity tasks in industry. The drawing revision task, in Civil Engineering, complained by drafters and engineers is our start point. We took a deep dive into the expected workflow of automation agents on this tasks, simulated the works situation, and evaluate the strenghts and limitations of LLMs as automation agents.
 
-![Automation Workflow](.figure/workflow.png)
+![Automation Workflow](/figure/workflow.png)
 
 DrafterBench focues on four essential capabilities:
 - **Adpating dynamic language styles**
