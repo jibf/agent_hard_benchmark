@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.append(os.path.abspath('../..'))
 
-from Drafter_Bench.prompts import Backend_prompt
+from DrafterBench.prompts import Backend_prompt
 
 
 class Prommt:
