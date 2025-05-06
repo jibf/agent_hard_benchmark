@@ -9,11 +9,11 @@ from . import task_sets
 
 sys.path.append(os.path.abspath('..'))
 
-from Drafter_Bench import testf
-from Drafter_Bench.methods.agent import Drafter_agent
-from Drafter_Bench.prompts.prompt import Prommt
-from Drafter_Bench.utils.types import Score_builder
-from Drafter_Bench.methods.collect_result import collect_result
+from DrafterBench import testf
+from DrafterBench.methods.agent import Drafter_agent
+from DrafterBench.prompts.prompt import Prommt
+from DrafterBench.utils.types import Score_builder
+from DrafterBench.methods.collect_result import collect_result
 
 
 def timeout_handler(signum, frame):
