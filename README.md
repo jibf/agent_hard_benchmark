@@ -8,17 +8,17 @@ This repository is the official implementation of DrafterBench. We provide evalu
 
 ## :star: Introducing DrafterBench
 
-The DrafterBench is designed to evaluate language models (LLMs) as an agent to automate monotonous, low-tech, and high-labor-intensity tasks in industry. The drawing revision task, in Civil Engineering, complained by drafters and engineers is our starting point. We took a deep dive into the expected workflow of automation agents on these tasks, simulated the work situation, and evaluated the strengths and limitations of LLMs as automation agents.
+The DrafterBench is designed to evaluate large language models (LLMs) as an agent to automate monotonous, low-tech, and high-labor-intensity tasks in industry. Our starting point is the drawing revision task complained about by drafters and engineers in **civil engineering**. We took a deep dive into the expected workflow of automation agents on these tasks, simulated the work situation, and evaluated the strengths and limitations of LLMs as automation agents.
 
 ![Automation Workflow](/figure/workflow.png "Automation Workflow")
 
-DrafterBench focues on four essential capabilities:
-- **Adpating dynamic language styles**
+DrafterBench focuses on four essential capabilities:
+- **Adapting dynamic language styles**
 - **Complex function callings**
 - **Batch processing**
 - **Critical thinking**
 
-DrafterBench provides a comprehensive evaluation on the LLMs with a total of 1920 user instructions over 12 types if drawing revision tasks.
+DrafterBench provides a comprehensive evaluation of LLMs with a total of 1920 user instructions over 12 types of drawing revision tasks.
 
 ## :ski: Table of Contents
 
@@ -30,7 +30,7 @@ DrafterBench provides a comprehensive evaluation on the LLMs with a total of 192
 
 ## :clipboard: Dataset Summary
 
-The DrafterBench is constructed on tasks over three object elements, four operations and six complexity controllers.
+The DrafterBench is constructed on tasks over three object elements, four operations, and six complexity controllers.
 
 | Elements       | Operations | Complexity Controllers |
 |--------------|--------------|--------------|
