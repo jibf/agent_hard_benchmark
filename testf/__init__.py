@@ -2,14 +2,14 @@ import sys
 import os
 sys.path.append(os.path.abspath('../..'))
 
-from Drafter_Bench.testf.test_types import (
+from DrafterBench.testf.test_types import (
     fileobject,
     TEXT_ALIGN_LEFT,
     TEXT_ALIGN_RIGHT,
     TEXT_ALIGN_JUSTIFY,
     TEXT_ALIGN_CENTER,
 )
-from Drafter_Bench.testf.functions import (
+from DrafterBench.testf.functions import (
     open,
     extractanno,
     selector,
@@ -25,5 +25,5 @@ from Drafter_Bench.testf.functions import (
     Projector,
     project_draw,
 )
-from Drafter_Bench.testf.metric import groundcheck, cross_check
+from DrafterBench.testf.metric import groundcheck, cross_check
 
