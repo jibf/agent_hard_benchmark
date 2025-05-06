@@ -36,7 +36,7 @@ def execute_code(code_string):
 def process_code(pre_code):
     test_code = re.sub(
         "import PDFbf|import fitz",
-        "from Drafter_bench import testf",
+        "from DrafterBench import testf",
         pre_code,
     )
     test_code = re.sub("PDFbf|fitz", "testf", test_code)
