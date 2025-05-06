@@ -35,10 +35,10 @@ The DrafterBench is constructed on tasks over three object elements, four operat
 | Elements       | Operations | Complexity Controllers |
 |--------------|--------------|--------------|
 | Text         | Adding new content                  |Language style (Structured/Unstructured)                  |
-| Table         | Revsising exsist content                  |Details ambiguity (Precise/Vague)                  |
+| Table         | Revising exist content                  |Details ambiguity (Precise/Vague)                  |
 | Vector entities         | Mapping                  |Instruction completeness (Complete/Incomplete)                  |
 |          | Updating format                  |Objects per instructions (Single/Multiple)                  |
-|          |                   |Maxmium operation length per object                  |
+|          |                   |Maximum operation length per object                  |
 |          |                   |Task type                    |
 
 The dataset is [available](https://huggingface.co/datasets/Eason666/DrafterBenchmark) on Huggingface Hub
@@ -87,7 +87,7 @@ python evaluation.py --model gpt-4o --model-provider openai --temperature 0.0 --
   ```shell
   python evaluation.py --model gpt-4o --model-provider openai --task_group structured
   ```
-  The command will run only the tasks in structured language.
+  The command will run only the tasks in a structured language.
 
 - To have a clear view of the result, you can use --push_result_to flag to upload the results to your huggingface dataset.
 
