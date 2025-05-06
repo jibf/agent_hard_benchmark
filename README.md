@@ -1,5 +1,5 @@
 # :wrench: DrafterBench
-This repository is the official implementation of DrafterBench. We provide evaluation data, evaluation code, and a brief introduction about DrafterBench.
+This repository is the official implementation of DrafterBench. We provide evaluation data, codes, and a brief introduction.
 
 ![Static Badge](https://img.shields.io/badge/Code_License-MIT_License-blue) ![Static Badge](https://img.shields.io/badge/Linux_%2F_OSX-passing-green) ![Static Badge](https://img.shields.io/badge/Window-failing-red) ![Static Badge](https://img.shields.io/badge/python-3.10%2B-purple)
 
@@ -34,14 +34,14 @@ The DrafterBench is constructed on tasks over three object elements, four operat
 
 | Elements       | Operations | Complexity Controllers |
 |--------------|--------------|--------------|
-| Text         | Adding new content                  |Language style (Structured/Unstructured)                  |
-| Table         | Revising exist content                  |Details ambiguity (Precise/Vague)                  |
-| Vector entities         | Mapping                  |Instruction completeness (Complete/Incomplete)                  |
-|          | Updating format                  |Objects per instructions (Single/Multiple)                  |
+| Text         | Add new content                  |Language style (Structured/Unstructured)                  |
+| Table         | Revisit existing content                  |Details ambiguity (Precise/Vague)                  |
+| Vector entities         | Map                  |Instruction completeness (Complete/Incomplete)                  |
+|          | Update format                  |Objects per instructions (Single/Multiple)                  |
 |          |                   |Maximum operation length per object                  |
 |          |                   |Task type                    |
 
-The dataset is [available](https://huggingface.co/datasets/Eason666/DrafterBenchmark) on Huggingface Hub
+The dataset is [available here](https://huggingface.co/datasets/Eason666/DrafterBenchmark) on Huggingface.
 
 ## :fire: Quick Start
 
@@ -50,7 +50,7 @@ First, download the repository.
 
 ```shell
 git clone https://github.com/Eason-Li-AIS/DrafterBench.git
-cd Drafter_Bench
+cd DrafterBench
 ```
 
 Then, install the dependencies.
@@ -82,14 +82,14 @@ pip install -r requirements.txt
 python evaluation.py --model gpt-4o --model-provider openai --temperature 0.0 --exp_name your_experiment_name
 ```
 
-- To run tasks in a specific language style, use --task_group flag. You chose each language style in ["structured", "unstructured"]. For example:
+- To run tasks in a specific language style, use --task_group flag. You can choose each language style in ["structured", "unstructured"]. For example:
 
   ```shell
   python evaluation.py --model gpt-4o --model-provider openai --task_group structured
   ```
-  The command will run only the tasks in a structured language.
+  This command will run only the tasks in a structured language.
 
-- To have a clear view of the result, you can use --push_result_to flag to upload the results to your huggingface dataset.
+- To have a clear view of the result, you can use --push_result_to flag to upload the results to your Huggingface dataset.
 
   ```shell
   python evaluation.py --model gpt-4o --model-provider openai --task_group structured --push_result_to xxx/xxxx(Your dataset)
@@ -97,7 +97,7 @@ python evaluation.py --model gpt-4o --model-provider openai --temperature 0.0 --
 
 ## :mortar_board: LeaderBoard
 
-| Metric  |  OpenAI o1 | ChatGPT-4o | Claude3.5-sonnet | Deepseek v3 | Qwen 2.5 | Llama3-Instruct |
+| Metric  |  OpenAI o1 | GPT-4o | Claude3.5-sonnet | Deepseek v3 | Qwen 2.5 | Llama3-Instruct |
 |---------|-----------|------------|------------------|-------------|----------|-----------------|
 | *STRU*    | **81.58**     | 75.14      | 74.34            | <ins>75.66</ins>       | 74.57    | 68.96           |
 | *U-STRU*  | **82.26**     | 73.84      | <ins>78.20</ins>            | 75.04       | 72.16    | 67.92           |
@@ -112,11 +112,11 @@ python evaluation.py --model gpt-4o --model-provider openai --temperature 0.0 --
 | *TA*      | **81.92**     | 74.49      | <ins>76.27</ins>            | 76.05       | 73.37    | 68.44           |
 |  Comprehensive score       |  **79.90** :trophy:    | 71.76      | <ins>73.79</ins> :gem:           | 73.09       | 70.52    | 64.95           |
 
-*STU*:Structured language, *U-STU*:Unstructured language, *P*:Precise detail, *VA*:Vague detail, *COM*:Complete instruction, *ERR*:Error(incomplete) instruction, *SIN-OB*:Single object, *MULT-OB*:Multiple objects, *SIN-OP*:Single operation, *MULT-OP*:Multiple operations, *TA*:Tasks
+*STU*: Structured language, *U-STU*: Unstructured language, *P*: Precise detail, *VA*: Vague detail, *COM*: Complete instruction, *ERR*: Error (incomplete) instruction, *SIN-OB*: Single object, *MULT-OB*: Multiple objects, *SIN-OP*: Single operation, *MULT-OP*: Multiple operations, *TA*: Tasks
 
 ## Citation
 
-If you use DrafterBench in your research, please cite our paper:
+If you use DrafterBench in your research, please consider citing our paper:
 
 ```bibtex
 @article{drafterbench,
