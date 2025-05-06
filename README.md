@@ -1,5 +1,5 @@
 # :wrench: DrafterBench
-This repository is the offical implementation of DrafterBench. We provides evaluation data, evaluation code and a brief introduction about DrafterBench.
+This repository is the official implementation of DrafterBench. We provide evaluation data, evaluation code, and a brief introduction about DrafterBench.
 
 ![Static Badge](https://img.shields.io/badge/Code_License-MIT_License-blue) ![Static Badge](https://img.shields.io/badge/Linux_%2F_OSX-passing-green) ![Static Badge](https://img.shields.io/badge/Window-failing-red) ![Static Badge](https://img.shields.io/badge/python-3.10%2B-purple)
 
@@ -8,7 +8,7 @@ This repository is the offical implementation of DrafterBench. We provides evalu
 
 ## :star: Introducing DrafterBench
 
-The DrafterBench is designed to evaluate language language models (LLMs) as a agent to automating monotonous, low-tech, and high-labor-intensity tasks in industry. The drawing revision task, in Civil Engineering, complained by drafters and engineers is our start point. We took a deep dive into the expected workflow of automation agents on this tasks, simulated the works situation, and evaluate the strenghts and limitations of LLMs as automation agents.
+The DrafterBench is designed to evaluate language models (LLMs) as an agent to automate monotonous, low-tech, and high-labor-intensity tasks in industry. The drawing revision task, in Civil Engineering, complained by drafters and engineers is our starting point. We took a deep dive into the expected workflow of automation agents on these tasks, simulated the work situation, and evaluated the strengths and limitations of LLMs as automation agents.
 
 ![Automation Workflow](/figure/workflow.png "Automation Workflow")
 
@@ -18,9 +18,9 @@ DrafterBench focues on four essential capabilities:
 - **Batch processing**
 - **Critical thinking**
 
-DrafterBench provide a comprehensive evaulation on the LLMs with a total of 1920 user instructions over 12 types if drawing revision tasks.
+DrafterBench provides a comprehensive evaluation on the LLMs with a total of 1920 user instructions over 12 types if drawing revision tasks.
 
-## :ski: Table of Content
+## :ski: Table of Contents
 
 - [Dataset Summary](#dataset-summary)
 - [Quick Start](#quick-start)
