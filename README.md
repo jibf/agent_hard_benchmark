@@ -38,7 +38,7 @@ The DrafterBench is constructed on tasks over three object elements, four operat
 |--------------|--------------|--------------|
 | Text         | Add new content                  |Language style (Structured/Unstructured)                  |
 | Table         | Revise existing content                  |Details ambiguity (Precise/Vague)                  |
-| Vector entities         | Map                  |Instruction completeness (Completed/Incompleted)                  |
+| Vector entities         | Map                  |Instruction completeness (Completed/Error)                  |
 |          | Update format                  |Objects per instructions (Single/Multiple)                  |
 |          |                   |Maximum operation length per object (Single/Multiple)                 |
 |          |                   |Task type                    |
