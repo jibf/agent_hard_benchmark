@@ -38,9 +38,9 @@ The DrafterBench is constructed on tasks over three object elements, four operat
 |--------------|--------------|--------------|
 | Text         | Add new content                  |Language style (Structured/Unstructured)                  |
 | Table         | Revise existing content                  |Details ambiguity (Precise/Vague)                  |
-| Vector entities         | Map                  |Instruction completeness (Complete/Incomplete)                  |
+| Vector entities         | Map                  |Instruction completeness (Completed/Incompleted)                  |
 |          | Update format                  |Objects per instructions (Single/Multiple)                  |
-|          |                   |Maximum operation length per object                  |
+|          |                   |Maximum operation length per object (Single/Multiple)                 |
 |          |                   |Task type                    |
 
 The dataset is [available here](https://huggingface.co/datasets/Eason666/DrafterBenchmark) on Huggingface.
