@@ -79,13 +79,13 @@ pip install -r requirements.txt
 ### Run evaluation
 Specify the --model and --model-provider flags to run DrafterBench. The supported models and providers are [available here](https://docs.litellm.ai/docs/providers). You can name your experiment with the --exp_name flag, or it will be set as "drafterbench".
 ```shell
-python evaluation.py --model gpt-4o --model-provider openai --temperature 0.0 --exp_name drafterbench
+python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --temperature 0.0 --exp_name drafterbench
 ```
 
 - To run tasks of a specific set, use --task_group flag. You can choose each set in ["Structured", "Unstructured", "Precise", "", "Completed", "Error", "Single_Object", "Multiple_Objects", "Single_Operation", "Multiple_Operations"]. For example:
 
   ```shell
-  python evaluation.py --model gpt-4o --model-provider openai --task_group structured
+  python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --task_group structured
   ```
   This command will run only the tasks in a structured language.
 
@@ -95,7 +95,7 @@ python evaluation.py --model gpt-4o --model-provider openai --temperature 0.0 --
   ```
   then use --huggingface_user_name flag to provide your Huggingface user name. Our benchmark will create a new dataset repository with --exp_name and push the results to it.
   ```shell
-  python evaluation.py --model gpt-4o --model-provider openai --task_group structured --push_result_to xxx/xxxx(Your dataset)
+  python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --task_group structured --huggingface_user_name XXXXX(Replace "XXXXX" with your Huggingface username)
   ```
 
 ## :mortar_board: LeaderBoard
