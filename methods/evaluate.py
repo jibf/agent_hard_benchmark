@@ -130,22 +130,22 @@ def evaluate(args):
     single_OB_rewards = [
         x['Task_score']['Task_score']
         for x in eval_list
-        if x["Single|Multiple_objects"] == "Single_OB"
+        if x["Single|Multiple_objects"] == "Single_Object"
     ]
     multiple_OB_rewards = [
         x['Task_score']['Task_score']
         for x in eval_list
-        if x["Single|Multiple_objects"] == "Multiple_OB"
+        if x["Single|Multiple_objects"] == "Multiple_Objects"
     ]
     single_OP_rewards = [
         x['Task_score']['Task_score']
         for x in eval_list
-        if x["Single|Multiple_operations"] == "Single_OP"
+        if x["Single|Multiple_operations"] == "Single_Operation"
     ]
     multiple_OP_rewards = [
         x['Task_score']['Task_score']
         for x in eval_list
-        if x["Single|Multiple_operations"] == "Multiple_OP"
+        if x["Single|Multiple_operations"] == "Multiple_Operations"
     ]
     average_structured_rewards = (
         np.average(structured_rewards) if structured_rewards else 'NaN'
