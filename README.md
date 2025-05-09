@@ -16,7 +16,7 @@ In this work, after preprocessing, the drafter tasks (summarized from the real w
 
 DrafterBench evaluates models focusing on four essential capabilities:
 - **Structured textual data understanding**
-- **Complex function callings**
+- **Complex function calling**
 - **Long content instruction following**
 - **Critical thinking**
 
