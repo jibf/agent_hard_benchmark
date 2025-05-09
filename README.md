@@ -87,7 +87,7 @@ python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --tempera
 - To run tasks of a specific set, use --task_group flag. You can choose each set in ["Structured", "Unstructured", "Precise", "", "Completed", "Error", "Single_Object", "Multiple_Objects", "Single_Operation", "Multiple_Operations"]. For example:
 
   ```shell
-  python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --task_group structured
+  python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --task_group Structured
   ```
   This command will run only the tasks in a structured language.
 
