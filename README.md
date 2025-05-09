@@ -45,7 +45,7 @@ The DrafterBench is constructed on tasks over three object elements, four operat
 
 The dataset is [available here](https://huggingface.co/datasets/Eason666/DrafterBenchmark) on Huggingface.
 
-## :fire: Quick Start
+## :fire: <span id="quick-start">Quick Start</span>
 
 ### Preparation
 First, download the repository.
@@ -100,7 +100,7 @@ python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --tempera
   python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --task_group structured --huggingface_user_name XXXXX(Replace "XXXXX" with your Huggingface username)
   ```
 
-## :mortar_board: LeaderBoard
+## :mortar_board: <span id="leaderboard">LeaderBoard</span>
 
 | Metric  |  OpenAI o1 | gpt-4o-2024-08-06 | Claude3.5-sonnet | Deepseek-v3-685B | Qwen2.5-72B-Instruct | Llama3-70B-Instruct |
 |---------|-----------|------------|------------------|-------------|----------|-----------------|
