@@ -82,15 +82,18 @@ pip install -r requirements.txt
 python evaluation.py --model gpt-4o --model-provider openai --temperature 0.0 --exp_name your_experiment_name
 ```
 
-- To run tasks in a specific language style, use --task_group flag. You can choose each language style in ["structured", "unstructured"]. For example:
+- To run tasks of a specific set, use --task_group flag. You can choose each set in ["Structured", "Unstructured", "Precise", "", "Completed", "Error", "Single_Object", "Multiple_Objects", "Single_Operation", "Multiple_Operations"]. For example:
 
   ```shell
   python evaluation.py --model gpt-4o --model-provider openai --task_group structured
   ```
   This command will run only the tasks in a structured language.
 
-- To have a clear view of the result, you can use --push_result_to flag to upload the results to your Huggingface dataset.
-
+- To have a clear view of the result, you can set up your huggingface token, 
+  ```shell
+   HUGGINGFACE_TOKEN=...
+  ```
+  then use --huggingface_user_name flag to provide your Huggingface user name. Our benchmark will create a new dataset repository with --exp_name and push the results to it.
   ```shell
   python evaluation.py --model gpt-4o --model-provider openai --task_group structured --push_result_to xxx/xxxx(Your dataset)
   ```
