@@ -10,17 +10,17 @@ This repository is the official implementation of DrafterBench. We provide evalu
 
 The DrafterBench is designed to evaluate large language models (LLMs) as an agent to automate monotonous, low-tech, and high-labor-intensity tasks in industry. Our starting point is the drawing revision task complained about by drafters and engineers in **civil engineering**. We took a deep dive into the expected workflow of automation agents on these tasks, simulated the work situation, and evaluated the strengths and limitations of LLMs as automation agents.
 
-In this work, after preprocessing, the drafter tasks (summarized from the real world) are converted to NLP tasks that evaluate complex function callings instructed by long content commands in vision tasks. Over 40 drawing revision tools are tailored and provided to LLMs. Meanwhile, their dual functions/tools are designed with the same tool name, input, and the same type of output, but they record factual operations rather than make changes to drawings. Dual functions were introduced to cope with the fact that two different chains of operations may accidentally produce the same output drawing since some operations are not visible. As a result, a more accurate evaluation can be conducted based on their records than output drawings.
+In this work, after preprocessing, the drafter tasks (summarized from the real world, 10 total of 1920 over 12 types) are converted to NLP tasks that evaluate complex function callings instructed by long content commands in vision tasks. Over 40 drawing revision tools are tailored and provided to LLMs. Meanwhile, their dual functions/tools are designed with the same tool name, input, and the same type of output, but they record factual operations rather than make changes to drawings. Dual functions were introduced to cope with the fact that two different chains of operations may accidentally produce the same output drawing since some operations are not visible. As a result, a more accurate evaluation can be conducted based on their records than output drawings.
 
 ![Automation Workflow](/figures/Workflow.png "Automation Workflow")
 
 DrafterBench focuses on four essential capabilities:
-- **Adapting dynamic language styles**
+- **Structure data understanding**
 - **Complex function callings**
-- **Batch processing**
+- **Long content instruction following**
 - **Critical thinking**
 
-DrafterBench provides a comprehensive evaluation of LLMs with a total of 1920 user instructions over 12 types of drawing revision tasks.
+![Capabilities Illustration](/figures/Capabilities.png "Capabilities Illustration")
 
 ## :ski: Table of Contents
 
