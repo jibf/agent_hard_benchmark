@@ -93,7 +93,7 @@ python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --tempera
   ```shell
    HUGGINGFACE_TOKEN=...
   ```
-  then use --huggingface_user_name flag to provide your Huggingface user name. Our benchmark will create a new dataset repository with --exp_name and push the results to it.
+  then use --huggingface_user_name flag to provide your Huggingface user name. Our benchmark will create a new dataset repository with --exp_name and push the results to it. This repository is private by default, you can create a public repository by setting the --huggingface_private flag to False.
   ```shell
   python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --task_group structured --huggingface_user_name XXXXX(Replace "XXXXX" with your Huggingface username)
   ```
