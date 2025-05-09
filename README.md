@@ -12,6 +12,8 @@ The DrafterBench is designed to evaluate large language models (LLMs) as an agen
 
 ![Automation Workflow](/figure/workflow.png "Automation Workflow")
 
+In this work, after preprocessing, the drafter tasks (summarized from the real world) are converted to NLP tasks that evaluate complex function callings instructed by long content commands in vision tasks. Over 40 drawing revision tools are tailored and provided to LLMs. Meanwhile, their dual functions/tools are designed with the same tool name, input, and the same type of output, but they record factual operations rather than make changes to drawings. Dual functions were introduced to cope with the fact that two different chains of operations may accidentally produce the same output drawing since some operations are not visible. As a result, a more accurate evaluation can be conducted based on their records than output drawings.
+
 DrafterBench focuses on four essential capabilities:
 - **Adapting dynamic language styles**
 - **Complex function callings**
