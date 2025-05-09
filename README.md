@@ -100,7 +100,7 @@ python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --tempera
 
 ## :mortar_board: LeaderBoard
 
-| Metric  |  OpenAI o1 | GPT-4o | Claude3.5-sonnet | Deepseek v3 | Qwen 2.5 | Llama3-Instruct |
+| Metric  |  OpenAI o1 | gpt-4o-2024-08-06 | Claude3.5-sonnet | Deepseek-v3-685B | Qwen2.5-72B-Instruct | Llama3-70B-Instruct |
 |---------|-----------|------------|------------------|-------------|----------|-----------------|
 | Structured language    | **81.58**     | 75.14      | 74.34            | <ins>75.66</ins>       | 74.57    | 68.96           |
 | Unstructured language  | **82.26**     | 73.84      | <ins>78.20</ins>            | 75.04       | 72.16    | 67.92           |
