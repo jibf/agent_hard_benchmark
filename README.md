@@ -62,7 +62,7 @@ pip install -r requirements.txt
 ```
 
 ### Serve Model
-- For API calling, set up your OpenAI / Anthropic / Google / Mistral / AnyScale API keys as environment variables.
+- For API calling, set up your OpenAI / Anthropic / Google / Mistral / Deepinfra / AnyScale or other API keys as environment variables.
 
     ```shell
     OPENAI_API_KEY=...
