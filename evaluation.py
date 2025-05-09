@@ -41,7 +41,7 @@ def parse_args():
             "Structured",
             "Unstructured",
             "Precise",
-            "",
+            "Vague",
             "Completed",
             "Error",
             "Single_Object",
