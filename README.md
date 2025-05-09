@@ -37,7 +37,7 @@ The DrafterBench is constructed on tasks over three object elements, four operat
 | Elements       | Operations | Complexity Controllers |
 |--------------|--------------|--------------|
 | Text         | Add new content                  |Language style (Structured/Unstructured)                  |
-| Table         | Revisit existing content                  |Details ambiguity (Precise/Vague)                  |
+| Table         | Revise existing content                  |Details ambiguity (Precise/Vague)                  |
 | Vector entities         | Map                  |Instruction completeness (Complete/Incomplete)                  |
 |          | Update format                  |Objects per instructions (Single/Multiple)                  |
 |          |                   |Maximum operation length per object                  |
