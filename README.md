@@ -99,7 +99,7 @@ python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --tempera
   ```shell
   python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --task_group structured --huggingface_user_name XXXXX(Replace "XXXXX" with your Huggingface username)
   ```
-- The default prompts for 12 tasks can be found in ./prompts. You are encouraged to develop your own prompts to achieve a higher score. To do so, just replace the default prompt in .txt file with your new prompt.
+- The default prompts for 12 tasks can be found in ./prompts. You are encouraged to develop your own prompts to achieve a higher score. To do so, just replace the default prompts in .txt file with your new prompts.
 
 ## :mortar_board: <span id="leaderboard">LeaderBoard</span>
 
