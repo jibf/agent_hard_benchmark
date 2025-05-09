@@ -66,11 +66,11 @@ def evaluate(args):
     max_length = 1920
     ctx = multiprocessing.get_context('spawn')
     pool1 = ctx.Pool(processes=args.proc_num)
+    print('Getting agent responses:')
     task_messages = load_dataset("Eason666/DrafterBench", "drafter_tasks")
     generator_partial = partial(
         generator, args, max_length, response_results, data, task_messages, result_path
     )
-    print('Getting agent responses:')
     r = list(tqdm(pool1.imap(generator_partial, task_sets), total=len(task_sets)))
     pool1.close()
     pool1.join()
@@ -79,9 +79,9 @@ def evaluate(args):
 
     eval_results = Manager().list()
     pool2 = ctx.Pool(processes=args.proc_num)
+    print('Evaluating agent responses:')
     evaluator_partial = partial(evaluator, result_path, eval_results)
     responses = copy.deepcopy(list(response_results))
-    print('Evaluating agent responses:')
     p = list(tqdm(pool2.imap(evaluator_partial, responses), total=len(responses)))
     pool2.close()
     pool2.join()
