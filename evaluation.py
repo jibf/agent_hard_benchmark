@@ -29,7 +29,7 @@ def parse_args():
         default=0.0,
         help="The temperature for the agent",
     )
-    parser.add_argument("--exp_name", type=str, default="drafterbench")
+    parser.add_argument("--exp_name", type=str, default="My_drafterbench")
     parser.add_argument("--log_dir", type=str, default="logs/")
     parser.add_argument("--result_dir", type=str, default="results/")
     parser.add_argument("--proc_num", type=int, default=16)
