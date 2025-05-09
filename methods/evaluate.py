@@ -66,7 +66,7 @@ def evaluate(args):
     max_length = 1920
     ctx = multiprocessing.get_context('spawn')
     pool1 = ctx.Pool(processes=args.proc_num)
-    task_messages = load_dataset("Eason666/DrafterBenchmark", "drafter_tasks")
+    task_messages = load_dataset("Eason666/DrafterBench", "drafter_tasks")
     generator_partial = partial(
         generator, args, max_length, response_results, data, task_messages, result_path
     )
