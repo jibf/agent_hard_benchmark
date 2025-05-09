@@ -7,8 +7,8 @@ task_sets = [
     "revise_text",
     "map_text",
     "refresh_text",
-    "add_line",
-    "delete_line",
-    "map_line",
-    "refresh_line",
+    "add_vector",
+    "delete_vector",
+    "map_vector",
+    "refresh_vector",
 ]
