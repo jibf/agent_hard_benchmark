@@ -19,7 +19,7 @@ def execute_code(code_string):
         testf.functions.taskinformation.clear()
         variables = {}
         signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(3)
+        signal.alarm(5)
         exec(code_string, variables)
         code_information = copy.deepcopy(variables["testf"].functions.taskinformation)
     except Exception as e:
