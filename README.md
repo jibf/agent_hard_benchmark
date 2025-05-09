@@ -30,7 +30,7 @@ DrafterBench evaluates models focusing on four essential capabilities:
 
 ---
 
-## :clipboard: Dataset Summary
+## :clipboard: <span id="dataset-summary">Dataset Summary</span>
 
 The DrafterBench is constructed on tasks over three object elements, four operations, and six complexity controllers.
 
