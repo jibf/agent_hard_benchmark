@@ -200,7 +200,7 @@ def evaluate(args):
         dataet_dict.push_to_hub(
             f"{args.huggingface_user_name}/{args.exp_name}",
             token=os.getenv('HUGGINGFACE_TOKEN'),
-            private=True,
+            private=args.huggingface_private,
         )
         print(
             f"Dataset successfully pushed to the hub at https://huggingface.co/{args.huggingface_user_name}/{args.exp_name}"
