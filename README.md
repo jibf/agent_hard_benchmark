@@ -77,7 +77,7 @@ pip install -r requirements.txt
     ```
 
 ### Run evaluation
-Specify the --model and --model-provider flags to run DrafterBench. The supported models and providers are [available here](https://docs.litellm.ai/docs/providers). You can name your experiment with the --exp_name flag, or it will be set as "drafterbench".
+Specify the --model and --model-provider flags to run DrafterBench. The supported models and providers are [available here](https://docs.litellm.ai/docs/providers). You can name your experiment with the --exp_name flag, or it will be set as "drafterbench" by default.
 ```shell
 python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --temperature 0.0 --exp_name drafterbench
 ```
