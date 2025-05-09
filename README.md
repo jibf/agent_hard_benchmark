@@ -15,7 +15,7 @@ In this work, after preprocessing, the drafter tasks (summarized from the real w
 ![Automation Workflow](/figures/Workflow.png "Automation Workflow")
 
 DrafterBench focuses on four essential capabilities:
-- **Structure data understanding**
+- **Structured textual data understanding**
 - **Complex function callings**
 - **Long content instruction following**
 - **Critical thinking**
