@@ -66,7 +66,7 @@ def main():
     evaluate(args)
     endtime = time.time()
     timespan = endtime - starttime
-    print(f"Benchmark finsihed in {timespan} s.")
+    print(f"Benchmark finished in {timespan} s.")
 
 
 if __name__ == "__main__":
