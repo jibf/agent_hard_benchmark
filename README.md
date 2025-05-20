@@ -84,7 +84,7 @@ Specify the --model and --model-provider flags to run DrafterBench. The supporte
 python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --temperature 0.0 --exp_name My_drafterbench
 ```
 
-- To run tasks of a specific set, use --task_group flag. You can choose each set in ["Structured", "Unstructured", "Precise", "", "Completed", "Error", "Single_Object", "Multiple_Objects", "Single_Operation", "Multiple_Operations"]. For example:
+- To run tasks of a specific set, use --task_group flag. You can choose each set in ["Structured", "Unstructured", "Precise", "Vague", "Completed", "Error", "Single_Object", "Multiple_Objects", "Single_Operation", "Multiple_Operations"]. For example:
 
   ```shell
   python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --task_group Structured
@@ -97,7 +97,7 @@ python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --tempera
   ```
   then use --huggingface_user_name flag to provide your Huggingface user name. Our benchmark will create a new dataset repository with --exp_name and push the results to it. This repository is private by default, you can create a public repository by setting the --huggingface_private flag to False.
   ```shell
-  python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --task_group structured --huggingface_user_name XXXXX(Replace "XXXXX" with your Huggingface username)
+  python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --task_group Structured --huggingface_user_name XXXXX(Replace "XXXXX" with your Huggingface username)
   ```
 - The default prompts for 12 tasks can be found in ./prompts. You are encouraged to develop your own prompts to achieve a higher score. To do so, just replace the default prompts in .txt file with your new prompts.
 
