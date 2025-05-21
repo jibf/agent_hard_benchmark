@@ -57,9 +57,7 @@ def evaluate(args):
     print(f"The benchmark is runing with following arguments:")
     print(f"{args}")
     print(f"Running tasks in {args.task_group} set(s)")
-    # os.makedirs(f"{args.log_dir}", exist_ok=True)
     os.makedirs(f"{args.result_dir}/{args.model.replace('/', '_')}", exist_ok=True)
-    # log_path = f"{args.log_dir}/{datetime.date.today().strftime('%Y-%m-%d-%H:%M:%S')}_{args.model.replace('/', '_')}_{args.exp_name}.log"
     result_path = f"{args.result_dir}/{args.model.replace('/', '_')}/{datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')}_{args.task_group}.json"
     if args.exp_name == "default":
         args.exp_name = f"{args.model.replace('/', '_')}_{datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')}_{args.task_group}"
