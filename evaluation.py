@@ -49,7 +49,7 @@ def parse_args():
         default="All",
     )
     parser.add_argument("--huggingface_user_name", type=str, default=None)
-    parser.add_argument("--huggingface_private", type=bool, default=False)
+    parser.add_argument("--huggingface_private", type=bool, default=True)
     parser.add_argument("--vllm_url", type=str, default=None)
     args = parser.parse_args()
 
