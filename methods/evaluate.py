@@ -218,7 +218,7 @@ def evaluate(args):
         f"Comprehensive rewards: {comprehensive_rewards}"
     )
     print(reward)
-    text_result_path = f"{args.result_dir}/{datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')}_{args.model.replace('/', '_')}_{args.exp_name}.txt"
+    text_result_path = f"{args.result_dir}/{args.model.replace('/', '_')}/{datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')}_{args.task_group}.txt"
     with open(text_result_path, "w", encoding="utf-8") as w:
         w.write(reward)
     print(f"The experiment result has been saved in {args.result_dir}.")
