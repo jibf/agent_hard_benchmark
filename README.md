@@ -79,9 +79,9 @@ pip install -r requirements.txt
     ```
 
 ### Run evaluation
-Specify the --model and --model-provider flags to run DrafterBench. The supported models and providers are [available here](https://docs.litellm.ai/docs/providers). You can name your experiment with the --exp_name flag, or it will be set as "My_drafterbench" by default.
+Specify the --model and --model-provider flags to run DrafterBench. The supported models and providers are [available here](https://docs.litellm.ai/docs/providers). You can name your experiment with the --exp_name flag, or it will be set as "model+time+task_group" by default.
 ```shell
-python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --temperature 0.0 --exp_name My_drafterbench
+python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --temperature 0.0 --exp_name model+time+task_group
 ```
 
 - To run tasks of a specific set, use --task_group flag. You can choose each set in ["Structured", "Unstructured", "Precise", "Vague", "Completed", "Error", "Single_Object", "Multiple_Objects", "Single_Operation", "Multiple_Operations"]. For example:
