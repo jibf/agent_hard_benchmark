@@ -22,7 +22,7 @@ def savedate(data, jsonpath):
 
 
 def evaluator(result_path, eval_result, response_result):
-    ground_details = metric.groundcheck(response_result["Groundpath"])
+    ground_details = metric.ground_check(response_result["Groundpath"])
     prompt_score = (
         Score_builder()
         .ground_fill(ground_details)
