@@ -6,8 +6,6 @@ from litellm import provider_list
 from methods.evaluate import evaluate
 
 sys.path.append(os.path.abspath('..'))
-os.environ["DEEPINFRA_API_KEY"] = "u4VcQxbxgWZFxsAQXKAp1uJpQOaTqahj"
-os.environ["HUGGINGFACE_TOKEN"] = "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"
 
 def parse_args():
     parser = argparse.ArgumentParser()
