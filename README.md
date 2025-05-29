@@ -118,7 +118,7 @@ python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --tempera
 | Average of 12 tasks      | **81.92**     | 74.49      | <ins>76.27</ins>            | 76.05       | 73.37    | 68.44           |
 |  Comprehensive score       |  **79.90** :trophy:    | 71.76      | <ins>73.79</ins> :gem:           | 73.09       | 70.52    | 64.95           |
 
-Note: Due to additional internal updates, models are more difficult to score highly in this benchmark, and some models may score lower than the records in this table.
+Note: We have recently upgraded DrafterBench to be more challenging. Although the trend of models' ability is very consistent with the above leaderboard, some models may score lower than the records.
 
 ## Citation
 
