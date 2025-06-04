@@ -10,7 +10,9 @@ This repository is the official implementation of DrafterBench. We provide evalu
 
 The DrafterBench is designed to evaluate large language models (LLMs) as an agent to automate monotonous, low-tech, and high-labor-intensity tasks in industry. Our starting point is the drawing revision task complained about by drafters and engineers in **civil engineering**. We took a deep dive into the expected workflow of automation agents on these tasks, simulated the work situation, and evaluated the strengths and limitations of LLMs as automation agents.
 
-In this work, after preprocessing, the drafting tasks (summarized from the real world, a total of 1920 over 12 types) are converted to NLP tasks that evaluate complex function calls instructed by long content commands. Over 40 drawing revision tools are tailored and provided to LLMs. Meanwhile, their dual functions/tools are designed with the same tool name, input, and the same type of output, but they record factual operations rather than make changes to drawings. Dual functions were introduced to cope with the fact that two different chains of operations may accidentally produce the same output drawing since some operations are not visible. Therefore, a more accurate evaluation can be conducted based on their records than output drawings.
+In this work, after preprocessing, the drafting tasks (summarized from the real world, a total of 1920 over 12 types) are converted to NLP tasks that evaluate complex function calls instructed by long content commands. Over 40 drawing revision tools are tailored and provided to LLMs. However, not all tools can make visible changes on drawings. A considerable part of them make necessary preparations (e.g., opening the file) or provide the required arguments for subsequent operations. Thus, to accurately evaluate the models‘ performance, we score their response based on the chain of executed operations rather than directly on the final drawing. 
+
+The chain of operation is obtained by introducing a dual tool for each tool. The dual tools have the same tool name, input, and type of output as the original tools, but their function drifts to record the data we care about (e.g., tools called, argument value, data type, etc.) in a well-structured JSON format. When running the benchmark, the original tools in the model's response will be replaced by the dual tools to record the chain of operation and help gain the final assessment.
 
 ![Automation Workflow](/figures/Workflow.png "Automation Workflow")
 
@@ -81,7 +83,7 @@ pip install -r requirements.txt
 ### Run evaluation
 Specify the --model and --model-provider flags to run DrafterBench. The supported models and providers are [available here](https://docs.litellm.ai/docs/providers). You can name your experiment with the --exp_name flag, or it will be set as "model+time+task_group" by default.
 ```shell
-python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --temperature 0.0 --exp_name model+time+task_group
+python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --temperature 0.0 --exp_name default_name
 ```
 
 - To run tasks of a specific set, use the --task_group flag. You can choose each set in ["Structured", "Unstructured", "Precise", "Vague", "Completed", "Error", "Single_Object", "Multiple_Objects", "Single_Operation", "Multiple_Operations"]. For example:
