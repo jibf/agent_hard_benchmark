@@ -7,6 +7,9 @@ from methods.evaluate import evaluate
 
 sys.path.append(os.path.abspath(".."))
 
+os.environ["DEEPINFRA_API_KEY"] = "u4VcQxbxgWZFxsAQXKAp1uJpQOaTqahj"
+os.environ["HUGGINGFACE_TOKEN"] = "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"
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -26,7 +29,7 @@ def parse_args():
         default=0.0,
         help="The temperature for the agent",
     )
-    parser.add_argument("--exp_name", type=str, default=f"default")
+    parser.add_argument("--exp_name", type=str, default=f"default_name")
     parser.add_argument("--result_dir", type=str, default="results/")
     parser.add_argument("--proc_num", type=int, default=16)
     parser.add_argument("--debug", type=bool, default=False)

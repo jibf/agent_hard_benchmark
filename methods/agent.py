@@ -1,8 +1,10 @@
 import re
+import litellm
 from litellm import completion
 from typing import List, Dict, Any
 from openai import OpenAI
 
+# litellm._turn_on_debug()
 
 class Drafter_agent:
     def __init__(

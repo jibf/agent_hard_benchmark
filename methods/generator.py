@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(".."))
 
 from DrafterBench.methods import task_sets
 from DrafterBench.methods.agent import Drafter_agent
-from DrafterBench.prompts.prompt import Prommt
+from DrafterBench.prompts.prompt import Prompt
 from DrafterBench.methods.collect_result import process_code, execute_code
 
 
@@ -23,13 +23,13 @@ def savedate(data, jsonpath):
         json.dump(data, w, indent=4)
 
 
-def generator(args, max_length, response_results, data, result_path, task):
+def generator(model, model_provider, temperature, vllm_url, max_length, response_results, data, result_path, task):
     if len(response_results) <= max_length:
         agent = Drafter_agent(
-            args.model, args.model_provider, args.temperature, args.vllm_url
+            model, model_provider, temperature, vllm_url
         )
         indx = task_sets.index(task["Tasktype"]) + 1
-        prompt = Prommt(str(indx), task["Instruction"])
+        prompt = Prompt(str(indx), task["Instruction"])
         pre_code = agent.get_response(messages=prompt.message())
         test_code = process_code(pre_code)
         test_info = execute_code(test_code)

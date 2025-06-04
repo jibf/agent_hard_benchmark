@@ -6,7 +6,7 @@ sys.path.append(os.path.abspath("../.."))
 from DrafterBench.prompts import Backend_prompt
 
 
-class Prommt:
+class Prompt:
     def __init__(
         self,
         task_index: str,

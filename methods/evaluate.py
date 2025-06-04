@@ -59,7 +59,7 @@ def evaluate(args):
     print(f"Running tasks in {args.task_group} set(s)")
     os.makedirs(f"{args.result_dir}/{args.model.replace('/', '_')}", exist_ok=True)
     result_path = f"{args.result_dir}/{args.model.replace('/', '_')}/{datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')}_{args.task_group}.json"
-    if args.exp_name == "default":
+    if args.exp_name == "default_name":
         args.exp_name = f"{args.model.replace('/', '_')}_{datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')}_{args.task_group}"
     response_results = Manager().list()
     data = Manager().list()
@@ -94,7 +94,7 @@ def evaluate(args):
     pool1 = ctx.Pool(processes=args.proc_num)
     print("Getting agent responses:")
     generator_partial = partial(
-        generator, args, max_length, response_results, data, result_path
+        generator, args.model, args.model_provider, args.temperature, args.vllm_url, max_length, response_results, data, result_path
     )
     r = list(
         tqdm(
@@ -202,21 +202,38 @@ def evaluate(args):
         np.average(multiple_OP_rewards) if multiple_OP_rewards else "NaN"
     )
 
-    print("Average reward in different metrics:\n")
-    reward = (
-        f"Structured language: {average_structured_rewards}\n"
-        f"Unstructured language: {average_unstrctured_rewards}\n"
-        f"Precise detail: {average_precise_rewards}\n"
-        f"Vague detail: {average_vague_rewards}\n"
-        f"Complete instruction: {average_complete_rewards}\n"
-        f"Error (incomplete) instruction: {average_error_rewards}\n"
-        f"Single object: {average_single_OB_rewards}\n"
-        f"Multiple objects: {average_multiple_OB_rewards}\n"
-        f"Single operation: {average_single_OP_rewards}\n"
-        f"Multiple operations: {average_multiple_OP_rewards}\n"
-        f"Average tasks: {average_task_rewards}\n"
-        f"Comprehensive rewards: {comprehensive_rewards}"
-    )
+    reward_matrix = {
+        "Structured": f"Structured language: {average_structured_rewards}\n",
+        "Unstructured": f"Unstructured language: {average_unstrctured_rewards}\n",
+        "Precise": f"Precise detail: {average_precise_rewards}\n",
+        "Vague": f"Vague detail: {average_vague_rewards}\n",
+        "Completed": f"Completed instruction: {average_complete_rewards}\n",
+        "Error": f"Error (incompleted) instruction: {average_error_rewards}\n",
+        "Single_Object": f"Single object: {average_single_OB_rewards}\n",
+        "Multiple_Objects": f"Multiple objects: {average_multiple_OB_rewards}\n",
+        "Single_Operation": f"Single operation: {average_single_OP_rewards}\n",
+        "Multiple_Operations": f"Multiple operations: {average_multiple_OP_rewards}\n"
+    }
+
+    if args.task_group == 'All':
+        print("Average reward in different metrics:\n")
+        reward = (
+            f"Structured language: {average_structured_rewards}\n"
+            f"Unstructured language: {average_unstrctured_rewards}\n"
+            f"Precise detail: {average_precise_rewards}\n"
+            f"Vague detail: {average_vague_rewards}\n"
+            f"Completed instruction: {average_complete_rewards}\n"
+            f"Error (incompleted) instruction: {average_error_rewards}\n"
+            f"Single object: {average_single_OB_rewards}\n"
+            f"Multiple objects: {average_multiple_OB_rewards}\n"
+            f"Single operation: {average_single_OP_rewards}\n"
+            f"Multiple operations: {average_multiple_OP_rewards}\n"
+            f"Average tasks: {average_task_rewards}\n"
+            f"Comprehensive rewards: {comprehensive_rewards}"
+        )
+    else:
+        print("Average reward of the task group you specified:\n")
+        reward = reward_matrix[args.task_group]
     print(reward)
     text_result_path = f"{args.result_dir}/{args.model.replace('/', '_')}/{datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')}_{args.task_group}.txt"
     with open(text_result_path, "w", encoding="utf-8") as w:
