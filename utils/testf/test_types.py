@@ -1,5 +1,6 @@
 import string
 import random
+import pymupdf
 from collections import defaultdict
 
 fontlist = [
@@ -81,10 +82,10 @@ fontlist = [
     "Courier New",
 ]
 
-TEXT_ALIGN_CENTER = fitz.TEXT_ALIGN_CENTER
-TEXT_ALIGN_RIGHT = fitz.TEXT_ALIGN_RIGHT
-TEXT_ALIGN_JUSTIFY = fitz.TEXT_ALIGN_JUSTIFY
-TEXT_ALIGN_LEFT = fitz.TEXT_ALIGN_LEFT
+TEXT_ALIGN_CENTER = pymupdf.TEXT_ALIGN_CENTER
+TEXT_ALIGN_RIGHT = pymupdf.TEXT_ALIGN_RIGHT
+TEXT_ALIGN_JUSTIFY = pymupdf.TEXT_ALIGN_JUSTIFY
+TEXT_ALIGN_LEFT = pymupdf.TEXT_ALIGN_LEFT
 
 
 def generate_random_string(length):
