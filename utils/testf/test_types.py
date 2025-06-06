@@ -1,6 +1,5 @@
 import string
 import random
-import fitz
 from collections import defaultdict
 
 fontlist = [
