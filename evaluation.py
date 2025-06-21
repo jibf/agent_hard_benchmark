@@ -39,7 +39,7 @@ def parse_args():
             "Precise",
             "Vague",
             "Complete",
-            "Incomplete",
+            "Error",
             "Single_Object",
             "Multiple_Objects",
             "Single_Operation",
