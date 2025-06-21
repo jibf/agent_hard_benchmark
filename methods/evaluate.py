@@ -83,7 +83,7 @@ def evaluate(args):
                 for i in range(len(task_messages[task_set])):
                     task_parameters = [
                         task_messages[task_set][i]["Precise|Vague"],
-                        task_messages[task_set][i]["Completed|Error"],
+                        task_messages[task_set][i]["Complete|Incomplete"],
                         task_messages[task_set][i]["Single|Multiple_objects"],
                         task_messages[task_set][i]["Single|Multiple_operations"],
                         task_messages[task_set][i]["Structured/Unstructured"],
@@ -150,12 +150,12 @@ def evaluate(args):
     complete_rewards = [
         x["Task_score"]["Task_score"]
         for x in eval_list
-        if x["Completed|Error"] == "Completed"
+        if x["Complete|Incomplete"] == "Complete"
     ]
     error_rewards = [
         x["Task_score"]["Task_score"]
         for x in eval_list
-        if x["Completed|Error"] == "Error"
+        if x["Completed|Incomplete"] == "Error"
     ]
     single_OB_rewards = [
         x["Task_score"]["Task_score"]
@@ -207,8 +207,8 @@ def evaluate(args):
         "Unstructured": f"Unstructured language: {average_unstrctured_rewards}\n",
         "Precise": f"Precise detail: {average_precise_rewards}\n",
         "Vague": f"Vague detail: {average_vague_rewards}\n",
-        "Completed": f"Completed instruction: {average_complete_rewards}\n",
-        "Error": f"Error (incompleted) instruction: {average_error_rewards}\n",
+        "Complete": f"Completed instruction: {average_complete_rewards}\n",
+        "Error": f"Incomplete (error) instruction: {average_error_rewards}\n",
         "Single_Object": f"Single object: {average_single_OB_rewards}\n",
         "Multiple_Objects": f"Multiple objects: {average_multiple_OB_rewards}\n",
         "Single_Operation": f"Single operation: {average_single_OP_rewards}\n",
@@ -222,8 +222,8 @@ def evaluate(args):
             f"Unstructured language: {average_unstrctured_rewards}\n"
             f"Precise detail: {average_precise_rewards}\n"
             f"Vague detail: {average_vague_rewards}\n"
-            f"Completed instruction: {average_complete_rewards}\n"
-            f"Error (incompleted) instruction: {average_error_rewards}\n"
+            f"Complete instruction: {average_complete_rewards}\n"
+            f"Incomplete (error) instruction: {average_error_rewards}\n"
             f"Single object: {average_single_OB_rewards}\n"
             f"Multiple objects: {average_multiple_OB_rewards}\n"
             f"Single operation: {average_single_OP_rewards}\n"
