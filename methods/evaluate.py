@@ -155,7 +155,7 @@ def evaluate(args):
     error_rewards = [
         x["Task_score"]["Task_score"]
         for x in eval_list
-        if x["Completed|Incomplete"] == "Error"
+        if x["Complete|Incomplete"] == "Error"
     ]
     single_OB_rewards = [
         x["Task_score"]["Task_score"]
