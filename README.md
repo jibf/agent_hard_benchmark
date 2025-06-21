@@ -10,17 +10,17 @@ This repository is the official implementation of DrafterBench. We provide evalu
 
 The DrafterBench is designed to evaluate large language models (LLMs) as an agent to automate monotonous, low-tech, and high-labor-intensity tasks in industry. Our starting point is the drawing revision task complained about by drafters and engineers in **civil engineering**. We took a deep dive into the expected workflow of automation agents on these tasks, simulated the work situation, and evaluated the strengths and limitations of LLMs as automation agents.
 
-In this work, after preprocessing, the drafting tasks (summarized from the real world, a total of 1920 over 12 types) are converted to NLP tasks that evaluate complex function calls instructed by long content commands. Over 40 drawing revision tools are tailored and provided to LLMs. However, not all tools can make visible changes to drawings. A considerable part of them make necessary preparations (e.g., opening the file) or provide the required arguments for subsequent operations. Thus, to accurately evaluate the models‘ performance, we score their response based on the chain of executed operations rather than directly on the final drawing. 
+In this work, after preprocessing, the drafting tasks (summarized from the real world, a total of 1920 over 12 types) are converted to NLP tasks that evaluate complex function calls instructed by intricate and long content commands. Over 40 drawing revision tools are tailored and provided to LLMs. However, not all tools can make visible changes to drawings. A considerable part of them make necessary preparations (e.g., opening the file) or provide the required arguments for subsequent operations. Thus, to accurately evaluate the models‘ performance, we score their response based on the chain of executed operations rather than directly on the final drawing. 
 
-The chain of operation is obtained by introducing a dual tool for each tool. The dual tools have the same tool name, input, and type of output as the original tools, but their function drifts to record the data we care about (e.g., tools called, argument value, data type, etc.) in a well-structured JSON format. When running the benchmark, the original tools in the model's response will be replaced by the dual tools to record the chain of operation and help gain the final assessment.
+The chain of operation is obtained by introducing a dual tool for each tool. The dual tools have the same tool name, input, and type of output as the original tools, but their function drifts to record the operation chain and valuable data (e.g., argument value, data type, etc.) in a well-structured JSON format. When running the benchmark, the original tools in the model's response will be replaced by the dual tools to record the chain of operation and help gain the final assessment.
 
 ![Automation Workflow](/figures/Workflow.png "Automation Workflow")
 
 DrafterBench evaluates models focusing on four essential capabilities:
-- **Structured textual data understanding**
-- **Complex function calling**
-- **Long content instruction following**
-- **Critical thinking**
+- **Structured data understanding**
+- **Function execution**
+- **Instruction following**
+- **Critical reasoning**
 
 ![Capabilities Illustration](/figures/Capabilities.png "Capabilities Illustration")
 
@@ -40,7 +40,7 @@ The DrafterBench is constructed on tasks over three object elements, four operat
 |-------------------------|--------------------------------|------------------------------------------------------------|
 | Text                    | Add new content                |Language style (Structured/Unstructured)                    |
 | Table                   | Revise existing content        |Details ambiguity (Precise/Vague)                           |
-| Vector entities         | Change position                |Instruction completeness (Completed/Error)                  |
+| Vector entities         | Change position                |Instruction completeness (Complete/Incomplete)              |
 |                         | Update format                  |Objects per instructions (Single/Multiple)                  |
 |                         |                                |Maximum operation length per object (Single/Multiple)       |
 |                         |                                |Task type                                                   |
@@ -91,7 +91,7 @@ python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --tempera
   ```shell
   python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --task_group Structured
   ```
-  This command will run only the tasks in a structured language.
+  This command will run only the tasks in a structured language. The default task group is "All" tasks.
 
 - To have a clear view of the result, you can set up your huggingface token, 
   ```shell
@@ -111,8 +111,8 @@ python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --tempera
 | Unstructured language  | **82.26**     | 73.84      | <ins>78.20</ins>            | 75.04       | 72.16    | 67.92           |
 | Precise detail      | **89.82**     | 79.41      | <ins>81.15</ins>            | 78.79       | 75.12    | 71.36           |
 | Vague detail      | **74.02**     | 69.57      | 71.39            | <ins>71.91</ins>       | 71.55    | 65.37           |
-| Completed instruction     | 80.98     | 81.70      | 83.72            | <ins>85.59</ins>       | **87.58**    | 83.10           |
-| Error (incompleted) instruction     | **82.85**     | 67.27      | <ins>68.83</ins>            | 65.10       | 59.16    | 53.78           |
+| Complete instruction     | 80.98     | 81.70      | 83.72            | <ins>85.59</ins>       | **87.58**    | 83.10           |
+| Incomplete instruction     | **82.85**     | 67.27      | <ins>68.83</ins>            | 65.10       | 59.16    | 53.78           |
 | Single object  | **83.23**     | 73.75      | <ins>74.97</ins>            | 74.94       | 74.18    | 67.22           |
 | Multiple objects | **80.60**     | 75.23      | <ins>77.57</ins>            | 75.76       | 72.56    | 69.66           |
 | Single operation  | **82.45**     | 75.84      | 76.62            | <ins>77.17</ins>       | 75.88    | 71.02           |
