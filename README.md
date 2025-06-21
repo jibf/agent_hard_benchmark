@@ -86,7 +86,7 @@ Specify the --model and --model-provider flags to run DrafterBench. The supporte
 python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --temperature 0.0
 ```
 
-- To run tasks of a specific set, use the --task_group flag. You can choose each set in ["Structured", "Unstructured", "Precise", "Vague", "Completed", "Error", "Single_Object", "Multiple_Objects", "Single_Operation", "Multiple_Operations"]. For example:
+- To run tasks of a specific set, use the --task_group flag. You can choose each set in ["Structured", "Unstructured", "Precise", "Vague", "Complete", "Error", "Single_Object", "Multiple_Objects", "Single_Operation", "Multiple_Operations"]. For example:
 
   ```shell
   python evaluation.py --model gpt-4o-2024-08-06 --model-provider openai --task_group Structured
