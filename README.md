@@ -1,7 +1,7 @@
 # :wrench: DrafterBench
 This repository is the official implementation of DrafterBench. We provide evaluation data, codes, and a brief introduction.
 
-![Static Badge](https://img.shields.io/badge/Code_License-MIT_License-blue) ![Static Badge](https://img.shields.io/badge/Linux_%2F_OSX-passing-green) ![Static Badge](https://img.shields.io/badge/Window-failing-red) ![Static Badge](https://img.shields.io/badge/python-3.10%2B-purple)
+![Static Badge](https://img.shields.io/badge/Code_License-MIT_License-blue) ![Static Badge](https://img.shields.io/badge/Linux_%2F_OSX-passing-green) ![Static Badge](https://img.shields.io/badge/Window-failing-red) ![Static Badge](https://img.shields.io/badge/python-3.11-purple)
 
 
 ---
