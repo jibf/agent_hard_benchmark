@@ -16,7 +16,7 @@ After the stage of preprocessing, the drawing revision tasks (summarized from th
 
 To record the operation chains, we prepared dual functions for the tools provided to the LLMs. Each dual function has the same name, input, and output type as the original tools, and its function is to capture the operations and valuable data in a well-structured JSON format (e.g., argument value, data type, etc.). During the working of the benchmark, the original tools called by the models will be replaced with dual functions to record the operation chains and help the final assessment.
 
-DrafterBench evaluates models focusing on four essential capabilities:
+There are four essential capabilities evaluated by DrafterBench:
 - **Structured data understanding**
 - **Function execution**
 - **Instruction following**
