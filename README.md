@@ -36,7 +36,7 @@ DrafterBench evaluates models focusing on four essential capabilities:
 
 The DrafterBench is constructed on tasks over three object elements, four operations, and six complexity controllers.
 
-| Elements                | Operations                     | Complexity Controllers & Corresponding Capacities                              |
+| Elements                | Operations                     | Complexity Controllers & Capacities Investigated                               |
 |-------------------------|--------------------------------|--------------------------------------------------------------------------------|
 | Text                    | Add new content                |Language style (Structured/Unstructured)--Structured data understanding         |
 | Table                   | Revise content                 |Task categories--------------------------------------------Function execution   |
