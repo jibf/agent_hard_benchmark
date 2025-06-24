@@ -8,7 +8,7 @@ This repository is the official implementation of DrafterBench. We provide evalu
 
 ## :star: Introducing DrafterBench
 
-The DrafterBench is designed to evaluate large language models (LLMs) as an agent to automate monotonous, low-tech, and high-labor-intensity tasks in industry. Our starting point is the drawing revision task complained about by drafters and engineers in **civil engineering**. We took a deep dive into the expected workflow of automation agents on these tasks, simulated the work situation, and evaluated the strengths and limitations of LLMs as automation agents.
+The DrafterBench is designed to evaluate large language models (LLMs) as an agent to automate monotonous, low-tech, and high-labor-intensity tasks in industry. Our starting point is the drawing revision tasks, which are complained about by drafters and engineers in **civil engineering**. We took a deep dive into the expected workflow of automation agents on these tasks, simulated the work situation, and evaluated the strengths and limitations of LLMs as automation agents.
 
 In this work, after preprocessing, the drafting tasks (summarized from the real world, a total of 1920 over 12 types) are converted to NLP tasks that evaluate complex function calls instructed by intricate and long content commands. Over 40 drawing revision tools are tailored and provided to LLMs. However, not all tools can make visible changes to drawings. A considerable part of them make necessary preparations (e.g., opening the file) or provide the required arguments for subsequent operations. Thus, to accurately evaluate the models‘ performance, we score their response based on the chain of executed operations rather than directly on the final drawing. 
 
