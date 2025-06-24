@@ -36,14 +36,14 @@ There are four essential capabilities evaluated by DrafterBench:
 
 The DrafterBench is constructed on tasks over three object elements, four operations, and six complexity controllers.
 
-| Elements                | Operations                     | Complexity Controllers & Capacities Investigated                               |
-|-------------------------|--------------------------------|--------------------------------------------------------------------------------|
-| Text                    | Add new content                |Language style (Structured/Unstructured)--Structured data understanding         |
-| Table                   | Revise content                 |Task categories--------------------------------------------Function execution   |
-| Vector entity           | Change position                |Objects per instruction (Single/Multiple)---------------Instruction following   |
-|                         | Update format                  |Operations per object (Single/Multiple)----------------Instruction following    |
-|                         |                                |Instruction completeness (Complete/Incomplete)---------Critical reasoning       |
-|                         |                                |Detail ambiguity (Precise/Vague)---------------------------Critical reasoning   |
+| Elements         | Operations              | Complexity Controllers                       | Capacities Investigated by various complexity         |
+|------------------|-------------------------|----------------------------------------------|-------------------------------------------------------|
+| Text             | Add new content         |Language style (Structured/Unstructured)      |Structured data understanding                          |
+| Table            | Revise content          |Task categories                               |Function execution                                     |
+| Vector entity    | Change position         |Objects per instruction (Single/Multiple)     |Instruction following                                  |
+|                  | Update format           |Operations per object (Single/Multiple)       |Instruction following                                  |
+|                  |                         |Instruction completeness (Complete/Incomplete)|Critical reasoning                                     |
+|                  |                         |Detail ambiguity (Precise/Vague)              |Critical reasoning                                     |
 
 The dataset is [available here](https://huggingface.co/datasets/Eason666/DrafterBenchmark) on Huggingface.
 
