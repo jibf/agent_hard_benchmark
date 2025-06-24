@@ -36,7 +36,7 @@ There are four essential capabilities evaluated by DrafterBench:
 
 The DrafterBench is constructed on tasks over three object elements, four operations, and six complexity controllers.
 
-| Elements         | Operations              | Complexity Controllers                       | Capacities Investigated by various complexity         |
+| Elements         | Operations              | Complexity Controllers                       | Capacities Investigated by Various Complexity         |
 |------------------|-------------------------|----------------------------------------------|-------------------------------------------------------|
 | Text             | Add new content         |Language style (Structured/Unstructured)      |Structured data understanding                          |
 | Table            | Revise content          |Task categories                               |Function execution                                     |
