@@ -8,13 +8,13 @@ This repository is the official implementation of DrafterBench. We provide evalu
 
 ## :star: Introducing DrafterBench
 
-The DrafterBench is designed to evaluate large language models (LLMs) as an agent to automate monotonous, low-tech, and high-labor-intensity tasks in industry. Our starting point is the drawing revision tasks, which are complained about by drafters and engineers in **civil engineering**. We took a deep dive into the expected workflow of automation agents on these tasks, simulated the work situation, and evaluated the strengths and limitations of LLMs as automation agents.
-
-In this work, after preprocessing, the drawing revision tasks (summarized from the real world, a total of 1920 over 12 types) are converted to NLP tasks that evaluate complex function calls instructed by intricate and long content commands. Over 40 drawing revision tools are tailored and provided to LLMs. However, not all tools can make visible changes to drawings. For example, a considerable part of them make necessary preparations (e.g., opening the file) or provide arguments for subsequent operations. Thus, to accurately evaluate the models‘ performance, we score their responses based on the operation chains rather than directly on the final drawings. 
-
-The operation chains can be obtained by introducing a dual tool for each provided tool. The dual tools have the same tool name, input, and type of output as the original tools, but their function drifts to record the operation chain and valuable data (e.g., argument value, data type, etc.) in a well-structured JSON format. When running the benchmark, the original tools in the model's responses will be replaced by the dual tools to record the operation chains and help gain the final assessment.
+The DrafterBench is designed to evaluate large language models (LLMs) as an agent to automate monotonous, low-tech, and high-labor-intensity tasks in industry. Our initiation is the drawing revision tasks, a representation task in civil engineering that urgently needs to be automated. We **took a deep dive into the expected workflow of automation agents on tasks**, simulated the working scenario, and evaluated the strengths and limitations of LLMs as automation agents.
 
 ![Automation Workflow](/figures/Workflow.png "Automation Workflow")
+
+After the stage of preprocessing, the drawing revision tasks (summarized from the real world, totalling 1920 across 12 types) are converted into natural language processing (NLP) tasks to evaluate complex function calls instructed by intricate and lengthy content commands. We designed over 40 drawing revision tools and provided them to LLMs, which play different functions. Some of them aim to make visible changes to drawings, while the others serve necessary preparations for them (e.g., opening the file or transferring critical arguments). Therefore, it's difficult to investigate whether all the tools called are essential and effective from the final drawings. To accurately evaluate the models‘ performance, we score their responses based on the operation chains rather than the final drawings. 
+
+The operation chains can be obtained by introducing a dual tool for each provided tool. The dual tools have the same tool name, input, and type of output as the original tools, but their function drifts to record the operation chain and valuable data (e.g., argument value, data type, etc.) in a well-structured JSON format. When running the benchmark, the original tools in the model's responses will be replaced by the dual tools to record the operation chains and help gain the final assessment.
 
 DrafterBench evaluates models focusing on four essential capabilities:
 - **Structured data understanding**
