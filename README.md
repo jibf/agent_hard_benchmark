@@ -38,12 +38,12 @@ The DrafterBench is constructed on tasks over three object elements, four operat
 
 | Elements                | Operations                     | Complexity Controllers & Corresponding Capacities                                        |
 |-------------------------|--------------------------------|------------------------------------------------------------------------------------------|
-| Text                    | Add new content                |Language style (Structured/Unstructured)------------Structured data understanding         |
-| Table                   | Revise existing content        |Task Categories:-----------------------------------------------Function execution         |
-| Vector entities         | Change position                |Objects per instructions (Single/Multiple)------------------Instruction following         |
-|                         | Update format                  |Maximum operation length per object (Single/Multiple)-------Instruction following         |
+| Text                    | Add new content                |Language style (Structured/Unstructured)----------Structured data understanding           |
+| Table                   | Revise existing content        |Task Categories:---------------------------------------------------Function execution     |
+| Vector entities         | Change position                |Objects per instructions (Single/Multiple)----------------------Instruction following     |
+|                         | Update format                  |Maximum operation length per object (Single/Multiple)------Instruction following          |
 |                         |                                |Instruction completeness (Complete/Incomplete)-----------------Critical reasoning         |
-|                         |                                |Details ambiguity (Precise/Vague)------------------------------Critical reasoning         |
+|                         |                                |Details ambiguity (Precise/Vague)----------------------------------Critical reasoning     |
 
 The dataset is [available here](https://huggingface.co/datasets/Eason666/DrafterBenchmark) on Huggingface.
 
