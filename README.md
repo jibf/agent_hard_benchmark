@@ -18,7 +18,7 @@ The chain of operation is obtained by introducing a dual tool for each tool. The
 
 DrafterBench evaluates models focusing on four essential capabilities:
 - **Structured data understanding**
-- **Complex Function Calling**
+- **Complex function Calling**
 - **Long instruction following**
 - **Critical thinking**
 
