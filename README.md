@@ -60,7 +60,7 @@ cd DrafterBench
 Then, install the dependencies.
 
 ```shell
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ### Serve Model
