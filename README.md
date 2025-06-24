@@ -18,9 +18,9 @@ The chain of operation is obtained by introducing a dual tool for each tool. The
 
 DrafterBench evaluates models focusing on four essential capabilities:
 - **Structured data understanding**
-- **Complex function Calling**
-- **Long instruction following**
-- **Critical thinking**
+- **Function execution**
+- **Instruction following**
+- **Critical reasoning**
 
 ![Capabilities Illustration](/figures/Capabilities.png "Capabilities Illustration")
 
@@ -36,14 +36,14 @@ DrafterBench evaluates models focusing on four essential capabilities:
 
 The DrafterBench is constructed on tasks over three object elements, four operations, and six complexity controllers.
 
-| Elements                | Operations                     | Complexity Controllers                                     |
-|-------------------------|--------------------------------|------------------------------------------------------------|
-| Text                    | Add new content                |Language style (Structured/Unstructured)                    |
-| Table                   | Revise existing content        |Details ambiguity (Precise/Vague)                           |
-| Vector entities         | Change position                |Instruction completeness (Complete/Incomplete)              |
-|                         | Update format                  |Objects per instructions (Single/Multiple)                  |
-|                         |                                |Maximum operation length per object (Single/Multiple)       |
-|                         |                                |Task type                                                   |
+| Elements                | Operations                     | Complexity Controllers & Corresponding Capacities                                        |
+|-------------------------|--------------------------------|------------------------------------------------------------------------------------------|
+| Text                    | Add new content                |Language style (Structured/Unstructured): Structured data understanding                   |
+| Table                   | Revise existing content        |Task Categories: Function execution                                                       |
+| Vector entities         | Change position                |Objects per instructions (Single/Multiple): Instruction following                         |
+|                         | Update format                  |Maximum operation length per object (Single/Multiple): Instruction following              |
+|                         |                                |Instruction completeness (Complete/Incomplete): Critical reasoning                        |
+|                         |                                |Details ambiguity (Precise/Vague): Critical reasoning                                     |
 
 The dataset is [available here](https://huggingface.co/datasets/Eason666/DrafterBenchmark) on Huggingface.
 
