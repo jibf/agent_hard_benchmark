@@ -50,7 +50,8 @@ The dataset is [available here](https://huggingface.co/datasets/Eason666/Drafter
 ## :fire: <span id="quick-start">Quick Start</span>
 
 ### Preparation
-First, download the repository.
+
+First, configure an environment with Python 3.11 and download the repositories.
 
 ```shell
 git clone https://github.com/Eason-Li-AIS/DrafterBench.git
