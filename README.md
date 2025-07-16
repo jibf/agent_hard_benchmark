@@ -132,5 +132,5 @@ If you use DrafterBench in your research, please consider citing our paper:
   title={DrafterBenchmark: Benchmarking Large Language Models for Tasks Automation in Civil Engineering},
   author={Yinsheng Li, Zhen Dong, Yi Shao.},
   year={2025},
-  url={},
+  url={https://arxiv.org/abs/2507.11527},
 }
