@@ -206,3 +206,15 @@ class GPT_4_o_2024_05_13_User(OpenAIAPIUser):
 
 class GPT_4_o_2024_08_06_User(OpenAIAPIUser):
     model_name = "openai/gpt-4o-20240806"
+
+class GPT_4_o_mini_User(OpenAIAPIUser):
+    model_name = "openai/gpt-4o-mini"
+
+class GPT_o_3_high_User(OpenAIAPIUser):
+    model_name = "openai/o3-high"
+
+class GPT_o_4_mini_high_User(OpenAIAPIUser):
+    model_name = "openai/o4-mini-high"
+
+class GPT_4_1_User(OpenAIAPIUser):
+    model_name = "openai/gpt-4.1"
