@@ -39,7 +39,10 @@ class OpenAIAPIAgent(BaseRole):
         # We set the `base_url` explicitly here to avoid picking up the
         # `OPENAI_BASE_URL` environment variable that may be set for serving models as
         # OpenAI API compatible servers.
-        self.openai_client: OpenAI = OpenAI(base_url="https://api.openai.com/v1")
+        # self.openai_client: OpenAI = OpenAI(base_url="https://api.openai.com/v1")
+        # self.openai_client: OpenAI = OpenAI(api_key="sk-sgl-MH7bEVVJlBp3RT_P5cPQ6-KfC1qJElBRCfTDHy40Ue4", base_url="http://5.78.122.79:10000/v1", )
+        self.openai_client: OpenAI = OpenAI(base_url="http://5.78.122.79:10000/v1", )
+        # import pdb; pdb.set_trace()
 
     def respond(self, ending_index: Optional[int] = None) -> None:
         """Reads a List of messages and attempt to respond with a Message
@@ -169,3 +172,6 @@ class GPT_3_5_0125_Agent(OpenAIAPIAgent):
 
 class GPT_4_o_2024_05_13_Agent(OpenAIAPIAgent):
     model_name = "gpt-4o-2024-05-13"
+
+class GPT_4_o_2024_08_06_Agent(OpenAIAPIAgent):
+    model_name = "openai/gpt-4o-20240806"

@@ -35,7 +35,8 @@ class OpenAIAPIUser(BaseRole):
         # We set the `base_url` explicitly here to avoid picking up the
         # `OPENAI_BASE_URL` environment variable that may be set for serving models as
         # OpenAI API compatible servers.
-        self.openai_client: OpenAI = OpenAI(base_url="https://api.openai.com/v1")
+        # self.openai_client: OpenAI = OpenAI(base_url="https://api.openai.com/v1")
+        self.openai_client: OpenAI = OpenAI(base_url="http://5.78.122.79:10000/v1", )
 
     def respond(self, ending_index: Optional[int] = None) -> None:
         """Reads a List of messages and attempt to respond with a Message
@@ -136,6 +137,10 @@ class OpenAIAPIUser(BaseRole):
         Returns:
             OpenAI API chat completion object
         """
+        # print("model_name", self.model_name)
+        # print("messages", cast(list[ChatCompletionMessageParam], openai_messages))
+        # print("openai_tools", openai_tools)
+        # import pdb; pdb.set_trace()
         with all_logging_disabled():
             return self.openai_client.chat.completions.create(
                 model=self.model_name,
@@ -198,3 +203,6 @@ class GPT_4_0125_User(OpenAIAPIUser):
 
 class GPT_4_o_2024_05_13_User(OpenAIAPIUser):
     model_name = "gpt-4o-2024-05-13"
+
+class GPT_4_o_2024_08_06_User(OpenAIAPIUser):
+    model_name = "openai/gpt-4o-20240806"
