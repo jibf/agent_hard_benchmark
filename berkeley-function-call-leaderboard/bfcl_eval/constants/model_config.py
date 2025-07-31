@@ -261,6 +261,18 @@ api_inference_model_map = {
         is_fc_model=False,
         underscore_to_dot=False,
     ),
+    "openai/gpt-4o-20240806": ModelConfig(
+        model_name="openai/gpt-4o-20240806",
+        display_name="GPT-4o-2024-08-06 (Prompt)",
+        url="https://openai.com/index/hello-gpt-4o/",
+        org="OpenAI",
+        license="Proprietary",
+        model_handler=OpenAICompletionsHandler,
+        input_price=2.5,
+        output_price=10,
+        is_fc_model=False,
+        underscore_to_dot=False,
+    ),
     "gpt-4o-2024-11-20": ModelConfig(
         model_name="gpt-4o-2024-11-20",
         display_name="GPT-4o-2024-11-20 (Prompt)",
