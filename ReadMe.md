@@ -19,3 +19,16 @@ temperature 0.0 --vllm_url <YOUR_BASE_URL>
 env OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>  OPENAI_BASE_URL=<YOUR_BASE_URL> tool_sandbox --user GPT_4_o_2024_05_13 --agent GPT_4_o_2024_05_13
 ```
 3. Run script `./ToolSandbox/cal_avg_benchmark.py` to get the average score.
+
+
+### run NexusBench
+1. Follow the [ReadMe](./NexusBench/README.md) to setup environment.
+2. Setup .env files 
+```
+API_KEY=<API_KEY>
+BASE_URL=<URL>
+```
+3. Run the following command to get evaluation results.
+```
+nexusbench     --client OpenAI     --model openai/gpt-4o-mini     --benchmarks all --output_dir ./results/
+```
