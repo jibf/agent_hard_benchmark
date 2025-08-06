@@ -10,6 +10,6 @@ setup(
     author="Yinsheng Li, Zhen Dong, Yi Shao",
     author_email="yinsheng.li@mail.mcgill.ca",
     packages=find_packages(),
-    python_requires=">=3.11,<3.12",
+    python_requires=">=3.11,<3.13",
     install_requires=requirements,
 )
