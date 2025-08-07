@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 from transformers import AutoModel, AutoTokenizer,AutoModelForCausalLM
-from peft import PeftModel
+from openai import OpenAI, RateLimitError
 from datasets import load_dataset,load_from_disk
 import torch
 import argparse
@@ -19,7 +19,8 @@ class CFBenchmark:
                  response_path,
                  scores_path,
                  embedding_model_path,
-                 benchmark_path
+                 benchmark_path,
+                 use_api: bool=True,
                  ) -> None:
         self.model_path=model_path
 
@@ -37,6 +38,7 @@ class CFBenchmark:
         self.scores_path=scores_path
         self.embedding_model_path=embedding_model_path 
         self.benchmark_path=benchmark_path
+        self.use_api=use_api
 
         self.fewshot_text={}
         if test_type=='few-shot':
@@ -61,44 +63,46 @@ class CFBenchmark:
             labels=pickle.load(file)
 
         self.labels=labels
+        if self.use_api:
+            self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_BASE_URL"))
     
     def generate_model(self):
-        if self.model_type !='LoRA':    
-            model_dir=self.model_path
-            if self.modelname =='chatglm2-6b':
-                self.tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-                self.model = AutoModel.from_pretrained(
-                    model_dir,
-                    load_in_8bit = False,
-                    trust_remote_code=True,
-                    device_map="cuda:0",
-                    torch_dtype=torch.bfloat16
-                )
-                self.model = self.model.eval()
+        if not self.use_api:
+            if self.model_type !='LoRA':
+                model_dir=self.model_path
+                if self.modelname =='chatglm2-6b':
+                    self.tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+                    self.model = AutoModel.from_pretrained(
+                        model_dir,
+                        load_in_8bit = False,
+                        trust_remote_code=True,
+                        device_map="cuda:0",
+                        torch_dtype=torch.bfloat16
+                    )
+                    self.model = self.model.eval()
+                else:
+                    self.tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        model_dir,
+                        load_in_8bit=False,
+                        trust_remote_code=True,
+                        device_map="cpu",
+                        torch_dtype=torch.float16
+                    ).to('cuda:0')
+                    self.model = self.model.eval()
             else:
-                self.tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    model_dir,
-                    load_in_8bit=False,
-                    trust_remote_code=True,
-                    device_map="cpu",
-                    torch_dtype=torch.float16
-                ).to('cuda:0')
+                base_model = self.model_path
+                peft_model_path = self.peft_model_path
+                self.model = AutoModel.from_pretrained(
+                base_model,
+                load_in_8bit = False,
+                trust_remote_code=True,
+                device_map="cuda:0",
+                torch_dtype=torch.bfloat16
+                )
+                self.model = PeftModel.from_pretrained(base_model,peft_model_path)
                 self.model = self.model.eval()
-            
-        else:
-            base_model = self.model_path
-            peft_model_path = self.peft_model_path
-            self.model = AutoModel.from_pretrained(
-            base_model,
-            load_in_8bit = False,
-            trust_remote_code=True,
-            device_map="cuda:0",
-            torch_dtype=torch.bfloat16
-            )
-            self.model = PeftModel.from_pretrained(base_model,peft_model_path)
-            self.model = self.model.eval()
-            self.tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
+                self.tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
         print('getting {} response'.format(os.path.join(self.model_path,self.modelname)))   
         self.get_model_results()
         
@@ -149,6 +153,60 @@ class CFBenchmark:
         generated_text=generated_text.split('\n',1)[0].strip()
         return generated_text
 
+    def get_row_response_from_api(self,row,classes,types):
+        context=row['input']
+        instruction=''
+        if types=='zero-shot':
+            instruction=row['instruction']+context
+        else:
+            instruction=self.fewshot_text[classes]
+            case='\ncase4：\n新闻内容：'+context
+            if classes=='sector' or  classes=='event' or  classes=='sentiment':
+                labels=row['instruction'].split('（',1)[1]
+                labels=labels.split('）',1)[0]
+                case=case+'\n类别：（'+labels+'）\n'
+            instruction=instruction+case
+        out=''
+
+        if classes=='summmary' or classes=='suggestion' or classes=='risk':
+            repe_pena=1.02
+            if types=='few-shot':
+                repe_pena=1.05
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.modelname,
+                    messages=[
+                        {"role": "user", "content": instruction}
+                    ],
+                    temperature=0.0,
+                )
+            except Exception as e:
+                print(f"An error occurred: {str(e)}")
+                return ""
+        else:
+            repe_pena=1.00
+            if types=='few-shot':
+                repe_pena=1.03
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.modelname,
+                    messages=[
+                        {"role": "user", "content": instruction}
+                    ],
+                    temperature=0.0,
+                )
+            except Exception as e:
+                print(f"An error occurred: {str(e)}")
+                return ""
+        generated_text = response.choices[0].message.content
+
+        if types=='zero-shot':
+            generated_text=generated_text.split('回答：',1)[-1]
+        else:
+            generated_text=generated_text.split('回答：',4)[-1]
+        generated_text=generated_text.split('\n',1)[0].strip()
+        return generated_text
+
     def get_model_results(self):
         save_dir= os.path.join(self.response_path,self.test_type)
         save_dir=os.path.join(save_dir,self.modelname)
@@ -159,8 +217,13 @@ class CFBenchmark:
             dataset=load_from_disk(self.benchmark_path)
             dataset=dataset[item]
             df=dataset.to_pandas()
-            df['output']=df.apply(lambda row: self.get_row_response(self.model,self.tokenizer,row,item,self.test_type),
-                                      axis=1)
+            if not self.use_api:
+                df['output']=df.apply(lambda row: self.get_row_response(self.model,self.tokenizer,row,item,self.test_type),
+                                        axis=1)
+            else:
+                df['output']=df.apply(lambda row: self.get_row_response_from_api(row,item,self.test_type),
+                                        axis=1)
+
             df=df[['input','response','output']]
             filename=item+'-output.csv'
             savepath=os.path.join(save_dir,filename)
@@ -214,7 +277,7 @@ class CFBenchmark:
             os.makedirs(result_directory)
         for classes in self.classifications:
             filename=classes+'-output.csv'
-            response_path=os.path.join(response_path,self.test_type,self.modelname,filename)
+            response_path=os.path.join(self.response_path,self.test_type,self.modelname,filename)
             df=pd.read_csv(response_path)
             if classes=='suggestion' or classes=='summary' or classes=='risk':
                 df['cosine_s']=df.apply(lambda row:self.get_cosine_similarities(row),

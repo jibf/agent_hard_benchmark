@@ -1,8 +1,14 @@
+import argparse
 from CFBenchmark import CFBenchmark
 if __name__=='__main__':
 
+    parser = argparse.ArgumentParser(description="CFBenchmark args.")
+    parser.add_argument("--model_name", type=str)
+
+    args = parser.parse_args()
+
     # EXPERIMENT SETUP
-    modelname = 'YOUR-MODEL-NAME'
+    modelname = args.model_name
     model_type= 'NORMAL' #NORMAL or LoRA
     model_path= 'YOUR-MODEL-PATH'
     peft_model_path= ''#PASS YOUR OWN PATH OF PEFT MODEL IF NEEDED
