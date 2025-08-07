@@ -7,8 +7,7 @@
 ```
 OPENAI_API_KEY=<YOUR_OPENAI_API_KEY> python evaluation.py --model openai/o4-mini-high  --model-provider openai --temperature 0.0 --vllm_url <YOUR_BASE_URL>
 
-OPENAI_API_KEY=<YOUR_OPENAI_API_KEY> python evaluation.py --model togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8  --model-provider together_ai --
-temperature 0.0 --vllm_url <YOUR_BASE_URL>
+OPENAI_API_KEY=<YOUR_OPENAI_API_KEY> python evaluation.py --model togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8  --model-provider together_ai --temperature 0.0 --vllm_url <YOUR_BASE_URL>
 ```
 3. Run script `./DrafterBench/cal_avg_metric.py` to get the average score.
 
