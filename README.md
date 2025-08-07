@@ -15,7 +15,7 @@ OPENAI_API_KEY=<YOUR_OPENAI_API_KEY> python evaluation.py --model togetherai/Qwe
 1. Follow the [ReadMe](./ToolSandbox/README.md) to setup environment.
 2. Run the following commend to get evaluation results.
 ```
-env OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>  OPENAI_BASE_URL=<YOUR_BASE_URL> tool_sandbox --user GPT_4_o_2024_05_13 --agent GPT_4_o_2024_05_13
+env OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>  OPENAI_BASE_URL=<YOUR_BASE_URL> tool_sandbox --user GPT_4_o_2024_08_06 --agent GPT_4_o_2024_08_06
 ```
 3. Run script `./ToolSandbox/cal_avg_benchmark.py` to get the average score.
 
