@@ -16,7 +16,7 @@ if __name__=='__main__':
     test_type='few-shot'#LET'S TAKE THE FEW-SHOT TEST AS AN EXAMPLE
     response_path='../cfbenchmark-response'#PATH TO RESERVE THE RESPONSE OF YOUR MODEL
     scores_path='../cfbenchmark-scores'	#PATH TO RESERVE THE SCORE OF YOUR MODEL
-    embedding_model_path='../bge-zh-v1.5' #PASS YOUR OWN PATH OF BGE-ZH-V1.5
+    embedding_model_path='BAAI/bge-large-zh-v1.5' #PASS YOUR OWN PATH OF BGE-ZH-V1.5
     benchmark_path='../data' #DEFAULT PATH
 
     #generate Class CFBenchmark
