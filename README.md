@@ -41,3 +41,13 @@ cd CFBenchmark/CFBenchmark-basic/src
 OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>  OPENAI_BASE_URL=<YOUR_BASE_URL> python run.py --model_name=openai/gpt-4o-20240806
 ```
 3. Calculate the average score by F1 score and cos_similarity.
+
+### run multi_challenge
+1. Follow the [ReadMe](./multi_challenge/README.md) to setup environment.
+2. Run the following commend to get evaluation results.
+```
+cd multi_challenge
+
+OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>  OPENAI_BASE_URL=<YOUR_BASE_URL> python main.py --model-provider openai --provider-args model=openai/gpt-4o-20240806 temp=0  --attempts 3  --output-file results/gpt4o_20240806_evaluation_results.txt --raw results/gpt4o_20240806_detailed_results.csv
+
+```
