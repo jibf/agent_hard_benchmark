@@ -31,3 +31,13 @@ BASE_URL=<URL>
 ```
 nexusbench     --client OpenAI     --model openai/gpt-4o-mini     --benchmarks all --output_dir ./results/
 ```
+
+### run CFBench
+1. Follow the [ReadMe](./CFBenchmark/README.md) to setup environment.
+2. Run the following commend to get evaluation results.
+```
+cd CFBenchmark/CFBenchmark-basic/src
+
+OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>  OPENAI_BASE_URL=<YOUR_BASE_URL> python run.py --model_name=openai/gpt-4o-20240806
+```
+3. Calculate the average score by F1 score and cos_similarity.
