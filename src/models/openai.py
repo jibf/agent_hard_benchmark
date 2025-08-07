@@ -11,8 +11,13 @@ class OpenAIModel(ModelProvider):
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY is not set in the .env file.")
-        
-        self.client = OpenAI(api_key=api_key)
+        openai_client_config = {
+            "api_key": api_key,
+        }
+        if os.getenv("OPENAI_API_BASE_URL"):
+            openai_client_config["base_url"] = os.getenv("OPENAI_API_BASE_URL")
+
+        self.client = OpenAI(**openai_client_config)
 
         self.model = model
         self.temp = float(temp)

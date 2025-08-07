@@ -28,11 +28,17 @@ class Evaluator:
         self.conversations = conversations
         self.responses = responses
         self.evaluation_model = OpenAIModel(
-            model="gpt-4o-2024-08-06", 
-            temp=0, 
+            model="openai/gpt-4o-20240806",
+            temp=0,
             max_tokens=4096,
             response_format=JudgeResponse
         )
+        # self.evaluation_model = OpenAIModel(
+        #     model="gpt-4o-2024-08-06",
+        #     temp=0,
+        #     max_tokens=4096,
+        #     response_format=JudgeResponse
+        # )
         self.results = []
 
     def evaluate_helper(self, i: int, conversation: Any, response: str) -> Tuple[int, str, str, str, str]:
