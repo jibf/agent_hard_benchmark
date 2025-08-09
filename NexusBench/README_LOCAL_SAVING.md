@@ -207,6 +207,8 @@ The saved files can be used for:
 
 4. **Backup important results**: Copy results to safe locations
 
+5. **Complex numbers are handled automatically**: NexusBench now ships with a smarter JSON encoder that transparently converts otherwise non-serialisable objects (like complex numbers) into a safe representation.  You no longer need to worry about `Object of type complex is not JSON serializable` errors when saving results locally.
+
 ## Troubleshooting
 
 - **Permission errors**: Ensure the output directory is writable

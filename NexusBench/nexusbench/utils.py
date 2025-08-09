@@ -21,6 +21,73 @@ from tabulate import tabulate
 
 from tqdm import tqdm
 
+# ---------------------------------------------------------------------------
+# JSON SERIALIZATION UTILITIES
+# ---------------------------------------------------------------------------
+# Some benchmark tools may legitimately return values that the standard
+# json module cannot natively serialise (for example complex numbers or
+# custom classes).  When those values are included in the intermediate
+# context that we store or forward to the model, a naive json.dumps call
+# will raise a `TypeError: Object of type X is not JSON serializable` and
+# break the whole benchmark run.  We provide a drop-in replacement JSON
+# encoder that gracefully degrades by falling back to `str(obj)` for any
+# value it does not understand.  We then patch the json module once
+# (early in `entrypoint.py`) so that *all* subsequent dumps use this safe
+# encoder without having to touch every call individually.
+
+class SafeJSONEncoder(json.JSONEncoder):
+    """A JSONEncoder that is tolerant to exotic Python objects.
+
+    * complex -> {"real": <float>, "imag": <float>} (round-trippable)
+    * anything else -> str(obj)
+    """
+
+    def default(self, obj):  # pylint: disable=method-hidden
+        # Handle native complex numbers explicitly so that information is not
+        # lost while still remaining JSON serialisable.
+        if isinstance(obj, complex):
+            return {"real": obj.real, "imag": obj.imag}
+        # Fall back to default behaviour or convert to string if that fails.
+        try:
+            return super().default(obj)
+        except TypeError:
+            return str(obj)
+
+
+def _dumps_safe(obj, *args, **kwargs):
+    """Replacement for json.dumps that always uses SafeJSONEncoder."""
+    kwargs.setdefault("cls", SafeJSONEncoder)
+    return _json_dumps_orig(obj, *args, **kwargs)
+
+
+def _dump_safe(obj, fp, *args, **kwargs):  # type: ignore[override]
+    """Replacement for json.dump that always uses SafeJSONEncoder."""
+    kwargs.setdefault("cls", SafeJSONEncoder)
+    return _json_dump_orig(obj, fp, *args, **kwargs)
+
+
+# Keep original references so we can call them from our wrappers
+_json_dumps_orig = json.dumps
+_json_dump_orig = json.dump
+
+
+def patch_json_serialization() -> None:
+    """Globally patch json.dump/json.dumps to use SafeJSONEncoder.
+
+    This should be called exactly once at application start-up (see
+    `entrypoint.py`).  After patching, *any* call to json.dump(s) made by
+    NexusBench or third-party libraries within the same process will gain
+    the enhanced serialisation capability automatically.
+    """
+    # Idempotency guard – if we've already patched, bail out.
+    if json.dumps is _dumps_safe and json.dump is _dump_safe:
+        return
+
+    json.dumps = _dumps_safe  # type: ignore[assignment]
+    json.dump = _dump_safe  # type: ignore[assignment]
+
+# ---------------------------------------------------------------------------
+
 
 DEFAULT_MAX_EXECUTION_RETRIES = 1
 EXECUTION_RETRY_DELAY = 1

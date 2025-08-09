@@ -143,28 +143,43 @@ class OpenAIFCClient(BaseClient):
     def get_completion(
         self, prompt, model="gpt-4-0125-preview", contextual_history=None
     ):
-        # Create base parameters
-        params = {
-            "model": model,
-            "messages": prompt["messages"],
-            "tools": prompt["tools"],
-            "tool_choice": "auto",
-            "max_tokens": 2048,
-            "temperature": 0.0,
-        }
-        
-        # Try to add parallel_tool_calls, but handle models that don't support it
-        try:
-            params["parallel_tool_calls"] = False
+        is_claude = "claude" in model.lower() or "anthropic/" in model.lower()
+
+        if is_claude:
+            # Claude models expect `tool_choice` to be a dict and typically
+            # benefit from a higher generation temperature.
+            params = {
+                "model": model,
+                "messages": prompt["messages"],
+                "tools": prompt["tools"],
+                "tool_choice": {"type": "auto"},
+                "max_tokens": 2048,
+                "temperature": 1.0 if "thinking-on-10k" in model.lower() else 0.0,
+            }
             response = self.client.chat.completions.create(**params)
-        except Exception as e:
-            if "parallel_tool_calls" in str(e) and "not supported" in str(e).lower():
-                # Remove parallel_tool_calls parameter for unsupported models
-                del params["parallel_tool_calls"]
+        else:
+            # Create base parameters
+            params = {
+                "model": model,
+                "messages": prompt["messages"],
+                "tools": prompt["tools"],
+                "tool_choice": "auto",
+                "max_tokens": 2048,
+                "temperature": 0.0,
+            }
+            
+            # Try to add parallel_tool_calls, but handle models that don't support it
+            try:
+                params["parallel_tool_calls"] = False
                 response = self.client.chat.completions.create(**params)
-            else:
-                # Re-raise if it's a different error
-                raise e
+            except Exception as e:
+                if "parallel_tool_calls" in str(e) and "not supported" in str(e).lower():
+                    # Remove parallel_tool_calls parameter for unsupported models
+                    del params["parallel_tool_calls"]
+                    response = self.client.chat.completions.create(**params)
+                else:
+                    # Re-raise if it's a different error
+                    raise e
         
         return response
 

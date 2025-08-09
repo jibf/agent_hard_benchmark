@@ -32,9 +32,12 @@ from nexusbench.config import (
     get_unique_settings,
     get_unique_behaviors,
 )
-from nexusbench.utils import DEFAULT_MAX_EXECUTION_RETRIES, print_benchmark_results, save_benchmark_results_to_files
+from nexusbench.utils import DEFAULT_MAX_EXECUTION_RETRIES, print_benchmark_results, save_benchmark_results_to_files, patch_json_serialization
 
 load_dotenv()   # Load environment variables from .env file
+
+# Ensure that all JSON dumps in the application use the tolerant encoder.
+patch_json_serialization()
 
 class BenchmarkRunner:
     def __init__(
