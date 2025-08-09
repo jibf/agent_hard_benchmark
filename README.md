@@ -97,3 +97,14 @@ VLLM_API_BASE=<API>
 # API model
 python run.py --agent-strategy tool-calling --env retail --model togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8 --model-provider together_ai --user-model openai/gpt-4o-20240806 --user-model-provider openai --user-strategy llm --max-concurrency 10
 ```
+
+### run BFCL-v3
+1. Follow the [ReadMe](./gorilla/berkeley-function-call-leaderboard/README.md) to setup environment.
+2. Run the following commend to get evaluation results.
+```
+cd gorilla/berkeley-function-call-leaderboard/
+
+bfcl generate --model openai/gpt-4o-20240806   --num-threads 4
+bfcl evaluate --model openai/gpt-4o-mini 
+
+```
