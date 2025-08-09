@@ -14,8 +14,8 @@ class OpenAIModel(ModelProvider):
         openai_client_config = {
             "api_key": api_key,
         }
-        if os.getenv("OPENAI_API_BASE_URL"):
-            openai_client_config["base_url"] = os.getenv("OPENAI_API_BASE_URL")
+        if os.getenv("OPENAI_BASE_URL"):
+            openai_client_config["base_url"] = os.getenv("OPENAI_BASE_URL")
 
         self.client = OpenAI(**openai_client_config)
 
@@ -44,6 +44,7 @@ class OpenAIModel(ModelProvider):
             response = self.client.chat.completions.create(
                 model = self.model,
                 messages = prompt,
-                temperature = self.temp
+                temperature = self.temp,
+                max_tokens = 4096,
             )
             return response.choices[0].message.content

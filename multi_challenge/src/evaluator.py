@@ -30,7 +30,6 @@ class Evaluator:
         self.evaluation_model = OpenAIModel(
             model="openai/gpt-4o-20240806",
             temp=0,
-            max_tokens=4096,
             response_format=JudgeResponse
         )
         # self.evaluation_model = OpenAIModel(
