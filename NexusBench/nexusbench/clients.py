@@ -146,8 +146,7 @@ class OpenAIFCClient(BaseClient):
         is_claude = "claude" in model.lower() or "anthropic/" in model.lower()
 
         if is_claude:
-            # Claude models expect `tool_choice` to be a dict and typically
-            # benefit from a higher generation temperature.
+            # Claude models expect `tool_choice` to be a dict
             params = {
                 "model": model,
                 "messages": prompt["messages"],

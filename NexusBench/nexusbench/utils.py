@@ -171,6 +171,14 @@ def save_benchmark_results_to_files(results: List[Tuple], output_dir: str, model
     output_path.mkdir(parents=True, exist_ok=True)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # ------------------------------------------------------------------
+    # Filenames must not contain path separators ("/" or "\\").  Some model
+    # identifiers – e.g. "togetherai/Qwen/Qwen3-235B" – include them, which
+    # causes `open()` to interpret the name as nested directories.  We therefore
+    # derive a *sanitised* version that is safe to embed in filenames.
+    # ------------------------------------------------------------------
+    safe_model_name = model_name.replace("/", "_").replace("\\", "_")
     
     # Create subdirectories for better organization
     results_dir = output_path / "results"
@@ -255,7 +263,7 @@ def save_benchmark_results_to_files(results: List[Tuple], output_dir: str, model
                 
                 # Save trajectory separately if it exists
                 if trajectory:
-                    trajectory_file = trajectories_dir / f"{model_name}_{benchmark_name}_sample_{i}_{timestamp}.json"
+                    trajectory_file = trajectories_dir / f"{safe_model_name}_{benchmark_name}_sample_{i}_{timestamp}.json"
                     with open(trajectory_file, 'w') as f:
                         json.dump({
                             "benchmark_name": benchmark_name,
@@ -268,12 +276,12 @@ def save_benchmark_results_to_files(results: List[Tuple], output_dir: str, model
             benchmark_data["detailed_results"].append(sample_result)
         
         # Save benchmark results
-        benchmark_file = results_dir / f"{model_name}_{benchmark_name}_{timestamp}.json"
+        benchmark_file = results_dir / f"{safe_model_name}_{benchmark_name}_{timestamp}.json"
         with open(benchmark_file, 'w') as f:
             json.dump(benchmark_data, f, indent=2, default=str)
         
         # Save metrics separately
-        metrics_file = metrics_dir / f"{model_name}_{benchmark_name}_metrics_{timestamp}.json"
+        metrics_file = metrics_dir / f"{safe_model_name}_{benchmark_name}_metrics_{timestamp}.json"
         with open(metrics_file, 'w') as f:
             json.dump({
                 "benchmark_name": benchmark_name,
@@ -288,12 +296,12 @@ def save_benchmark_results_to_files(results: List[Tuple], output_dir: str, model
         print(f"Saved {benchmark_name} metrics to {metrics_file}")
     
     # Save overall summary
-    summary_file = output_path / f"{model_name}_summary_{timestamp}.json"
+    summary_file = output_path / f"{safe_model_name}_summary_{timestamp}.json"
     with open(summary_file, 'w') as f:
         json.dump(summary_data, f, indent=2, default=str)
     
     # Save metrics table as CSV
-    csv_file = output_path / f"{model_name}_metrics_{timestamp}.csv"
+    csv_file = output_path / f"{safe_model_name}_metrics_{timestamp}.csv"
     with open(csv_file, 'w') as f:
         f.write("Benchmark,Accuracy,Max Turns Hit,Invalid Plan,Time (s),Total Samples,Successful Samples,Error Samples,Success Rate\n")
         for benchmark_class, metrics, correct_calls, time_taken_s in results:
