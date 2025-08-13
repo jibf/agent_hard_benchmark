@@ -37,6 +37,17 @@ from tool_sandbox.roles.openai_api_agent import (
     GPT_o_3_high_Agent,
     GPT_o_4_mini_high_Agent,
     GPT_4_1_Agent,
+
+    # Custom models
+    Qwen_235B_Agent,
+    Qwen_235B_Instruct_Agent,
+    Qwen_235B_Thinking_Agent,
+    Claude_4_Sonnet_Agent,
+    Claude_4_Sonnet_Thinking_Agent,
+    DeepSeek_V3_Agent,
+    DeepSeek_R1_Agent,
+    Grok_4_Agent,
+    Kimi_K2_Agent,
 )
 from tool_sandbox.roles.openai_api_user import (
     GPT_3_5_0125_User,
@@ -63,6 +74,18 @@ class RoleImplType(StrEnum):
     GPT_o_3_high = auto()
     GPT_o_4_mini_high = auto()
     GPT_4_1 = auto()
+    
+    # Custom models
+    Qwen_235B = auto()
+    Qwen_235B_Instruct = auto()
+    Qwen_235B_Thinking = auto()
+    Claude_4_Sonnet = auto()
+    Claude_4_Sonnet_Thinking = auto()
+    DeepSeek_V3 = auto()
+    DeepSeek_R1 = auto()
+    Grok_4 = auto()
+    Kimi_K2 = auto()
+
     Claude_3_Opus = auto()
     Claude_3_Sonnet = auto()
     Claude_3_Haiku = auto()
@@ -95,6 +118,18 @@ AGENT_TYPE_TO_FACTORY: dict[RoleImplType, Callable[..., BaseRole]] = {
     RoleImplType.GPT_o_3_high: GPT_o_3_high_Agent,
     RoleImplType.GPT_o_4_mini_high: GPT_o_4_mini_high_Agent,
     RoleImplType.GPT_4_1: GPT_4_1_Agent,
+
+    # Custom models
+    RoleImplType.Qwen_235B: Qwen_235B_Agent,
+    RoleImplType.Qwen_235B_Instruct: Qwen_235B_Instruct_Agent,
+    RoleImplType.Qwen_235B_Thinking: Qwen_235B_Thinking_Agent,
+    RoleImplType.Claude_4_Sonnet: Claude_4_Sonnet_Agent,
+    RoleImplType.Claude_4_Sonnet_Thinking: Claude_4_Sonnet_Thinking_Agent,
+    RoleImplType.DeepSeek_V3: DeepSeek_V3_Agent,
+    RoleImplType.DeepSeek_R1: DeepSeek_R1_Agent,
+    RoleImplType.Grok_4: Grok_4_Agent,
+    RoleImplType.Kimi_K2: Kimi_K2_Agent,
+
     RoleImplType.Claude_3_Opus: ClaudeOpusAgent,
     RoleImplType.Claude_3_Sonnet: ClaudeSonnetAgent,
     RoleImplType.Claude_3_Haiku: ClaudeHaikuAgent,

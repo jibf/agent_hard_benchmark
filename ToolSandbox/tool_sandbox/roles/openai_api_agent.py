@@ -187,3 +187,31 @@ class GPT_o_4_mini_high_Agent(OpenAIAPIAgent):
 
 class GPT_4_1_Agent(OpenAIAPIAgent):
     model_name = "openai/gpt-4.1"
+
+# Qwen-235B models from Together AI
+class Qwen_235B_Agent(OpenAIAPIAgent):
+    model_name = "togetherai/Qwen/Qwen3-235B-A22B-FP8"
+
+class Qwen_235B_Instruct_Agent(OpenAIAPIAgent):
+    model_name = "togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8"
+
+class Qwen_235B_Thinking_Agent(OpenAIAPIAgent):
+    model_name = "togetherai/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8"
+
+class Claude_4_Sonnet_Agent(OpenAIAPIAgent):
+    model_name = "anthropic/claude-4-sonnet-thinking-off"
+
+class Claude_4_Sonnet_Thinking_Agent(OpenAIAPIAgent):
+    model_name = "anthropic/claude-4-sonnet-thinking-on-10k"
+
+class DeepSeek_V3_Agent(OpenAIAPIAgent):
+    model_name = "deepseek-ai/DeepSeek-V3-0324"
+
+class DeepSeek_R1_Agent(OpenAIAPIAgent):
+    model_name = "deepseek-ai/DeepSeek-R1-0528"
+
+class Grok_4_Agent(OpenAIAPIAgent):
+    model_name = "xai/grok-4"
+
+class Kimi_K2_Agent(OpenAIAPIAgent):
+    model_name = "togetherai/moonshotai/Kimi-K2-Instruct"
