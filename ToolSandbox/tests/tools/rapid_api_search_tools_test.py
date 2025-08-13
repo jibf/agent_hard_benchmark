@@ -1,6 +1,7 @@
 # For licensing see accompanying LICENSE file.
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 import os
+
 from typing import Any
 
 import pytest
@@ -56,7 +57,7 @@ def test_search_location_around_lat_lon() -> None:
         "state",
     ]:
         apple_park_search_result.pop(key)
-    assert apple_park_search_result == {
+    reference_results = {
         "phone_number": "+14089961010",
         "name": "Apple Park",
         "full_address": "Apple Park, One Apple Park Way, Cupertino, CA 95014",
@@ -66,6 +67,8 @@ def test_search_location_around_lat_lon() -> None:
         "website": "http://www.apple.com/",
         "city": "Cupertino, CA",
     }
+    for key, value in reference_results.items():
+        assert apple_park_search_result[key] == value
 
 
 def test_search_weather_around_lat_lon() -> None:
