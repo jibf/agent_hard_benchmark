@@ -36,6 +36,7 @@ class Drafter_agent:
                     model=self.model,
                     messages=messages,
                     temperature=self.temperature,
+                    max_tokens=4096,
                 )
             response = res.choices[0].message.content
             code_search = re.search(r"`python\s*([^`]+)`", response)

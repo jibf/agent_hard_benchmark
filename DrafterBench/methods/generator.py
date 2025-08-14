@@ -11,6 +11,43 @@ from DrafterBench.methods.agent import Drafter_agent
 from DrafterBench.prompts.prompt import Prompt
 from DrafterBench.methods.collect_result import process_code, execute_code
 
+import datetime
+import numpy as np
+from enum import Enum
+import decimal
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+
+        elif isinstance(obj, datetime.date):
+            return obj.isoformat()
+
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+
+        elif isinstance(obj, set):
+            return list(obj)
+
+        elif isinstance(obj, decimal.Decimal):
+            return float(obj)
+
+        elif isinstance(obj, Enum):
+            return obj.value
+
+        elif isinstance(obj, complex):
+            return {"real": obj.real, "imag": obj.imag}
+
+        elif isinstance(obj, float) and (obj == float('inf') or np.isnan(obj)):
+            return str(obj)
+
+        elif hasattr(obj, '__dict__'):
+            return obj.__dict__
+
+        try:
+            return super().default(obj)
+        except TypeError:
+            return str(obj)
 
 def openfile(file):
     f = open(file, "r", encoding="utf-8")
@@ -20,7 +57,7 @@ def openfile(file):
 
 def savedate(data, jsonpath):
     with open(jsonpath, "w", encoding="utf-8") as w:
-        json.dump(data, w, indent=4)
+        json.dump(data, w, cls=CustomJSONEncoder,indent=4)
 
 
 def generator(model, model_provider, temperature, vllm_url, max_length, response_results, data, result_path, task):
