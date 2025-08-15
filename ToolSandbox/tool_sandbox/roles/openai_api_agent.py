@@ -108,6 +108,7 @@ class OpenAIAPIAgent(BaseRole):
         else:
             assert openai_tools is not NOT_GIVEN
             for tool_call in openai_response_message.tool_calls:
+                tool_call.id = tool_call.id.replace("-", "_")
                 # The response contains the agent facing tool name so we need to get
                 # the execution facing tool name when creating the Python code.
                 execution_facing_tool_name = (
