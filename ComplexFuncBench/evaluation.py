@@ -18,7 +18,6 @@ from utils.utils import *
 
 from runner.gpt_runner import GPTRunner
 from runner.glm_runner import GLMRunner, GLMAPIRunner
-from runner.claude_runner import ClaudeRunner
 from runner.qwen_runner import QwenRunner
 from runner.llama_runner import LlamaRunner
 from runner.mistral_runner import MistralRunner
@@ -35,7 +34,9 @@ MODEL_MAPPING = {
     "gpt-4o-2024-08-06": GPTRunner,
     "gpt-4-turbo-2024-04-09": GPTRunner,
     "anthropic/claude-4-sonnet-thinking-off": GPTRunner,
-    "anthropic/claude-4-sonnet-thinking-on": GPTRunner,
+    "anthropic/claude-4-sonnet-thinking-on-10k": GPTRunner,
+    "anthropic/claude-4-opus-thinking-off": GPTRunner,
+    "anthropic/claude-4-opus-thinking-on-10k": GPTRunner,
     "glm-4-9b-chat": GPTRunner,
     "glm-4-long": GPTRunner,
     "Llama-3.1-70B": GPTRunner,

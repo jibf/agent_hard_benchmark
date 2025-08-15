@@ -63,16 +63,25 @@ class FunctionCallGPT(GPTModel):
 
     @retry(max_attempts=5, delay=10)
     def __call__(self, messages, tools=None, **kwargs: Any):
+        is_claude = ("claude" in self.model_name)
+        is_thinking = ("thinking-on" in self.model_name)
         if "function_call" not in json.dumps(messages, ensure_ascii=False):
             self.messages = copy.deepcopy(messages)
         try:
+            model_name = actual_model_name(self.model_name)
             completion = self.client.chat.completions.create(
-                model=actual_model_name(self.model_name),
+                model=model_name,
                 messages=self.messages,
-                temperature=0.0,
+                temperature=1.0 if is_thinking else 0.0,
                 tools=tools,
-                tool_choice="auto",
-                max_tokens=2048
+                tool_choice={"type": "auto"} if is_claude else "auto",
+                max_tokens=2048,
+                extra_body={        
+                    "thinking": {
+                        "type": "enabled",
+                        "budget_tokens": 10000
+                    }
+                } if is_thinking else None
             )
             return completion.choices[0].message
         except Exception as e:

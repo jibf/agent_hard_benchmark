@@ -59,7 +59,9 @@ class GPTRunner(ModelRunner):
                 if self.golden_fcs == []:
                     self.logger.error(f"Output FC:\n{llm_response.tool_calls}")
                     return self.return_result(messages, {"error_type": "func_hallucination", "content": "`self.golden_fcs == []`. Expected to stop. But Model continue to output function call."})
-                self.model.messages.append({"role": "assistant", "content": None, "tool_calls": llm_response.tool_calls})
+                # Handle thinking content for thinking models (wrap with <thinking> tags)
+                content = f"<thinking>{llm_response.reasoning_content}</thinking>\n\n{llm_response.content}" if hasattr(llm_response, "reasoning_content") else llm_response.content
+                self.model.messages.append({"role": "assistant", "content": content, "tool_calls": llm_response.tool_calls})
                 tool_calls = llm_response.tool_calls
 
                 function_calls = []
@@ -99,6 +101,9 @@ class GPTRunner(ModelRunner):
                             "content": json.dumps(temp_obs, ensure_ascii=False)
                         }
                     )
+
+                if "thinking-on" in self.model_name and llm_response.reasoning_content: # thinking model requires user message after tool
+                    self.model.messages.append({"role": "user", "content": "The tool has finished running. Please continue your reasoning."})   # dummy user message
 
                 self.process_matches(success_matched)
                     

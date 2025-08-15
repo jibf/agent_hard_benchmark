@@ -67,8 +67,17 @@ class ClaudeRunner(ModelRunner):
                                               {"error_type": "func_hallucination", "content": "`self.golden_fcs == []`. Expected to stop. But Model continue to output function call."})
             
                 function_calls, call_ids = [], []
+                # Handle thinking content for thinking models
+                thinking_content = getattr(llm_response, "reasoning_content", None)
+                assistant_content = []
+                
                 for content in llm_response.content:
                     if isinstance(content, TextBlock):
+                        if thinking_content:
+                            # Include thinking block in the message content
+                            thinking_block = {"type": "thinking", "content": thinking_content}
+                            assistant_content.append(thinking_block)
+                        assistant_content.append(content)
                         messages.append({"role": "assistant", "content": content.text})
                     elif isinstance(content, ToolUseBlock):
                         call_ids.append(content.id)
@@ -76,8 +85,9 @@ class ClaudeRunner(ModelRunner):
                         if function_call is None:
                             return self.return_result(messages, {"error_type": "name_error", "content": f"{content} is not Valid."})
                         function_calls.append(function_call)
+                        assistant_content.append(content)
 
-                self.model.messages.append({"role": "assistant", "content": llm_response.content})
+                self.model.messages.append({"role": "assistant", "content": assistant_content if assistant_content else llm_response.content})
                 self.logger.info(f"Function Calls: \n{json.dumps(function_calls, ensure_ascii=False, indent=4)}\n")
                 self.logger.info(f"Golden Function Call: \n{json.dumps(self.golden_fcs, ensure_ascii=False, indent=4)}\n")
                 messages.append({"role": "assistant", "function_call": function_calls})

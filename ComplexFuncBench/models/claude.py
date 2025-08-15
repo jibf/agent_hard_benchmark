@@ -37,9 +37,8 @@ class ClaudeModel:
                     {"role": "user", "content": query}
                 ],
                 temperature=0.0,
-                do_sample=False
             )
-            return completion.choices[0].message.content
+            return completion.content[0].text
         except Exception as e:
             print(f"Exception: {e}")
             return None
@@ -53,14 +52,21 @@ class FunctionCallClaude(ClaudeModel):
         if "function_call" not in json.dumps(messages, ensure_ascii=False):
             self.messages = copy.deepcopy(messages)
         try:
-            response = self.client.messages.create(
-                model=self.model_name,
-                messages=self.messages,
-                temperature=0.0,
-                tools=tools,
-                max_tokens=2048,
-                tool_choice={"type": "auto"}
-            )
+            # Enable thinking for thinking models
+            thinking_enabled = "thinking" in self.model_name.lower()
+            create_params = {
+                "model": self.model_name,
+                "messages": self.messages,
+                "temperature": 1.0 if thinking_enabled else 0.0,
+                "tools": tools,
+                "max_tokens": 2048
+            }
+            
+            if thinking_enabled:
+                create_params["thinking"] = {"enabled": True}
+            
+            print(f"Debug - create_params: {create_params}")  # Debug line
+            response = self.client.messages.create(**create_params)
             return response
         except Exception as e:
             print(f"Exception: {e}")
