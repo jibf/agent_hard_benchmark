@@ -96,7 +96,7 @@ class OpenAIAPIAgent(BaseRole):
         # Parse response
         openai_response_message = response.choices[0].message
         # Message contains no tool call, aka addressed to user
-        if openai_response_message.tool_calls is None:
+        if openai_response_message.tool_calls is None or openai_response_message.tool_calls == []:
             assert openai_response_message.content is not None
             response_messages = [
                 Message(
