@@ -156,10 +156,15 @@ class OpenAIAPIAgent(BaseRole):
             OpenAI API chat completion object
         """
         with all_logging_disabled():
+            if "claude" in self.model_name:
+                for message in openai_messages:
+                    if message["content"] in ["", None, []]:
+                        message["content"] = "None"
             return self.openai_client.chat.completions.create(
                 model=self.model_name,
                 messages=cast(list[ChatCompletionMessageParam], openai_messages),
                 tools=openai_tools,
+                max_tokens=4096,
             )
 
 
