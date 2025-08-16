@@ -48,6 +48,8 @@ from tool_sandbox.roles.openai_api_agent import (
     DeepSeek_R1_Agent,
     Grok_4_Agent,
     Kimi_K2_Agent,
+    Qwen_32B_Agent,
+    Qwen_8B_Agent,
 )
 from tool_sandbox.roles.openai_api_user import (
     GPT_3_5_0125_User,
@@ -85,6 +87,8 @@ class RoleImplType(StrEnum):
     DeepSeek_R1 = auto()
     Grok_4 = auto()
     Kimi_K2 = auto()
+    Qwen_32B = auto()
+    Qwen_8B = auto()
 
     Claude_3_Opus = auto()
     Claude_3_Sonnet = auto()
@@ -129,6 +133,8 @@ AGENT_TYPE_TO_FACTORY: dict[RoleImplType, Callable[..., BaseRole]] = {
     RoleImplType.DeepSeek_R1: DeepSeek_R1_Agent,
     RoleImplType.Grok_4: Grok_4_Agent,
     RoleImplType.Kimi_K2: Kimi_K2_Agent,
+    RoleImplType.Qwen_32B: Qwen_32B_Agent,
+    RoleImplType.Qwen_8B: Qwen_8B_Agent,
 
     RoleImplType.Claude_3_Opus: ClaudeOpusAgent,
     RoleImplType.Claude_3_Sonnet: ClaudeSonnetAgent,

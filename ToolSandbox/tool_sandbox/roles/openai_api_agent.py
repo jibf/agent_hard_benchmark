@@ -1,7 +1,8 @@
 # For licensing see accompanying LICENSE file.
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 """Agent role for any model that conforms to OpenAI tool use API"""
-
+import os
+os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:23333/v1"
 from typing import Any, Iterable, List, Literal, Optional, Union, cast
 
 from openai import NOT_GIVEN, NotGiven, OpenAI
@@ -41,7 +42,7 @@ class OpenAIAPIAgent(BaseRole):
         # OpenAI API compatible servers.
         # self.openai_client: OpenAI = OpenAI(base_url="https://api.openai.com/v1")
         # self.openai_client: OpenAI = OpenAI(api_key="sk-sgl-MH7bEVVJlBp3RT_P5cPQ6-KfC1qJElBRCfTDHy40Ue4", base_url="http://5.78.122.79:10000/v1", )
-        self.openai_client: OpenAI = OpenAI(base_url="http://5.78.122.79:10000/v1", )
+        self.openai_client: OpenAI = OpenAI(base_url=os.getenv("OPENAI_BASE_URL"), )
         # import pdb; pdb.set_trace()
 
     def respond(self, ending_index: Optional[int] = None) -> None:
@@ -221,3 +222,9 @@ class Grok_4_Agent(OpenAIAPIAgent):
 
 class Kimi_K2_Agent(OpenAIAPIAgent):
     model_name = "togetherai/moonshotai/Kimi-K2-Instruct"
+
+class Qwen_8B_Agent(OpenAIAPIAgent):
+    model_name = "/data/jibf/.cache/huggingface/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218/"
+
+class Qwen_32B_Agent(OpenAIAPIAgent):
+    model_name = "/data/jibf/.cache/huggingface/hub/models--Qwen--Qwen3-32B/snapshots/9216db5781bf21249d130ec9da846c4624c16137/"
