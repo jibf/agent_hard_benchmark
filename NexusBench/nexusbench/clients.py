@@ -144,6 +144,7 @@ class OpenAIFCClient(BaseClient):
         self, prompt, model="gpt-4-0125-preview", contextual_history=None
     ):
         is_claude = "claude" in model.lower() or "anthropic/" in model.lower()
+        is_huggingface = "huggingface" in model.lower()
 
         if is_claude:
             # Claude models expect `tool_choice` to be a dict
@@ -154,6 +155,16 @@ class OpenAIFCClient(BaseClient):
                 "tool_choice": {"type": "auto"},
                 "max_tokens": 2048,
                 "temperature": 1.0 if "thinking-on-10k" in model.lower() else 0.0,
+            }
+            response = self.client.chat.completions.create(**params)
+        elif is_huggingface:
+            params = {
+                "model": model,
+                "messages": prompt["messages"],
+                "tools": prompt["tools"],
+                "tool_choice": "auto",
+                "max_tokens": 2048,
+                "temperature": 0.0,
             }
             response = self.client.chat.completions.create(**params)
         else:
