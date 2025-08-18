@@ -216,8 +216,12 @@ class OpenAICompletionsHandler(BaseHandler):
         return {"message": []}
 
     def _parse_query_response_prompting(self, api_response: any) -> dict:
+        if "</think>" in api_response.choices[0].message.content:
+            model_response = api_response.choices[0].message.content.split("</think>")[-1].strip()
+        else:
+            model_response = api_response.choices[0].message.content
         return {
-            "model_responses": api_response.choices[0].message.content,
+            "model_responses": model_response,
             "model_responses_message_for_chat_history": api_response.choices[0].message,
             "input_token": api_response.usage.prompt_tokens,
             "output_token": api_response.usage.completion_tokens,
