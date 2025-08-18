@@ -2,7 +2,6 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 """Agent role for any model that conforms to OpenAI tool use API"""
 import os
-os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:23333/v1"
 from typing import Any, Iterable, List, Literal, Optional, Union, cast
 
 from openai import NOT_GIVEN, NotGiven, OpenAI
@@ -161,6 +160,12 @@ class OpenAIAPIAgent(BaseRole):
                 for message in openai_messages:
                     if message["content"] in ["", None, []]:
                         message["content"] = "None"
+                if "thinking-on" in self.model_name:
+                    if openai_messages[-1]["role"] == "tool":
+                        openai_messages.append({
+                            "role": "user",
+                            "content": "The tool has finished running. Please continue your reasoning"
+                        })
             return self.openai_client.chat.completions.create(
                 model=self.model_name,
                 messages=cast(list[ChatCompletionMessageParam], openai_messages),
