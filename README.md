@@ -1,4 +1,4 @@
-# AgentHard: LLM Tool Use Evaluation Benchmarking Suite
+# 🚀 AgentHard: LLM Tool Use Evaluation Benchmarking Suite
 
 This repository serves as a comprehensive collection and evaluation suite for various Large Language Model (LLM) tool-use benchmarks. It provides a standardized environment and scripts to facilitate the evaluation of LLMs' capabilities in using external tools and APIs for complex task automation.
 
