@@ -1,0 +1,140 @@
+[
+  {
+    "role": "system",
+    "content": "Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous."
+  },
+  {
+    "role": "user",
+    "content": "Add a todo to buy chocolate milk next Friday 5PM",
+    "user_details": {
+      "milestone_matches": [
+        {
+          "milestone_index": 0,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "EXECUTION_ENVIRONMENT",
+                    "recipient": "AGENT",
+                    "tool_trace": "{\"tool_name\": \"get_current_timestamp\", \"arguments\": {}}"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 0.0
+        },
+        {
+          "milestone_index": 1,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "REMINDER",
+                "snapshot_constraint": "addition_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": [
+                  {
+                    "content": "Buy chocolate milk",
+                    "reminder_timestamp": 1755291600.0
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "reminder_id": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity",
+                  "reminder_timestamp": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "MESSAGING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "message_id": "column_exact_match_similarity",
+                  "sender_person_id": "column_exact_match_similarity",
+                  "sender_phone_number": "column_exact_match_similarity",
+                  "recipient_person_id": "column_exact_match_similarity",
+                  "recipient_phone_number": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "CONTACT",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "person_id": "column_exact_match_similarity",
+                  "name": "column_exact_match_similarity",
+                  "phone_number": "column_exact_match_similarity",
+                  "relationship": "column_rouge_l_similarity",
+                  "is_self": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "SETTING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "device_id": "column_exact_match_similarity",
+                  "cellular": "column_exact_match_similarity",
+                  "wifi": "column_exact_match_similarity",
+                  "location_service": "column_exact_match_similarity",
+                  "low_battery_mode": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "role": "assistant",
+    "content": "<think>\nOkay, let's see. The user wants to add a todo to buy chocolate milk next Friday at 5 PM.\n\nFirst, I need to figure out the timestamp for next Friday at 5 PM. Since the current date isn't specified, I should probably get the current timestamp first. Wait, but maybe I can use the datetime_info_to_timestamp function if I can figure out the date.\n\nWait, \"next Friday\" could be ambiguous. If today is Thursday, next Friday is in 1 day. If today is Friday, next Friday is in 7 days. But since I don't know the current date, I need to get the current timestamp first. So maybe I should call get_current_timestamp to know the current time.\n\nOnce I have the current timestamp, I can convert it to datetime info to find out what day of the week it is. Then calculate how many days until next Friday. But maybe there's a better way. Alternatively, use shift_timestamp to add days until next Friday.\n\nWait, but the user said \"next Friday 5PM\". So first, I need to determine the exact date and time for next Friday at 5 PM. Let's break it down.\n\nFirst step: Get current timestamp using get_current_timestamp. Let's call that function.\n\nThen, convert that timestamp to datetime info to check the current day of the week. The timestamp_to_datetime_info function will give the isoweekday, where 1 is Monday, 7 is Sunday. So Friday is 5.\n\nIf current isoweekday is 5 (Friday), then next Friday is 7 days later. If current day is after Friday (6 or 7), then next Friday is 7 - (current - 5) days later? Wait, maybe better to calculate the days to add.\n\nWait, let's think. Suppose today is Monday (1), next Friday is 4 days later (1 + 4 = 5). If today is Friday (5), next Friday is 7 days later. If today is Saturday (6), next Friday is 6 days later (6 to 5 is 6 days: Sat to Sun (1), Mon (2), Tue (3), Wed (4), Thu (5), Fri (6)). Wait, no. From Saturday (6) to next Friday (5): 6 days later? Let's count: Saturday to Sunday is 1, Monday 2, Tuesday 3, Wednesday 4, Thursday 5, Friday 6. Yes, 6 days.\n\nSo formula: days_to_add = (5 - current_weekday + 7) % 7. If current_weekday is 5 (Friday), then (5-5 +7) %7 =7%7=0, but we want next Friday, so add 7 days. Wait, maybe (5 - current_weekday) %7. If current is 5, (5-5)=0, so 0 days, but we need next week, so 7 days. Hmm.\n\nAlternatively, if current_weekday <=5: days_to_add =5 - current_weekday. If current_weekday >5: days_to_add =5 - current_weekday +7.\n\nWait, for example:\n\ncurrent is Monday (1): 5-1=4 days.\n\ncurrent is Friday (5): 5-5=0, but we need next Friday, so 7 days.\n\ncurrent is Saturday (6): 5-6= -1 +7=6 days.\n\ncurrent is Sunday (7): 5-7= -2 +7=5 days.\n\nYes, that works. So days_to_add = (5 - current_weekday + 7) %7. If the result is 0, then it's 7 days.\n\nWait, (5 - current_weekday) %7. If current is 5, (5-5)=0, which would be same day, but user said \"next Friday\", so if today is Friday, next Friday is 7 days later. So perhaps days_to_add = (5 - current_weekday + 7) %7. If the result is 0, set to 7.\n\nWait, let's test:\n\ncurrent=5 (Friday): (5-5 +7)=7 → 7%7=0 → but we need 7 days, so days_to_add=7.\n\ncurrent=6 (Saturday): (5-6 +7)=6 → 6%7=6 → days_to_add=6.\n\ncurrent=7 (Sunday): (5-7 +7)=5 → 5%7=5 → days_to_add=5.\n\ncurrent=1 (Monday): (5-1 +7)=11 → 11%7=4 → days_to_add=4.\n\nYes, that works. So days_to_add = (5 - current_weekday + 7) %7. If the result is 0, then 7 days.\n\nBut since modulo 7 of (5 - current_weekday +7) is same as (5 - current_weekday) mod7, but adding 7 ensures it's positive.\n\nWait, (5 - current_weekday) mod7. For current=5: 0 mod7=0. So days_to_add=0, but we need 7. So maybe days_to_add = (5 - current_weekday + 7) %7. If the result is 0, then 7, else the result.\n\nAlternatively, days_to_add = (5 - current_weekday + 7) %7 or 7 if 0.\n\nBut perhaps the shift_timestamp function can handle adding days. Wait, but first I need to get the current timestamp.\n\nSo first step: call get_current_timestamp to get current time.\n\nThen, convert that timestamp to datetime_info to get the current weekday.\n\nThen calculate days_to_add as above.\n\nThen, set the time to 5 PM (17:00).\n\nWait, but the user said 5PM, which is 17:00 in 24h format.\n\nSo after determining the date (next Friday), set hour=17, minute=0, second=0.\n\nWait, but how to construct the timestamp for next Friday 5PM.\n\nAlternative approach: Once current timestamp is known, shift it by the necessary days to reach next Friday at 5PM.\n\nBut need to adjust the time as well.\n\nWait, maybe better to:\n\n1. Get current timestamp.\n\n2. Convert to datetime info.\n\n3. Calculate target date: next Friday.\n\n4. Set time to 17:00:00.\n\n5. Convert that datetime to timestamp.\n\nSo steps:\n\n- Call get_current_timestamp.\n\n- Then timestamp_to_datetime_info with that timestamp.\n\n- From the datetime info, get current weekday (isoweekday).\n\n- Calculate days to add to reach next Friday.\n\n- Then, set the target date as current date + days_to_add.\n\n- Set hour=17, minute=0, second=0.\n\n- Then use datetime_info_to_timestamp with year, month, day, hour=17, etc.\n\nBut need to handle the date calculation correctly, including month and year changes.\n\nAlternatively, use shift_timestamp to add the days, but also adjust the time to 5PM.\n\nWait, but shift_timestamp can shift by days, hours, etc.\n\nWait, another approach: Take current timestamp, shift it to next Friday at 5PM.\n\nBut how?\n\nFirst, find the next Friday. Let's say current time is some day.\n\nIf current day is Friday, and current time is before 5PM, then next Friday 5PM is same day at 5PM.\n\nBut if current time is after 5PM on Friday, then next Friday is 7 days later.\n\nBut the user said \"next Friday\", which usually means the upcoming Friday, even if today is Friday but after 5PM.\n\nWait, but the user's instruction is ambiguous. However, since the user says \"next Friday\", it's safer to assume the next occurrence of Friday, which could be today if it's before 5PM, but if it's after 5PM, then next week.\n\nBut the problem is that without knowing the current time, we can't determine that. So the correct approach is:\n\n1. Get current timestamp.\n\n2. Convert to datetime info to check current day and time.\n\n3. Determine if today is Friday and current time is before 5PM. If yes, then use today's 5PM. Else, next Friday 5PM.\n\nBut since the user says \"next Friday\", it's likely they mean the upcoming Friday, even if today is Friday but before 5PM. Wait, no: \"next Friday\" usually refers to the Friday of the upcoming week, so if today is Friday, \"next Friday\" is 7 days later. But sometimes people say \"this Friday\" for the current week's Friday.\n\nThis is ambiguous. However, the user wrote \"next Friday\", which typically means the Friday of the next week, i.e., 7 days after the current Friday.\n\nBut in common usage, \"next Friday\" can sometimes mean the upcoming Friday, even if it's within the same week. For example, if today is Monday, \"next Friday\" is in 4 days. If today is Friday, \"next Friday\" is in 7 days.\n\nSo the correct interpretation is: the next occurrence of Friday, which is 0-6 days away, but if today is Friday, then 7 days.\n\nWait, no. If today is Friday, \"next Friday\" is 7 days later. If today is Thursday, \"next Friday\" is tomorrow.\n\nYes, that's the standard interpretation.\n\nSo steps:\n\n- Get current timestamp.\n\n- Convert to datetime info to get current weekday (isoweekday, 1=Mon, 5=Fri, 7=Sun).\n\n-"
+  }
+]

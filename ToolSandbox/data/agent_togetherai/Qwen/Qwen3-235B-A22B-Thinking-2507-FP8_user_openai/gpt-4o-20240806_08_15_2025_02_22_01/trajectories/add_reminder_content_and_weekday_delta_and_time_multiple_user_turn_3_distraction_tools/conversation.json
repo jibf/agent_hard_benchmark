@@ -1,0 +1,148 @@
+[
+  {
+    "role": "system",
+    "content": "Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous."
+  },
+  {
+    "role": "user",
+    "content": "Remind me to buy chocolate milk",
+    "user_details": {
+      "milestone_matches": [
+        {
+          "milestone_index": 0,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "EXECUTION_ENVIRONMENT",
+                    "recipient": "AGENT",
+                    "tool_trace": "{\"tool_name\": \"get_current_timestamp\", \"arguments\": {}}"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 0.0
+        },
+        {
+          "milestone_index": 1,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "REMINDER",
+                "snapshot_constraint": "addition_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": [
+                  {
+                    "content": "Buy chocolate milk",
+                    "reminder_timestamp": 1755291600.0
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "reminder_id": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity",
+                  "reminder_timestamp": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "MESSAGING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "message_id": "column_exact_match_similarity",
+                  "sender_person_id": "column_exact_match_similarity",
+                  "sender_phone_number": "column_exact_match_similarity",
+                  "recipient_person_id": "column_exact_match_similarity",
+                  "recipient_phone_number": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "CONTACT",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "person_id": "column_exact_match_similarity",
+                  "name": "column_exact_match_similarity",
+                  "phone_number": "column_exact_match_similarity",
+                  "relationship": "column_rouge_l_similarity",
+                  "is_self": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "SETTING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "device_id": "column_exact_match_similarity",
+                  "cellular": "column_exact_match_similarity",
+                  "wifi": "column_exact_match_similarity",
+                  "location_service": "column_exact_match_similarity",
+                  "low_battery_mode": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "role": "assistant",
+    "content": "<think>\nOkay, the user wants to be reminded to buy chocolate milk. Let me check the tools available. The main function here is add_reminder, which requires content and a reminder_timestamp. The content is \"buy chocolate milk\". But the timestamp is missing. The user didn't specify when they want the reminder.\n\nHmm, I need to figure out the time. Maybe they want it immediately? But usually, reminders are for a future time. Wait, the get_current_timestamp function can give the current time, but adding a reminder for the current time might not make sense. Maybe the user expects a default time, like today at a certain hour. But the problem is the user didn't specify. \n\nWait, the instructions say not to make assumptions. So I can't just pick a time. I should ask for clarification. The user needs to specify when they want the reminder. So I should prompt them to provide the date and time for the reminder.\n</think>\n\nTo set a reminder, I need to know when you'd like to be reminded. Could you please specify the date and time (e.g., \"tomorrow at 3 PM\" or \"next Monday at 9 AM\")?"
+  },
+  {
+    "role": "user",
+    "content": "I want it for next Friday at 5PM."
+  },
+  {
+    "role": "assistant",
+    "content": "<think>\nOkay, the user wants a reminder for next Friday at 5 PM. Let me figure out how to handle this.\n\nFirst, I need to convert \"next Friday at 5PM\" into a POSIX timestamp. But to do that, I should know the current date and time. So maybe I should call get_current_timestamp to get the current time. Wait, but the tools available include datetime_info_to_timestamp, which requires year, month, day, hour, etc. Alternatively, there's shift_timestamp which can adjust a timestamp by weeks, days, etc.\n\nWait, maybe I need to figure out what date next Friday is. Let's think. If today is, say, Monday, next Friday would be in 5 days. But depending on the current day, \"next Friday\" could be in 7 days if today is Friday. Hmm. But without knowing the current date, I can't calculate it directly. So perhaps I need to get the current timestamp first.\n\nSo first step: call get_current_timestamp to get the current time. Then, determine how many days until next Friday. But how? Wait, there's a function timestamp_to_datetime_info which can give the current day of the week. So maybe:\n\n1. Get current timestamp.\n2. Convert to datetime info to find the current day (isoweekday).\n3. Calculate how many days to add to reach next Friday (isoweekday 5). For example, if today is Monday (1), then 5 - 1 = 4 days. If today is Friday (5), then next Friday would be 7 days later.\n\nBut the user said \"next Friday\", which typically means the upcoming Friday, even if today is Friday. Wait, sometimes \"next Friday\" can be ambiguous. If today is Friday, does \"next Friday\" mean 7 days later or the same day? But usually, \"next Friday\" would be 7 days later if today is Friday. So need to calculate the days to add.\n\nBut to do that, I need the current day of the week. So first, get current timestamp, then convert to datetime info to get isoweekday.\n\nSo steps:\n\n- Call get_current_timestamp to get current_ts.\n- Then call timestamp_to_datetime_info with current_ts to get current day.\n- Calculate days until next Friday. Let's say current isoweekday is d (1-7). Friday is 5. So if d <=5, days = 5 - d. If d >5, days = 5 - d +7. Wait, no. Let's see:\n\nIf today is Monday (1), next Friday is 4 days later (1+4=5).\nIf today is Friday (5), next Friday is 7 days later (5+7=12, but modulo 7 would be 5 again, so 7 days).\nWait, formula: days_to_add = (5 - current_day + 7) % 7. If current_day is 5, (5-5 +7) %7 =7%7=0. But we want 7 days, so maybe if days_to_add is 0, add 7.\n\nSo days_to_add = (5 - current_day + 7) %7. If that's 0, then 7, else the value.\n\nBut perhaps easier: days_to_add = (5 - current_day) %7. If negative, add 7. Wait, let's take examples.\n\ncurrent_day=1 (Mon): 5-1=4 → 4 days.\ncurrent_day=5 (Fri): 5-5=0 → 0, but we want 7, so if 0, then 7.\ncurrent_day=6 (Sat): 5-6= -1 → -1 +7=6 days.\n\nYes, so days_to_add = (5 - current_day + 7) %7. If the result is 0, it's 7 days. Wait, (5 - current_day) mod 7. Let's compute:\n\nFor current_day=5: (5-5)=0 mod7=0 → 0, but we need 7. So days_to_add = 0 if 0 else (5 - current_day) mod7. Wait, maybe better to do (5 - current_day +7) %7. For current_day=5: (0 +7)=7 mod7=0. Hmm, not helpful.\n\nAlternative approach: target_day = 5 (Friday). current_day = d.\n\nIf d <=5: days = 5 -d\nIf d >5: days = 5 -d +7\n\nSo days = (5 - d) if d <=5 else (5 -d +7)\n\nWhich simplifies to days = (5 - d +7) %7. Wait, for d=5: (5-5+7)=7 → 7%7=0. Not good. Hmm.\n\nWait, maybe the correct formula is (target_day - current_day +7) %7. But if the result is 0, then it's 7 days. Wait, no. Let's see:\n\ntarget_day=5.\n\ncurrent_day=5: (5-5 +7)=7 → 7%7=0. So days=0? But we want 7.\n\nSo perhaps days = (target_day - current_day) %7. If the result is <=0, add 7.\n\nWait, (5 -5)=0 → 0%7=0 → add 7 → 7 days.\n\ncurrent_day=6: (5-6)= -1 → -1%7=6 → 6 days.\n\ncurrent_day=1: 5-1=4 →4 days.\n\nYes, that works. So days = (target_day - current_day) %7. If the result is 0, then 7, else the result.\n\nWait, (5-5)=0 → 0%7=0 → so days=7.\n\nYes. So formula: days = ( (5 - current_day) %7 ) or 7 if 0.\n\nSo once I have current_day from timestamp_to_datetime_info, I can compute days_to_add.\n\nOnce I have days_to_add, then the reminder time is current timestamp + days_to_add days + 5 PM (17:00).\n\nWait, but the user said 5 PM, which is 17:00 in 24h format.\n\nSo after calculating the date (next Friday), set the time to 17:00:00.\n\nSo steps:\n\n1. Get current timestamp (current_ts).\n2. Convert current_ts to datetime info to get current_day (isoweekday).\n3. Calculate days_to_add as (5 - current_day) %7. If 0, then 7.\n4. Shift current_ts by days_to_add days, then set the time to 17:00:00.\n\nWait, but shifting by days_to_add days would get us to the correct date, but the time would still be the current time. So perhaps after shifting days, we need to adjust the time to 17:00.\n\nAlternatively, after getting the date of next Friday, set the time to 17:00.\n\nBut how to do that with the available tools.\n\nWait, the tools include shift_timestamp, which can shift by days, hours, etc.\n\nSo:\n\ncurrent_ts = get_current_timestamp()\n\ncurrent_datetime = timestamp_to_datetime_info(current_ts)\n\ncurrent_day = current_datetime['isoweekday']\n\ndays_to_add = (5 - current_day) %7\n\nif days_to_add ==0:\n\n    days_to_add =7\n\nThen, shift current_ts by days_to_add days, and then adjust the time to 17:00.\n\nWait, but shifting by days_to_add days would take us to the same time on next Friday. But the user wants 5 PM, which may not be the same as current time.\n\nFor example, if current time is 10 AM on Monday, shifting 4 days would take us to 10 AM on Friday. But user wants 5 PM, so need to add 7 hours.\n\nSo steps:\n\n- Shift current_ts by days_to_add days.\n\n- Then, shift by (17 - current_hour) hours, but need to handle cases where current_hour is after 17.\n\nWait, perhaps better to calculate the target datetime as next Friday at 17:00:00.\n\nSo first, get current_ts.\n\ncurrent_datetime = timestamp_to_datetime_info(current_ts)\n\ncurrent_year, current_month, current_day, current_hour, etc.\n\nCompute target_date: next Friday.\n\nOnce target_date is determined (year, month, day), set hour=17, minute=0, second=0.\n\nThen convert that to timestamp using datetime_info_to_timestamp.\n\nSo:\n\ncurrent_ts = get_current_timestamp()\n\ncurrent_info = timestamp_to_datetime_info(current_ts)\n\ncurrent_day = current_info['isoweekday']\n\ndays_to_add = (5 - current_day +7) %7\n\nif days_to_add ==0:\n\n    days_to_add =7\n\ntarget_day = current_info['day'] + days_to_add\n\nWait, but months have different days, so adding days may roll over to next month. But the timestamp_to_datetime_info gives day of month, so adding days_to_add may require handling month/year changes. However, since we have the current timestamp, shifting by days_to_add days via shift_timestamp would handle that correctly.\n\nSo perhaps:\n\nshifted_ts = shift_timestamp(current_ts, days=days_to_add)\n\nThen, convert shifted_ts to datetime_info to get the date (year, month, day), then set hour=17, minute=0, second=0, and convert back to timestamp.\n\nWait, but shifted_ts is the"
+  }
+]

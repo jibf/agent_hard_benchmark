@@ -1,0 +1,400 @@
+[
+  {
+    "role": "system",
+    "content": "Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous."
+  },
+  {
+    "role": "user",
+    "content": "What's my todo yesterday?"
+  },
+  {
+    "role": "assistant",
+    "content": "<think>\nOkay, the user is asking, \"What's my todo yesterday?\" So I need to figure out what they need. They want to know their todos from yesterday.\n\nFirst, I should check if there's a function that can help retrieve reminders. The search_reminder function seems relevant here. It can search based on timestamps.\n\nBut to search for yesterday's reminders, I need the timestamp range for yesterday. So I need to get the current timestamp first. The get_current_timestamp function can provide that.\n\nOnce I have the current timestamp, I can calculate the start and end of yesterday. Let's say today is October 5th, 2023. Then yesterday would be October 4th, from 00:00:00 to 23:59:59.\n\nTo get the start of yesterday, I can take the current timestamp, subtract one day, then set the time to 00:00:00. But maybe using shift_timestamp would help. Wait, but shift_timestamp shifts by deltas, so if I get the current timestamp, subtract one day, then maybe adjust the time.\n\nAlternatively, maybe use timestamp_to_datetime_info on the current timestamp to get today's date, then subtract a day to get yesterday's date, then convert that date to a timestamp for the start and end of the day.\n\nWait, let's break it down step by step.\n\n1. Get current timestamp using get_current_timestamp. Let's call that now.\n2. Convert now to datetime info to find today's date.\n3. Subtract one day from today's date to get yesterday's date.\n4. Convert yesterday's date (at 00:00:00) to a timestamp for the lower bound.\n5. Convert yesterday's date (at 23:59:59) to a timestamp for the upper bound.\n6. Use search_reminder with creation_timestamp_lowerbound and upperbound set to those values.\n\nWait, but the user is asking for todos from yesterday. Wait, does \"yesterday\" refer to when the reminder was created or when it's set to remind? The user says \"my todo yesterday\", which probably means the reminder is set for yesterday. So the reminder_timestamp should be yesterday.\n\nSo the reminder_timestamp_lowerbound and upperbound would be the start and end of yesterday.\n\nSo steps:\n\n- Get current timestamp.\n- Calculate yesterday's start (midnight) and end (23:59:59) as timestamps.\n- Use search_reminder with reminder_timestamp_lowerbound and upperbound.\n\nSo first, get current timestamp.\n\nCall get_current_timestamp.\n\nThen, convert that to datetime info to get today's date.\n\nThen, subtract one day to get yesterday's date.\n\nThen, create two timestamps: one for yesterday at 00:00:00, and one for yesterday at 23:59:59.\n\nWait, but how to get those timestamps?\n\nAlternatively, take the current timestamp, shift it back by one day, then set the time to 00:00:00 for the lower bound, and 23:59:59 for the upper bound.\n\nBut how to set the time to 00:00:00?\n\nMaybe use datetime_info_to_timestamp for yesterday's date at 00:00:00 and 23:59:59.\n\nSo first, get current timestamp.\n\nSuppose current timestamp is T.\n\nConvert T to datetime info (year, month, day, etc).\n\nSubtract one day from that date to get yesterday's date.\n\nThen, create a timestamp for yesterday 00:00:00 by calling datetime_info_to_timestamp with year, month, day-1, 0,0,0.\n\nWait, but if today is the first day of the month, subtracting a day would go to the previous month. But the datetime_info_to_timestamp function should handle that.\n\nSo steps:\n\n1. Call get_current_timestamp to get current time.\n2. Convert that timestamp to datetime info (using timestamp_to_datetime_info).\n3. Subtract one day from the datetime info (but how? Maybe use shift_timestamp on the current timestamp by -1 day to get yesterday's timestamp, then set time to 00:00:00 and 23:59:59).\n\nWait, another approach: shift the current timestamp back by one day, then get the start of that day.\n\nWait, perhaps:\n\ncurrent_ts = get_current_timestamp()\n\nyesterday_start_ts = shift_timestamp(current_ts, days=-1, hours=-current_hour, minutes=-current_minute, seconds=-current_second)\n\nBut to get the start of yesterday, you need to take current timestamp, subtract one day, then set time to 00:00:00.\n\nAlternatively, take the current timestamp, convert to datetime info, subtract one day from the day field, then set hour, minute, second to 0 for lower bound, and 23,59,59 for upper.\n\nBut the datetime_info might have the current date. So if today is Oct 5, subtract 1 day to get Oct 4, then create timestamp for Oct 4 00:00:00 and Oct 4 23:59:59.\n\nSo steps:\n\n- Get current timestamp (T)\n- Convert T to datetime_info (D)\n- Create D_yesterday = D with day = D.day -1 (handling month/year changes)\n- But actually, better to use shift_timestamp to subtract one day from T, then set time to 00:00:00.\n\nWait, maybe:\n\nyesterday_start = shift_timestamp(T, days=-1)\nBut that would be same time yesterday. To get start of yesterday, need to set time to 00:00:00.\n\nAlternatively, take T, convert to datetime_info, subtract one day from the date, then set time to 00:00:00, convert to timestamp.\n\nYes.\n\nSo:\n\ncurrent_ts = get_current_timestamp()\n\ncurrent_datetime = timestamp_to_datetime_info(current_ts)\n\nyesterday_datetime = {\n  year: current_datetime.year,\n  month: current_datetime.month,\n  day: current_datetime.day - 1,\n  hour: 0,\n  minute: 0,\n  second: 0\n}\n\nBut need to handle cases where day is 1, so subtracting 1 would go to previous month.\n\nBut the timestamp_to_datetime_info would have the correct date, so if current_datetime.day is 1, then yesterday would be last day of previous month.\n\nBut the function datetime_info_to_timestamp should handle that when we input year, month, day-1, etc.\n\nWait, but if current_datetime.day is 1, then day-1 would be 0, which is invalid. So better to use shift_timestamp to subtract one day from current_ts, then set the time to 00:00:00.\n\nWait, perhaps:\n\nyesterday_midnight_ts = shift_timestamp(current_ts, days=-1, hours=-current_datetime.hour, minutes=-current_datetime.minute, seconds=-current_datetime.second)\n\nBut how to get current_datetime.hour, etc. So first, get current_ts, then convert to datetime_info to get hour, minute, second.\n\nSo:\n\n1. Call get_current_timestamp → current_ts\n2. Call timestamp_to_datetime_info with current_ts → get hour, minute, second\n3. Compute lowerbound_ts = shift_timestamp(current_ts, days=-1, hours=-hour, minutes=-minute, seconds=-second)\n4. Compute upperbound_ts = shift_timestamp(lowerbound_ts, hours=23, minutes=59, seconds=59)\n\nWait, lowerbound_ts is yesterday at 00:00:00.\n\nThen upperbound_ts is lowerbound_ts + 23h59m59s.\n\nAlternatively, upperbound_ts = lowerbound_ts + 86399 seconds (since 24*3600-1=86399).\n\nBut maybe using shift_timestamp for upperbound.\n\nBut the functions available are shift_timestamp, which can add days, hours, etc.\n\nSo steps:\n\nAfter getting lowerbound_ts (yesterday 00:00:00), upperbound_ts = shift_timestamp(lowerbound_ts, hours=23, minutes=59, seconds=59)\n\nBut to get lowerbound_ts:\n\ncurrent_ts = get_current_timestamp()\n\ncurrent_info = timestamp_to_datetime_info(current_ts)\n\nlowerbound_ts = shift_timestamp(current_ts, days=-1, hours=-current_info.hour, minutes=-current_info.minute, seconds=-current_info.second)\n\nWait, but shift_timestamp parameters are deltas. So to go from current time to yesterday 00:00:00, you need to subtract current day's hours, minutes, seconds, and then subtract one more day.\n\nWait, current time is, say, 2023-10-05 14:30:00.\n\nTo get yesterday's start (2023-10-04 00:00:00), you need to subtract 1 day and 14 hours, 30 minutes, 0 seconds.\n\nWait, current_ts minus (1 day + 14h30m) = 2023-10-04 00:00:00.\n\nSo:\n\nlowerbound_ts = shift_timestamp(current_ts, days=-1, hours=-current_info.hour, minutes=-current_info.minute, seconds=-current_info.second)\n\nYes.\n\nSo:\n\ncurrent_ts = get_current_timestamp()\n\ncurrent_info = timestamp_to_datetime_info(current_ts)\n\nlowerbound_ts = shift_timestamp(current_ts, days=-1, hours=-current_info.hour, minutes=-current_info.minute, seconds=-current_info.second)\n\n"
+  },
+  {
+    "role": "user",
+    "content": "I think I had a reminder set for something. Do you remember what I needed to look for tickets for yesterday?"
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_jf6eozj0pc7sdt437y4mt6j0",
+        "function": {
+          "arguments": "{}",
+          "name": "get_current_timestamp"
+        },
+        "type": "function"
+      }
+    ]
+  },
+  {
+    "tool_call_id": "call_jf6eozj0pc7sdt437y4mt6j0",
+    "role": "tool",
+    "name": "get_current_timestamp",
+    "content": "1755257398.105288",
+    "tool_details": {
+      "milestone_matches": [
+        {
+          "milestone_index": 0,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "EXECUTION_ENVIRONMENT",
+                    "recipient": "AGENT",
+                    "tool_trace": "{\"tool_name\": \"get_current_timestamp\", \"arguments\": {}}"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 1.0
+        }
+      ]
+    }
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_vr51opy5r7r726335s7tp3qc",
+        "function": {
+          "arguments": "{\"timestamp\": 1755257398.105288}",
+          "name": "timestamp_to_datetime_info"
+        },
+        "type": "function"
+      }
+    ]
+  },
+  {
+    "tool_call_id": "call_vr51opy5r7r726335s7tp3qc",
+    "role": "tool",
+    "name": "timestamp_to_datetime_info",
+    "content": "{'year': 2025, 'month': 8, 'day': 15, 'hour': 7, 'minute': 29, 'second': 58, 'isoweekday': 5}"
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_zi7v7rpz2w78v2hyxkb5bw4l",
+        "function": {
+          "arguments": "{\"days\": -1, \"hours\": -7, \"minutes\": -29, \"seconds\": -58, \"timestamp\": 1755257398.105288}",
+          "name": "shift_timestamp"
+        },
+        "type": "function"
+      }
+    ]
+  },
+  {
+    "tool_call_id": "call_zi7v7rpz2w78v2hyxkb5bw4l",
+    "role": "tool",
+    "name": "shift_timestamp",
+    "content": "1755144000.105288"
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_zvp67f75k96cim02w0amzndh",
+        "function": {
+          "arguments": "{\"hours\": 23, \"minutes\": 59, \"seconds\": 59, \"timestamp\": 1755144000.105288}",
+          "name": "shift_timestamp"
+        },
+        "type": "function"
+      }
+    ]
+  },
+  {
+    "tool_call_id": "call_zvp67f75k96cim02w0amzndh",
+    "role": "tool",
+    "name": "shift_timestamp",
+    "content": "1755230399.105288"
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_zzp01h4kjqdmvd0khgote74r",
+        "function": {
+          "arguments": "{\"content\": \"tickets\", \"reminder_timestamp_lowerbound\": 1755144000.105288, \"reminder_timestamp_upperbound\": 1755230399.105288}",
+          "name": "search_reminder"
+        },
+        "type": "function"
+      }
+    ]
+  },
+  {
+    "tool_call_id": "call_zzp01h4kjqdmvd0khgote74r",
+    "role": "tool",
+    "name": "search_reminder",
+    "content": "[{'reminder_id': '8f5b6fc6-1c25-5467-91ba-d4d1e17c7129', 'content': 'Look for Company SF tickets', 'creation_timestamp': 1754979716.257928, 'reminder_timestamp': 1755152516.257933, 'latitude': None, 'longitude': None}]",
+    "tool_details": {
+      "milestone_matches": [
+        {
+          "milestone_index": 1,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "EXECUTION_ENVIRONMENT",
+                    "recipient": "AGENT",
+                    "tool_trace": "{\"tool_name\": \"search_reminder\", \"arguments\": {}}"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "MESSAGING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "message_id": "column_exact_match_similarity",
+                  "sender_person_id": "column_exact_match_similarity",
+                  "sender_phone_number": "column_exact_match_similarity",
+                  "recipient_person_id": "column_exact_match_similarity",
+                  "recipient_phone_number": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "REMINDER",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "reminder_id": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity",
+                  "reminder_timestamp": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "CONTACT",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "person_id": "column_exact_match_similarity",
+                  "name": "column_exact_match_similarity",
+                  "phone_number": "column_exact_match_similarity",
+                  "relationship": "column_rouge_l_similarity",
+                  "is_self": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "SETTING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "device_id": "column_exact_match_similarity",
+                  "cellular": "column_exact_match_similarity",
+                  "wifi": "column_exact_match_similarity",
+                  "location_service": "column_exact_match_similarity",
+                  "low_battery_mode": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 1.0
+        }
+      ]
+    }
+  },
+  {
+    "role": "assistant",
+    "content": "<think>\nOkay, let's see. The user asked about their todo from yesterday, specifically looking for tickets. I went through the steps to get the timestamp for yesterday's start and end.\n\nFirst, I got the current timestamp, which was 1755257398.105288, corresponding to August 15, 2025, at 7:29:58 AM. Then I converted that to datetime info to find out the current date and time.\n\nNext, I calculated yesterday's start time by shifting the current timestamp back by one day and subtracting the current hour, minute, and second. That gave me 1755144000.105288, which is August 14, 2025, at 00:00:00. Then I shifted that by 23 hours, 59 minutes, and 59 seconds to get the end of yesterday, which is 1755230399.105288 (August 14, 2025, 23:59:59).\n\nUsing those timestamps, I searched for reminders with \"tickets\" in the content that were set for yesterday. The search returned one reminder: \"Look for Company SF tickets\" with a reminder timestamp of 1755152516.257933, which falls within the yesterday range.\n\nSo the answer should be that the user had a reminder to look for Company SF tickets yesterday. I need to present this clearly, confirming the reminder and the date.\n</think>\n\nYour reminder for yesterday (August 14, 2025) was:  \n**\"Look for Company SF tickets\"**  \n\nThis reminder was set to trigger at 12:21:56 PM (UTC) on August 14, 2025. Let me know if you need further details!",
+    "assistant_details": {
+      "milestone_matches": [
+        {
+          "milestone_index": 2,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "AGENT",
+                    "recipient": "USER",
+                    "content": "Your reminder from yesterday says 'Look for Company SF tickets'."
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "AGENT",
+                    "recipient": "USER",
+                    "content": "Look for Company SF tickets"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_contains_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "MESSAGING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 1,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "message_id": "column_exact_match_similarity",
+                  "sender_person_id": "column_exact_match_similarity",
+                  "sender_phone_number": "column_exact_match_similarity",
+                  "recipient_person_id": "column_exact_match_similarity",
+                  "recipient_phone_number": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "REMINDER",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 1,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "reminder_id": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity",
+                  "reminder_timestamp": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "CONTACT",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 1,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "person_id": "column_exact_match_similarity",
+                  "name": "column_exact_match_similarity",
+                  "phone_number": "column_exact_match_similarity",
+                  "relationship": "column_rouge_l_similarity",
+                  "is_self": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "SETTING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 1,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "device_id": "column_exact_match_similarity",
+                  "cellular": "column_exact_match_similarity",
+                  "wifi": "column_exact_match_similarity",
+                  "location_service": "column_exact_match_similarity",
+                  "low_battery_mode": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 0.6320348608387332
+        }
+      ]
+    }
+  }
+]

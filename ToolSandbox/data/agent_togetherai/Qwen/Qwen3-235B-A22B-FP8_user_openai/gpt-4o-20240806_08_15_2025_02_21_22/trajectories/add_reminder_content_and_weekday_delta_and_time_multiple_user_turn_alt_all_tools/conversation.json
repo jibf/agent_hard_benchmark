@@ -1,0 +1,140 @@
+[
+  {
+    "role": "system",
+    "content": "Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous."
+  },
+  {
+    "role": "user",
+    "content": "Add a reminder next Friday 5PM",
+    "user_details": {
+      "milestone_matches": [
+        {
+          "milestone_index": 0,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "EXECUTION_ENVIRONMENT",
+                    "recipient": "AGENT",
+                    "tool_trace": "{\"tool_name\": \"get_current_timestamp\", \"arguments\": {}}"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 0.0
+        },
+        {
+          "milestone_index": 1,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "REMINDER",
+                "snapshot_constraint": "addition_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": [
+                  {
+                    "content": "Buy chocolate milk",
+                    "reminder_timestamp": 1755291600.0
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "reminder_id": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity",
+                  "reminder_timestamp": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "MESSAGING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "message_id": "column_exact_match_similarity",
+                  "sender_person_id": "column_exact_match_similarity",
+                  "sender_phone_number": "column_exact_match_similarity",
+                  "recipient_person_id": "column_exact_match_similarity",
+                  "recipient_phone_number": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "SETTING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "device_id": "column_exact_match_similarity",
+                  "cellular": "column_exact_match_similarity",
+                  "wifi": "column_exact_match_similarity",
+                  "location_service": "column_exact_match_similarity",
+                  "low_battery_mode": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "CONTACT",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "person_id": "column_exact_match_similarity",
+                  "name": "column_exact_match_similarity",
+                  "phone_number": "column_exact_match_similarity",
+                  "relationship": "column_rouge_l_similarity",
+                  "is_self": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "role": "assistant",
+    "content": "<think>\nOkay, the user wants to add a reminder for next Friday at 5 PM. Let me figure out how to do this using the available functions.\n\nFirst, I need to determine the POSIX timestamp for next Friday 5 PM. The user didn't specify a year, so I assume it's the current year. But wait, what if next Friday is in the next year? Hmm, but generally, \"next Friday\" refers to the upcoming one, which would be within the next 7 days.\n\nTo calculate the timestamp, I can use the 'get_current_timestamp' function to get the current time. Then, find out what day of the week it is. The 'timestamp_to_datetime_info' function can give me the current day of the week. Let's say today is Tuesday. Then, next Friday would be 3 days after today. Wait, but maybe there's a more accurate way.\n\nAlternatively, using the 'shift_timestamp' function. If I can determine how many days until next Friday, I can add that to the current timestamp. For example, if today is Wednesday, next Friday is 2 days away. But how to calculate the difference?\n\nAlternatively, maybe the 'datetime_info_to_timestamp' function. If I can get the year, month, day for next Friday, then convert that to a timestamp. But that requires knowing the exact date. Let's think: current timestamp, get the current date, find the next Friday, set the time to 5 PM, then convert that to a timestamp.\n\nSo steps:\n1. Call 'get_current_timestamp' to get current timestamp.\n2. Use 'timestamp_to_datetime_info' to get current date and day of week.\n3. Calculate how many days needed to reach next Friday. For example, if today is Friday, then next Friday is 7 days later. If today is Saturday, next Friday is 6 days later, etc.\n4. Shift the current timestamp by the calculated days, then set the hour to 17 (5 PM), minutes and seconds to 0.\n5. Then call 'add_reminder' with the calculated timestamp and content.\n\nWait, but how to handle the time part? The shift_timestamp can handle days, but then setting the time to 5 PM. Alternatively, after shifting days, adjust the hours, minutes, seconds.\n\nAlternatively, after getting the date for next Friday, set the time to 5 PM, then convert that date and time to a timestamp.\n\nBut how to calculate the date for next Friday?\n\nAlternatively, using the 'shift_timestamp' function. For example, if today is Wednesday, then next Friday is 2 days away. So shift by 2 days. But how to find that programmatically?\n\nThis seems a bit involved. Let's think about the functions available. The 'search_holiday' function isn't relevant here. The 'shift_timestamp' can add days, weeks, etc. The 'timestamp_to_datetime_info' gives the current day of the week.\n\nSo here's a plan:\n\n1. Get current timestamp with 'get_current_timestamp'.\n2. Convert that to datetime info to know the current day of the week (isoweekday: 1=Monday, 7=Sunday).\n3. Calculate how many days until next Friday. For example, if current day is 3 (Wednesday), next Friday is 2 days away. If current day is 5 (Friday), next Friday is 7 days away. If current day is 6 (Saturday), next Friday is 6 days away. The formula would be (5 - current_day) if current_day < 5, else (5 - current_day + 7). Wait, let's see:\n\nWait, isoweekday for Friday is 5. So:\n\ncurrent_day | days_until_next_friday\n1 (Mon) → 4 (Fri is 5, so 5-1=4)\n2 (Tue) → 3\n3 (Wed) →2\n4 (Thu) →1\n5 (Fri) →7 (since next Fri is next week)\n6 (Sat) →6 (since next Fri is 6 days after Sat)\n7 (Sun) →5 (Fri is 5 days after Sun)\n\nWait, this seems a bit off. Let me think again.\n\nThe next Friday is the first Friday after today. So:\n\nIf today is Friday, then next Friday is 7 days later.\n\nIf today is Saturday, next Friday is 6 days later.\n\nIf today is Sunday, next Friday is 5 days later.\n\nIf today is Monday, next Friday is 4 days later.\n\nWait, no. Let's count days:\n\nMonday → next Friday is 4 days (Tue, Wed, Thu, Fri)\nWait, no. Wait, from Monday, the next Friday is in 4 days (since Tue +1, Wed +2, Thu +3, Fri +4).\n\nWait, no: from Monday, Friday is 4 days ahead (days 1 (Mon), 2 (Tue), 3 (Wed), 4 (Thu), 5 (Fri). So from Monday (1), Friday is 4 days ahead.\n\nSimilarly:\n\nTuesday: 3 days (Wed, Thu, Fri)\nWednesday: 2 days (Thu, Fri)\nThursday: 1 day\nFriday: 7 days (since next Friday is in a week)\nSaturday: 6 days (Sun, Mon, Tue, Wed, Thu, Fri)\nSunday:5 days (Mon, Tue, Wed, Thu, Fri)\n\nSo the formula would be:\n\nif current_day < 5: days_until = 5 - current_day\nif current_day >=5: days_until = 5 - current_day +7\n\nFor example:\n\ncurrent_day 5 (Fri): days_until = 5-5 +7=7\ncurrent_day 6 (Sat): days_until =5-6+7=6\ncurrent_day 7 (Sun): days_until=5-7+7=5\n\nYes, that works.\n\nSo once I get the current_day, calculate days_until_next_friday.\n\nThen, shift the current timestamp by days_until days, then set the time to 5 PM.\n\nBut how to set the time to 5 PM?\n\nWell, the shift_timestamp function can add days, but also hours, minutes, etc. So perhaps after shifting by days_until days, we can add 17 hours (since 5 PM is 17:00), but wait, the current time might have hours, minutes, seconds. But since we want to set it to exactly 5 PM, we need to reset the time to 17:00:00.\n\nBut how to do that? Let's think:\n\nAfter shifting days_until days, the timestamp would be at the same time as the current time. So then we need to adjust the time to 17:00:00.\n\nBut how to calculate that? Maybe using the 'timestamp_to_datetime_info' again after shifting, then using 'datetime_info_to_timestamp' with the desired time.\n\nAlternatively, perhaps the following steps:\n\n1. Get current timestamp (call 'get_current_timestamp').\n2. Convert to datetime info (call 'timestamp_to_datetime_info' with current timestamp) to get current year, month, day, hour, minute, second, and isoweekday.\n3. Calculate days_until_next_friday as above.\n4. Shift the current timestamp by days_until days (using 'shift_timestamp' with days=days_until, and zero for other fields).\n5. Then, convert that shifted timestamp to datetime info again to get the new date (year, month, day), then create a new timestamp with that date at 17:00:00.\n\nWait, but how to set the time to 17:00:00. So after shifting to the correct day, we need to adjust the time.\n\nAlternatively, take the shifted timestamp (which is at the same time as current time but days_until days later), then subtract the current hours, minutes, seconds, and add 17 hours, 0 minutes, 0 seconds.\n\nBut this might be complicated.\n\nAlternatively, using the 'datetime_info_to_timestamp' function. After determining the correct date (current date + days_until days), set the hour to 17, minute 0, second 0, then convert that to timestamp.\n\nSo:\n\nAfter step 2, we have current_year, current_month, current_day, current_hour, current_minute, current_second, current_isoweekday.\n\nAfter days_until is calculated, add days_until to current_day to get the target date. But need to handle month and year changes. However, adding days to a date and getting the correct date is non-trivial. But the 'shift_timestamp' function can handle that. So:\n\nCall 'shift_timestamp' with current timestamp, days=days_until, and set hours, minutes, seconds to 17,0,0?\n\nWait, no. Because the 'shift_timestamp' function shifts the timestamp by the given deltas. So if the current timestamp is at, say, 10:00 AM, and we shift by days_until days, the result would be that same time (AM/PM) on the new day. To set it to 5 PM, we need to add (17 - current_hour) hours, plus (0 - current_minute) minutes, etc. But that's error-prone if current_hour is greater than 17.\n\nAlternatively, perhaps the best approach is:\n\n1. Get current timestamp (call get_current_timestamp).\n2. Convert to datetime info (call timestamp_to_datetime_info) to get year, month, day, hour, minute, second, isoweekday.\n3. Calculate days_until_next_friday as before.\n4. Shift the current timestamp by days_until days, and then adjust the time to 17:00:00.\n\nBut"
+  }
+]

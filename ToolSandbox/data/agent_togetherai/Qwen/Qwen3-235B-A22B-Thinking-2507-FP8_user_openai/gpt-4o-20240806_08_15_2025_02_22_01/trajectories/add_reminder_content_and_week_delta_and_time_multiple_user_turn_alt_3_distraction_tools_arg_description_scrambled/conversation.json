@@ -1,0 +1,140 @@
+[
+  {
+    "role": "system",
+    "content": "Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous."
+  },
+  {
+    "role": "user",
+    "content": "Add a reminder for tomorrow 5PM",
+    "user_details": {
+      "milestone_matches": [
+        {
+          "milestone_index": 0,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "EXECUTION_ENVIRONMENT",
+                    "recipient": "AGENT",
+                    "tool_trace": "{\"tool_name\": \"get_current_timestamp\", \"arguments\": {}}"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 0.0
+        },
+        {
+          "milestone_index": 1,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "REMINDER",
+                "snapshot_constraint": "addition_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": [
+                  {
+                    "content": "Buy chocolate milk",
+                    "reminder_timestamp": 1755378000.0
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "reminder_id": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity",
+                  "reminder_timestamp": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "MESSAGING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "message_id": "column_exact_match_similarity",
+                  "sender_person_id": "column_exact_match_similarity",
+                  "sender_phone_number": "column_exact_match_similarity",
+                  "recipient_person_id": "column_exact_match_similarity",
+                  "recipient_phone_number": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "CONTACT",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "person_id": "column_exact_match_similarity",
+                  "name": "column_exact_match_similarity",
+                  "phone_number": "column_exact_match_similarity",
+                  "relationship": "column_rouge_l_similarity",
+                  "is_self": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "SETTING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "device_id": "column_exact_match_similarity",
+                  "cellular": "column_exact_match_similarity",
+                  "wifi": "column_exact_match_similarity",
+                  "location_service": "column_exact_match_similarity",
+                  "low_battery_mode": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "role": "assistant",
+    "content": "<think>\nOkay, the user wants to add a reminder for tomorrow at 5 PM. Let me break this down.\n\nFirst, I need to figure out the POSIX timestamp for tomorrow at 5 PM. But wait, tomorrow relative to when? Since the user didn't specify a date, I should probably use the current date as a reference. So I need the current timestamp first.\n\nI can call get_current_timestamp to get the current time. Then, I need to calculate tomorrow at 5 PM. But how?\n\nWait, maybe I should use datetime_info_to_timestamp. But to do that, I need the year, month, day, hour, etc. Alternatively, maybe get the current timestamp, then shift it by one day and set the time to 17:00 (5 PM). Hmm.\n\nWait, the get_current_timestamp gives the current time. Then, I can use shift_timestamp to add one day. But the user said \"tomorrow 5PM\", which is 17:00. However, shifting the current timestamp by one day would give the same time tomorrow. But if it's currently 6 PM, then adding one day would be 6 PM tomorrow, but the user wants 5 PM. So that approach might not work.\n\nAlternatively, maybe I need to calculate tomorrow's date at 5 PM. Let's think: get current date and time, take tomorrow's date (current day +1), set the time to 17:00:00. But how to get tomorrow's date?\n\nWait, perhaps first get the current timestamp, then convert it to datetime info to get the current year, month, day, etc. Then add one day to the day, but handle month/year rollover. But that's complicated. Maybe there's a better way.\n\nAlternatively, use shift_timestamp on the current timestamp to add one day, but then adjust the time to 5 PM. Wait, but shifting by one day would keep the same hour. So if it's 3 PM now, adding one day would be 3 PM tomorrow. But the user wants 5 PM, so maybe shift the current timestamp by (24 hours + 2 hours) if current time is 3 PM. But this depends on current time, which varies.\n\nHmm, perhaps the correct approach is:\n\n1. Get current timestamp (call get_current_timestamp).\n2. Convert that timestamp to datetime info (timestamp_to_datetime_info) to get current year, month, day, hour, etc.\n3. Calculate tomorrow's date: current day +1. But need to handle month changes (e.g., 31st of a month).\n4. Set the time to 17:00:00 for that date.\n5. Convert that datetime info to a timestamp using datetime_info_to_timestamp.\n\nBut the problem is, the tools don't have a function to add days directly. Wait, there's shift_timestamp which can shift by days, weeks, etc. So maybe:\n\n- Get current timestamp.\n- Shift it by 1 day to get same time tomorrow.\n- Then adjust the hour to 17:00. Wait, but shifting by days won't let me set the exact hour.\n\nAlternatively, get current timestamp, shift by 1 day, then subtract the current hour and minute and second, then add 17 hours. But this might be error-prone.\n\nWait, perhaps a better way: get the current timestamp, convert to datetime info. Then create a new datetime for tomorrow at 17:00. For example, if today is 2023-10-05, then tomorrow is 2023-10-06 17:00:00. So:\n\n- Get current datetime info.\n- Increment day by 1. If day exceeds days in month, increment month, etc.\n- Set hour to 17, minute to 0, second to 0.\n- Convert that to timestamp.\n\nBut the tools don't have a function to do date arithmetic, so I need to use the available functions.\n\nWait, the available functions include shift_timestamp, which can shift by days, hours, etc. So:\n\nSuppose current time is 2023-10-05 14:30:00. To get tomorrow 17:00:00, we can:\n\n- Shift current timestamp by 1 day: 2023-10-06 14:30:00\n- Then shift by +2 hours and +30 minutes to reach 17:00:00.\n\nBut that depends on the current time. However, the user just says \"tomorrow 5PM\", which is a fixed time, regardless of current time.\n\nWait, perhaps the correct approach is to take today's date, add one day, set time to 17:00:00. So regardless of current time, tomorrow at 5 PM.\n\nSo steps:\n\n1. Get current timestamp (to know today's date).\n2. Convert to datetime info to get year, month, day.\n3. Add 1 to day, handling month/year rollover.\n4. Set hour=17, minute=0, second=0.\n5. Convert that to timestamp.\n\nBut since the tools don't have a function to add days directly, but there's shift_timestamp which can shift by days. Wait, shift_timestamp can take days as a parameter. So:\n\n- Get current timestamp (T).\n- Shift T by 1 day to get T + 86400 seconds (assuming no DST).\n- Then, adjust the time to 17:00:00. Wait, but shifting by 1 day gives same time tomorrow. So if current time is 10 AM, shifting gives 10 AM tomorrow. But we need 5 PM tomorrow. So we need to calculate the difference between 10 AM and 5 PM (7 hours) and add that.\n\nBut this approach depends on current time, which varies. So the correct way is to set the exact datetime for tomorrow at 5 PM.\n\nAlternative approach:\n\nUse datetime_info_to_timestamp with the correct values. To get tomorrow's date:\n\n- Get current datetime info (year, month, day, etc.).\n- Add 1 to day. If day exceeds the number of days in the month, increment month, etc.\n- Set hour=17, minute=0, second=0.\n- Convert to timestamp.\n\nBut how to handle the day increment? Since the tools don't have a function for that, perhaps the safest way is to:\n\n1. Get current timestamp.\n2. Shift it by 1 day (using shift_timestamp with days=1).\n3. Convert that shifted timestamp to datetime info (using timestamp_to_datetime_info).\n4. Then create a new datetime info with hour=17, minute=0, second=0.\n5. Convert that back to timestamp.\n\nWait, but shifting by 1 day gives the same time tomorrow. So if current time is 3 PM, shifting gives 3 PM tomorrow. Then, to get 5 PM, we need to add 2 hours. But the user said \"tomorrow 5PM\", which is a fixed time, not relative to current time.\n\nWait, no. \"Tomorrow 5PM\" is a specific time: the 5PM of the next day, regardless of current time. So if today is Monday, it's Tuesday 5PM.\n\nSo regardless of what time it is now, the reminder should be set for 17:00:00 of the next day.\n\nSo steps:\n\n- Get current timestamp.\n- Convert to datetime info to get today's date (year, month, day).\n- Add 1 to day to get tomorrow's date.\n- Set time to 17:00:00.\n- Convert that to timestamp.\n\nBut how to add 1 to the day, considering month/year changes? For example, if today is Jan 31, tomorrow is Feb 1.\n\nSince the tools don't have a function to handle date arithmetic, but shift_timestamp can shift by days, perhaps the correct way is:\n\n- Get current timestamp (T).\n- Shift T by 1 day (using shift_timestamp with days=1) to get T + 86400 seconds. This gives the same time tomorrow.\n- Then, use timestamp_to_datetime_info on the shifted timestamp to get the datetime components (year, month, day, hour, etc.).\n- Then, create a new datetime with hour=17, minute=0, second=0.\n- Convert that new datetime to timestamp using datetime_info_to_timestamp.\n\nWait, but the shifted timestamp's hour is the same as current hour. So if current time is 14:30, shifted is 14:30 tomorrow. Then, to set it to 17:00, we need to adjust the hour.\n\nBut how? Let's see:\n\nAfter shifting by 1 day, we have a timestamp for tomorrow at current hour. Then, we need to set the hour to 17. So:\n\n- Get the shifted timestamp (same time tomorrow).\n- Convert to datetime info to get year, month, day, etc.\n- Change hour to 17, minute to 0, second to 0.\n- Convert back to timestamp.\n\nYes, that should work.\n\nSo the steps would be:\n\n1. Call get_current_timestamp to get current time.\n2. Call shift_timestamp with days=1 to get same time tomorrow.\n3. Call timestamp_to_datetime_info on the shifted timestamp to get its components.\n4. Modify the hour to 17, minute and second to 0.\n5. Call datetime_info_to_timestamp with the modified components.\n\nBut wait, the user might be in a timezone where DST affects"
+  }
+]

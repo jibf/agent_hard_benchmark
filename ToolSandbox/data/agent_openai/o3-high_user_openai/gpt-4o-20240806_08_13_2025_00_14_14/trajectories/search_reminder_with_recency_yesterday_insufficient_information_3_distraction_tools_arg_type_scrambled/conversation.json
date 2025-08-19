@@ -1,0 +1,166 @@
+[
+  {
+    "role": "system",
+    "content": "Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous."
+  },
+  {
+    "role": "user",
+    "content": "What's on my reminder yesterday?"
+  },
+  {
+    "role": "assistant",
+    "content": "Sure—do you want to see:\n\n1. Reminders that were scheduled to go off yesterday, or  \n2. Reminders that you created yesterday?\n\nAlso, which time zone should I use when figuring out “yesterday”?"
+  },
+  {
+    "role": "user",
+    "content": "I want to see reminders that were scheduled to go off yesterday. Not sure what time zone, let's just go with the one my phone's in."
+  },
+  {
+    "role": "assistant",
+    "content": "Could you let me know the time zone your phone is set to (e.g., “America/Los_Angeles,” “UTC+1,” etc.)? That way I can correctly figure out what counted as “yesterday” and pull the right reminders for you."
+  },
+  {
+    "role": "user",
+    "content": "I'm not sure about the time zone it's set to. Can you still figure it out?"
+  },
+  {
+    "role": "assistant",
+    "content": "I don’t automatically know your phone’s time-zone, but we can still pin it down pretty easily. Pick whichever of these is simpler for you:\n\n• Tell me roughly where you are (city/region), or  \n• Tell me the exact local time showing on your phone right now.\n\nEither one will let me figure out the offset so I can locate the reminders that were due “yesterday” in your local time."
+  },
+  {
+    "role": "user",
+    "content": "Right now it's 3:00 PM for me."
+  },
+  {
+    "role": "assistant",
+    "content": "I still need just a bit more information to pinpoint what “yesterday” was for you. Could you tell me either …\n\n• The city/region you’re currently in, or  \n• The full local date you see on your phone right now (e.g., “It’s Tuesday, 17 October 2023, 3:00 PM”)?\n\nEither one will let me determine your time-zone offset and fetch the reminders that were scheduled for yesterday in your local time."
+  },
+  {
+    "role": "user",
+    "content": "It says it's Wednesday, October 18, 2023, 3:00 PM."
+  },
+  {
+    "role": "assistant",
+    "content": "I’m nearly there—I just need to know how far your phone’s clock is from UTC so I can translate “yesterday” into exact timestamps.\n\nCould you check whether your phone shows something like:\n• a time-zone abbreviation (“EDT,” “PDT,” “BST,” “IST,” etc.), or  \n• an offset such as “GMT+2,” “UTC-5,” and let me know?\n\nYou can usually see this in the Clock app or in Settings ➜ Date & Time. Either the abbreviation or the “UTC ± number” will let me pull the right reminders."
+  },
+  {
+    "role": "user",
+    "content": "I don't see any time zone info or offset details. Can you still try to get the reminders?"
+  },
+  {
+    "role": "assistant",
+    "content": "I’m happy to take a best-effort shot, but I still need to know what 24-hour span counts as “yesterday” for you.  \nWithout a time-zone or offset I have two options:\n\n1) Use a broad catch-all window that covers 17 Oct 2023 in every time-zone on Earth (roughly 10 Oct 16 2023 10:00 UTC to 18 Oct 2023 12:00 UTC).  \n   • Pros: no extra info needed from you.  \n   • Cons: if you have lots of reminders it may pull in items that weren’t really “yesterday” for you.\n\n2) Narrow it down with even a rough clue—city/region, or an offset guess like “maybe around UTC-5.”  \n   • Pros: results will be precise.  \n   • Cons: needs that tiny bit of extra info.\n\nWhich way would you like me to go?"
+  },
+  {
+    "role": "user",
+    "content": "Let's try the catch-all window option."
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_5HitG5pHm3KUT0VPyEzrkQXv",
+        "function": {
+          "arguments": "{\"year\": 2023, \"month\": 10, \"day\": 16, \"hour\": 10, \"minute\": 0, \"second\": 0}",
+          "name": "datetime_info_to_timestamp"
+        },
+        "type": "function"
+      }
+    ]
+  },
+  {
+    "tool_call_id": "call_5HitG5pHm3KUT0VPyEzrkQXv",
+    "role": "tool",
+    "name": "datetime_info_to_timestamp",
+    "content": "1697464800.0"
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_qeO82tzTKNSSdvLMRRNHxtX2",
+        "function": {
+          "arguments": "{\"year\": 2023, \"month\": 10, \"day\": 18, \"hour\": 12, \"minute\": 0, \"second\": 0}",
+          "name": "datetime_info_to_timestamp"
+        },
+        "type": "function"
+      }
+    ]
+  },
+  {
+    "tool_call_id": "call_qeO82tzTKNSSdvLMRRNHxtX2",
+    "role": "tool",
+    "name": "datetime_info_to_timestamp",
+    "content": "1697644800.0"
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_4tyEe2BA1EAXnXUbDKVIg81H",
+        "function": {
+          "arguments": "{\"reminder_timestamp_lowerbound\": 1697464800.0, \"reminder_timestamp_upperbound\": 1697644800.0}",
+          "name": "search_reminder"
+        },
+        "type": "function"
+      }
+    ]
+  },
+  {
+    "tool_call_id": "call_4tyEe2BA1EAXnXUbDKVIg81H",
+    "role": "tool",
+    "name": "search_reminder",
+    "content": "[]",
+    "tool_details": {
+      "minefield_matches": [
+        {
+          "minefield_index": 0,
+          "minefield": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "EXECUTION_ENVIRONMENT",
+                    "recipient": "AGENT",
+                    "tool_trace": "[{\"tool_name\": \"search_reminder\", \"arguments\": {\"reminder_timestamp_lowerbound\": 0}}, {\"tool_name\": \"search_reminder\", \"arguments\": {\"reminder_timestamp_upperbound\": 0}}, {\"tool_name\": \"search_reminder\", \"arguments\": {\"reminder_timestamp_lowerbound\": 0, \"reminder_timestamp_upperbound\": 0}}]"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "minefield_similarity": 1.0
+        }
+      ]
+    }
+  },
+  {
+    "role": "assistant",
+    "content": "I searched using a broad “catch-all” window that would encompass any reminder scheduled to go off at any time on 17 Oct 2023 in every time zone (from 16 Oct 2023 10:00 UTC to 18 Oct 2023 12:00 UTC). No reminders in your list match that window, so it looks like nothing was set to trigger yesterday.\n\nIf you think there should be something there, let me know—perhaps we can try a different date range or look for reminders created yesterday instead."
+  }
+]

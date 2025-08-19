@@ -1,0 +1,483 @@
+[
+  {
+    "role": "system",
+    "content": "Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous."
+  },
+  {
+    "role": "user",
+    "content": "I need to change someone's phone number"
+  },
+  {
+    "role": "assistant",
+    "content": "<think>\nOkay, the user wants to change someone's phone number. Let me see what tools I have.\n\nFirst, there's the modify_contact function. It requires a person_id. But the user didn't provide a person_id. They just said \"change someone's phone number.\" Hmm, so I need to figure out which contact they're referring to.\n\nMaybe I should check if there's a way to search for the contact first. The search_contacts function can help find the person_id based on name, phone number, etc. But the user hasn't given enough details yet. They didn't specify the name or old phone number.\n\nWait, the user's message is a bit vague. They need to provide more information to identify the contact. Without knowing which contact to modify, I can't call modify_contact directly. So I should ask for clarification. What's the name of the person whose number they want to change? Or maybe their current phone number?\n\nAlternatively, maybe they have the person_id already, but they didn't mention it. But since the user is probably not familiar with internal IDs, it's more likely they know the name or old number.\n\nSo the correct step here is to prompt the user for more details: the name or existing phone number of the contact they want to update. That way, I can use search_contacts to find the person_id and then proceed with modify_contact.\n\nI can't assume any values, so I shouldn't guess the person_id. The tools require person_id for modify_contact, which the user hasn't provided. Therefore, I need to ask for more information before proceeding.\n</think>\n\nTo update a contact's phone number, I'll need to identify the specific contact first. Could you please provide either:\n- The contact's name, or\n- Their current phone number\n\nThis will help me locate the correct contact record for modification."
+  },
+  {
+    "role": "user",
+    "content": "I really don't know who the person is."
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_pa0vf3vnxwpg17qb9ahggkz6",
+        "function": {
+          "arguments": "{}",
+          "name": "search_contacts"
+        },
+        "type": "function"
+      }
+    ]
+  },
+  {
+    "tool_call_id": "call_pa0vf3vnxwpg17qb9ahggkz6",
+    "role": "tool",
+    "name": "search_contacts",
+    "content": "ValueError: No search criteria are given. At least one search criteria should be provided among ('person_id', 'name', 'phone_number', 'relationship', 'is_self')"
+  },
+  {
+    "role": "assistant",
+    "content": "<think>\nOkay, the user said they need to change someone's phone number but don't know who the person is. So first, I tried to search contacts without any criteria, which caused an error because the function requires at least one search parameter.\n\nNow, I need to figure out how to proceed. The user doesn't have the person's name or phone number, which are the usual ways to find a contact. Maybe they can provide more details, like a partial name or some other info. Wait, the search_contacts function allows fuzzy matching on name and relationship. But without any input, I can't do that.\n\nThe error message says at least one search criteria is needed. Since the user doesn't know who it is, perhaps they need to list all contacts? But the function doesn't have a way to list all; it requires specific criteria. Hmm.\n\nWait, maybe the user is the contact they want to change? The 'is_self' parameter could be used. If they set is_self=True, it would find their own contact. But the user hasn't mentioned that. Let me check the tools again.\n\nLooking at search_contacts parameters: 'is_self' is a boolean that's exact matched. If the user wants to update their own number, they could use is_self=True. But the user hasn't specified that. However, since they don't know who the person is, maybe it's their own contact? Or maybe they need to search for all contacts, but the function doesn't support that.\n\nWait, the required fields for search_contacts are none, but the error says at least one is needed. So the function requires at least one parameter. Since the user can't provide name or phone, maybe ask if they want to search for their own contact using is_self=True. That's a possible approach.\n\nSo the next step is to prompt the user to confirm if they want to update their own contact information. If yes, then call search_contacts with is_self=True. Otherwise, they need to provide more details. Let me check the modify_contact function requires person_id, so first find the contact via search, get the person_id, then modify.\n\nSo the correct step now is to ask the user if they're trying to update their own phone number. If yes, proceed with is_self=True. Otherwise, they need to give more info. Since the user said \"I really don't know who the person is,\" maybe it's their own contact they're trying to change, but they're not sure. So suggesting that option makes sense.\n</think>\n\nSince you're unsure who the contact is, let's check if you're trying to update **your own** contact information. Many people accidentally try to modify their own number when setting up new devices.\n\nWould you like to:\n1. Search for **your own contact record** (to update your personal number), or  \n2. Try to find a contact using partial details you might remember (like a first name or partial number)?\n\n<function_call>\n{\"name\": \"search_contacts\", \"arguments\": {\"is_self\": true}}\n</function_call>"
+  },
+  {
+    "role": "user",
+    "content": "I actually don't need to update my own contact info."
+  },
+  {
+    "role": "assistant",
+    "content": "<think>\nOkay, the user said they don't need to update their own contact info. So the previous step where I suggested searching for their own contact (is_self: true) isn't the right path.\n\nThey initially wanted to change someone's phone number but didn't know who the person is. Then when I tried to search without criteria, there was an error. Now, after they clarified it's not their own info, I need another approach.\n\nHmm, the user doesn't know the person's details. But to modify a contact, we need to identify them first. The problem is they don't have any info. Maybe they have some partial details they can recall?\n\nWait, the user might not remember the name or number, but maybe they can provide some fuzzy info. The search_contacts function allows fuzzy matching on name and relationship. So perhaps I should ask them to provide any partial information they might have, like a first name, part of a phone number, or relationship (like \"friend\" or \"work\").\n\nAlternatively, maybe they can check recent messages to find the contact. But the tools available include search_messages, which could help find contacts via message history. However, the user hasn't mentioned messages yet.\n\nWait, the user's main goal is to change a phone number but they don't know who the contact is. Without any identifying info, it's impossible to proceed. So the next step is to prompt them for any possible details they might have, even if it's incomplete.\n\nSo, I should ask them to provide any partial information they remember, like a first name, part of the phone number, or relationship. That way, we can use the search_contacts function with those partial details to find the contact.\n\nLet me check the tools again. The search_contacts function can take name (fuzzy), phone_number (exact), relationship (fuzzy), etc. So even if they have a partial name or relationship, we can search.\n\nTherefore, the correct response is to ask for any partial details they can recall to narrow down the search.\n</think>\n\nTo locate the correct contact for modification, I'll need **any partial information** you might recall. For example:  \n- A first name or nickname (e.g., \"Alex\" instead of full name)  \n- A fragment of the phone number (e.g., \"555\" or \"last 4 digits\")  \n- A relationship hint (e.g., \"dentist\", \"Sarah's brother\")  \n\nCould you share **any details**, even if incomplete? This will help narrow down the search."
+  },
+  {
+    "role": "user",
+    "content": "I really don't have any info at all."
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_hadbd1bhmvurxrunsm4avpx8",
+        "function": {
+          "arguments": "{}",
+          "name": "get_current_timestamp"
+        },
+        "type": "function"
+      }
+    ]
+  },
+  {
+    "tool_call_id": "call_hadbd1bhmvurxrunsm4avpx8",
+    "role": "tool",
+    "name": "get_current_timestamp",
+    "content": "1755245818.052939",
+    "tool_details": {
+      "milestone_matches": [
+        {
+          "milestone_index": 0,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "EXECUTION_ENVIRONMENT",
+                    "recipient": "AGENT",
+                    "tool_trace": "{\"tool_name\": \"get_current_timestamp\", \"arguments\": {}}"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 1.0
+        },
+        {
+          "milestone_index": 1,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "EXECUTION_ENVIRONMENT",
+                    "recipient": "AGENT",
+                    "tool_trace": "{\"tool_name\": \"search_contacts\", \"arguments\": {}}"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 0.0
+        },
+        {
+          "milestone_index": 2,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "EXECUTION_ENVIRONMENT",
+                    "recipient": "AGENT",
+                    "tool_trace": "{\"tool_name\": \"search_messages\", \"arguments\": {}}"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "MESSAGING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "message_id": "column_exact_match_similarity",
+                  "sender_person_id": "column_exact_match_similarity",
+                  "sender_phone_number": "column_exact_match_similarity",
+                  "recipient_person_id": "column_exact_match_similarity",
+                  "recipient_phone_number": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "REMINDER",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "reminder_id": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity",
+                  "reminder_timestamp": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "CONTACT",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "person_id": "column_exact_match_similarity",
+                  "name": "column_exact_match_similarity",
+                  "phone_number": "column_exact_match_similarity",
+                  "relationship": "column_rouge_l_similarity",
+                  "is_self": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "SETTING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 0,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "device_id": "column_exact_match_similarity",
+                  "cellular": "column_exact_match_similarity",
+                  "wifi": "column_exact_match_similarity",
+                  "location_service": "column_exact_match_similarity",
+                  "low_battery_mode": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 0.0
+        },
+        {
+          "milestone_index": 3,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "CONTACT",
+                "snapshot_constraint": "update_similarity",
+                "reference_milestone_node_index": 2,
+                "target_dataframe": [
+                  {
+                    "person_id": "e3570ab6-0819-5032-be1e-2b366390c8ef",
+                    "phone_number": "+10293847563"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "person_id": "column_exact_match_similarity",
+                  "name": "column_exact_match_similarity",
+                  "phone_number": "column_exact_match_similarity",
+                  "relationship": "column_rouge_l_similarity",
+                  "is_self": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "MESSAGING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 2,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "message_id": "column_exact_match_similarity",
+                  "sender_person_id": "column_exact_match_similarity",
+                  "sender_phone_number": "column_exact_match_similarity",
+                  "recipient_person_id": "column_exact_match_similarity",
+                  "recipient_phone_number": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "REMINDER",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 2,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "reminder_id": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity",
+                  "reminder_timestamp": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "SETTING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 2,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "device_id": "column_exact_match_similarity",
+                  "cellular": "column_exact_match_similarity",
+                  "wifi": "column_exact_match_similarity",
+                  "location_service": "column_exact_match_similarity",
+                  "low_battery_mode": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "role": "assistant",
+    "content": "<think>\nOkay, let me try to figure out how to handle this. The user wants to change someone's phone number but doesn't have any information about the contact. They've already said they don't know who the person is and don't have any details like name, number, or relationship.\n\nFirst, I tried to search contacts without any criteria, but that threw an error because the function requires at least one search parameter. Then, I suggested checking if it's their own contact, but they said no. Next, I asked for partial info, but they still don't have anything.\n\nNow, I called get_current_timestamp. Why did I do that? Maybe to get the current time for some reason. But how does that help with finding a contact? The user isn't providing any details, so maybe I'm trying to use another approach.\n\nWait, maybe the timestamp is part of a different strategy. Like, if they can't find the contact through search, perhaps they need to look at recent messages to infer the contact? But the user hasn't mentioned messages. The tools available include search_messages, which can look up messages by sender or recipient details.\n\nHmm, but without any info, even searching messages would be hard. Unless... maybe if we get the current timestamp, we can use it to search for recent messages and see if any contacts are associated. But the user hasn't mentioned messages, so this might be a stretch.\n\nWait, the user's last message was \"I really don't have any info at all.\" So they can't provide any details. The system tried to get the current timestamp, maybe to use in a timestamp_diff or something else. But how does that relate to updating a contact?\n\nAlternatively, maybe the assistant is trying to calculate something with the timestamp, but without any other data points, it's unclear. The user's problem is about modifying a contact's phone number without any identifying info. The core issue is that without any criteria, the system can't locate the contact to modify.\n\nSince all search parameters are optional but at least one is required, and the user has none, perhaps the only option is to inform them that it's impossible without any details. But the assistant is trying to find a workaround.\n\nWait, maybe the get_current_timestamp was a mistake. The previous step was the user saying they don't have any info, so the assistant called get_current_timestamp. But why? Maybe to use in another function, like timestamp_diff, but without another timestamp, that's not helpful.\n\nAlternatively, maybe the assistant is trying to check if there's a way to list all contacts, but the search_contacts function requires at least one parameter. If the user has no info, the only possible parameter might be is_self, but they already said it's not their own contact.\n\nWait, the search_contacts function's required fields are none, but the error said at least one is needed. So the function requires at least one of the parameters. Since the user can't provide any, maybe the system is stuck.\n\nBut the assistant called get_current_timestamp. Maybe they're trying to use the current time to infer something else, but I don't see the connection. Maybe it's a red herring.\n\nThe correct path here is probably to inform the user that without any information, it's impossible to locate and modify the contact. But the assistant is trying to use tools to find a way. However, given the constraints, there's no function that can list all contacts without criteria.\n\nWait, the search_contacts function's required is an empty list, but the error message says \"No search criteria are given. At least one search criteria should be provided...\" So even though required is empty, the function enforces that at least one parameter must be provided. Therefore, without any parameters, it's invalid.\n\nSo, the user can't proceed without any info. The assistant's last move was to get the current timestamp, but that doesn't help. Maybe the next step is to realize that and tell the user they need to provide at least some info, or that it's not possible.\n\nBut the user keeps saying they have no info. So the assistant should explain that without any details, the system can't find the contact to update. Maybe suggest checking other sources or that it's impossible.\n</think>\n\nWithout any identifying information (name, number, relationship, etc.), it's **impossible to locate or modify a specific contact** in the system. The tools require at least one search criterion to proceed, and no valid defaults exist for ambiguous requests.\n\n### Next Steps:\n1. **Double-check your device/address book** for any partial details (e.g., a saved nickname, old number fragment).\n2. If this is for a **new contact**, use `add_contact` instead of modifying an existing one.\n3. If you’re unsure whether the contact exists, you’ll need to gather at least one identifying detail before proceeding.\n\nWould you like to try adding a **new contact** instead?",
+    "assistant_details": {
+      "milestone_matches": [
+        {
+          "milestone_index": 4,
+          "milestone": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "AGENT",
+                    "recipient": "USER",
+                    "content": "Homer S's phone number has been updated to +10293847563."
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "MESSAGING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 1,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "message_id": "column_exact_match_similarity",
+                  "sender_person_id": "column_exact_match_similarity",
+                  "sender_phone_number": "column_exact_match_similarity",
+                  "recipient_person_id": "column_exact_match_similarity",
+                  "recipient_phone_number": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "REMINDER",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 1,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "reminder_id": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity",
+                  "reminder_timestamp": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "SETTING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 1,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "device_id": "column_exact_match_similarity",
+                  "cellular": "column_exact_match_similarity",
+                  "wifi": "column_exact_match_similarity",
+                  "location_service": "column_exact_match_similarity",
+                  "low_battery_mode": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "MESSAGING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 3,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "message_id": "column_exact_match_similarity",
+                  "sender_person_id": "column_exact_match_similarity",
+                  "sender_phone_number": "column_exact_match_similarity",
+                  "recipient_person_id": "column_exact_match_similarity",
+                  "recipient_phone_number": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "REMINDER",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 3,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "reminder_id": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "creation_timestamp": "column_exact_match_similarity",
+                  "reminder_timestamp": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              },
+              {
+                "database_namespace": "SETTING",
+                "snapshot_constraint": "guardrail_similarity",
+                "reference_milestone_node_index": 3,
+                "target_dataframe": null,
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "device_id": "column_exact_match_similarity",
+                  "cellular": "column_exact_match_similarity",
+                  "wifi": "column_exact_match_similarity",
+                  "location_service": "column_exact_match_similarity",
+                  "low_battery_mode": "column_exact_match_similarity",
+                  "latitude": "column_exact_match_similarity",
+                  "longitude": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "milestone_similarity": 0.2516013580701963
+        }
+      ]
+    }
+  }
+]
