@@ -34,18 +34,25 @@ class APIModelInference(BaseHandler):
 
         load_dotenv()
 
-        if "gpt" in self.model_name:
+        self.model_name = model_name
+        self.is_custom_api = any(prefix in self.model_name for prefix in [
+            "anthropic/", "deepseek-ai/", "openai/", "google/", "togetherai/", "xai/"
+        ])
+        if self.is_custom_api:
+            api_key = os.getenv("GPT_AGENT_API_KEY")
+            base_url = os.getenv("GPT_BASE_URL")
+            if 'anthropic' in self.model_name and 'thinking-on' in self.model_name:
+                base_url = os.getenv("CLAUDE_THINKING_API_BASE")
+        
+        elif "gpt" in self.model_name:
             api_key = os.getenv("GPT_AGENT_API_KEY")
             base_url = os.getenv("GPT_BASE_URL")
         elif "deepseek-r1" in self.model_name:
             api_key = os.getenv("DEEPSEEK_API_KEY")
             base_url = os.getenv("DEEPSEEK_BASE_URL")
-        elif "o1" in self.model_name or "openai" in self.model_name or "togetherai/Qwen/Qwen3-235B-A22B" in self.model_name or "anthropic/" in self.model_name: # added openai/Qwen to fit Multi API model name format
-            api_key = os.getenv("GPT_AGENT_API_KEY")
-            base_url = os.getenv("GPT_BASE_URL")
-            
+        
+        # print(base_url)
         self.client = OpenAI(base_url=base_url, api_key=api_key)
-        self.model_name = model_name
         self.max_dialog_turns = max_dialog_turns
         self.language = language
         self.user_model = user_model
@@ -100,23 +107,43 @@ class APIModelInference(BaseHandler):
             },
         ]
         
+        # Ensure messages always end with a user message
+        if message[-1]["role"] != "user":
+            message.append({"role": "user", "content": "The tool has finished running. Please continue your reasoning."})
+        
+        # Handle temperature for Claude models with extended thinking
+        temperature = self.temperature
+        if "thinking-on" in self.model_name and "anthropic" in self.model_name:
+            temperature = 1.0
+            self.max_tokens = 16384
+        
         attempt = 0
         while attempt < 6:
             try:
-                response = self.client.chat.completions.create(
-                    messages=message,
-                    model=self.model_name,
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                    top_p=self.top_p,
-                )
+                api_params = {
+                    "messages": message,
+                    "model": self.model_name,
+                    "temperature": temperature,
+                    "max_tokens": self.max_tokens,
+                    "top_p": self.top_p,
+                }
+                # Note: For Claude thinking models, thinking is automatically enabled
+                # when using models with "thinking-on" in the name
+                # print("trying chat completion")
+                response = self.client.chat.completions.create(**api_params)
                 result = response.choices[0].message.content
+                
+                # print(result)
 
-                if "deepseek-r1" in self.model_name:
+                if "Qwen" in self.model_name: # or "deepseek-r1" in self.model_name or "DeepSeek-R1" in self.model_name: # 
                     match = re.search(r'</think>\s*(.*)$', result, re.DOTALL)
-                    result = match.group(1).strip()
+                    if match:
+                        result = match.group(1).strip()
+                # print(result)
                 break  # If successful, break the loop
             except Exception as e:
+                
+                print("Error: ", e)
                 attempt += 1
                 # Check if it's a specific error type, skip current iteration
                 if 'data_inspection_failed' in str(e):

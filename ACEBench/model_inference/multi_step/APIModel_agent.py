@@ -65,9 +65,17 @@ class APIAgent_step():
     def __init__(self, model_name, time, functions, temperature=0.001, top_p=1, max_tokens=1000, language="zh") -> None:
         self.model_name = model_name  # 先赋值
         
-        if "gpt" in self.model_name:
-            api_key = os.getenv("GPT_AGENT_API_KEY")
-            base_url = os.getenv("GPT_AGENT_BASE_URL")
+        self.is_custom_api = any(prefix in self.model_name for prefix in [
+            "anthropic/", "deepseek-ai/", "openai/", "google/", "togetherai/", "xai/"
+        ])
+        if self.is_custom_api:
+            api_key = os.getenv("GPT_API_KEY")
+            base_url = os.getenv("GPT_BASE_URL")
+            if 'anthropic' in self.model_name and 'thinking-on' in self.model_name:
+                base_url = os.getenv("CLAUDE_THINKING_API_BASE")
+        elif "gpt" in self.model_name:
+            api_key = os.getenv("GPT_API_KEY")
+            base_url = os.getenv("GPT_BASE_URL")
         elif "deepseek" in self.model_name:
             api_key = os.getenv("DEEPSEEK_API_KEY")
             base_url = os.getenv("DEEPSEEK_BASE_URL")
@@ -107,15 +115,35 @@ class APIAgent_step():
                     "content": user_prompt,
                 },
             ]
+            
+            # Ensure messages always end with a user message
+            if message[-1]["role"] != "user":
+                message.append({"role": "user", "content": "The tool has finished running. Please continue your reasoning."})
 
-            response = self.client.chat.completions.create(
-                messages=message,
-                model=self.model_name,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                top_p=self.top_p,
-            )
+            # Handle temperature for Claude models with extended thinking
+            temperature = self.temperature
+            if "thinking" in self.model_name and "anthropic" in self.model_name:
+                temperature = 1.0
+                self.max_tokens = 16384
+
+            api_params = {
+                "messages": message,
+                "model": self.model_name,
+                "temperature": temperature,
+                "max_tokens": self.max_tokens,
+                "top_p": self.top_p,
+            }
+            # Note: For Claude thinking models, thinking is automatically enabled
+            # when using models with "thinking" in the name
+            
+            response = self.client.chat.completions.create(**api_params)
             response = response.choices[0].message.content
+            
+            # Strip thinking tags for Qwen models
+            if "Qwen" in self.model_name:
+                match = re.search(r'</think>\s*(.*)$', response, re.DOTALL)
+                if match:
+                    response = match.group(1).strip()
         else:
             message = [{
                 "role": "user",

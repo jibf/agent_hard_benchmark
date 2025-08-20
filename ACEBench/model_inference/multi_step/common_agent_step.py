@@ -77,6 +77,12 @@ class CommonAgent_Step():
             user_prompt = MULTI_TURN_AGENT_PROMPT_USER_EN.format(functions = self.functions, history = history)
 
         response = self.model.inference(system_prompt, user_prompt)
+        
+        # Strip thinking tags for Qwen models
+        # if hasattr(self.model, 'model_name') and "Qwen" in self.model.model_name:
+        match = re.search(r'</think>\s*(.*)$', response, re.DOTALL)
+        if match:
+            response = match.group(1).strip()
         current_message["sender"] = "agent"
 
         pattern = r"\[.*?\]"

@@ -1,5 +1,7 @@
 from openai import OpenAI
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 SYSTEM_PROMPT_TRAVEL_ZH = """您是一名与agent互动的用户。
 
@@ -79,7 +81,18 @@ class APIUSER():
     def __init__(self, model_name, involved_class, temperature=0.001, top_p=1, max_tokens=1000, language="zh") -> None:
         
         self.model_name = model_name
-        if "gpt" in self.model_name:
+        self.is_custom_api = any(prefix in self.model_name for prefix in [
+            "anthropic/", "deepseek-ai/", "openai/", "google/", "togetherai/", "xai/"
+        ])
+        # print(self.model_name)
+
+        if self.is_custom_api:
+            print("custom api")
+            api_key = os.getenv("GPT_API_KEY")
+            base_url = os.getenv("GPT_BASE_URL")
+            if 'anthropic' in self.model_name and 'thinking-on' in self.model_name:
+                base_url = os.getenv("CLAUDE_THINKING_API_BASE")
+        elif "gpt" in self.model_name:
             api_key = os.getenv("GPT_API_KEY")
             base_url = os.getenv("GPT_BASE_URL")
         elif "deepseek" in self.model_name:
@@ -88,7 +101,10 @@ class APIUSER():
         elif "qwen" in self.model_name:
             api_key = os.getenv("QWEN_API_KEY")
             base_url = os.getenv("QWEN_BASE_URL")
-            
+        else:
+            api_key = os.getenv("GPT_API_KEY")
+            base_url = os.getenv("GPT_BASE_URL")
+        # print(model_name, base_url,api_key)
         self.client = OpenAI(base_url=base_url, api_key=api_key)
         self.model_name = model_name
         self.temperature = temperature
@@ -128,15 +144,32 @@ class APIUSER():
                 {
                     "role": "user",
                     "content": "Is there anything you need help with today?",
-                }]
+                }        ]
 
-        response = self.client.chat.completions.create(
-            messages=self.messages,
-            model=self.model_name,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            top_p=self.top_p,
-        )
+        # Handle temperature for Claude models with extended thinking
+        temperature = self.temperature
+        if "thinking" in self.model_name and "anthropic" in self.model_name:
+            temperature = 1.0
+            self.max_tokens = 16384
+
+        api_params = {
+            "messages": self.messages,
+            "model": self.model_name,
+            "temperature": temperature,
+            "max_tokens": self.max_tokens,
+            "top_p": self.top_p,
+        }
+        # Add thinking parameters for Claude models with thinking enabled
+        # if "thinking" in self.model_name and "anthropic" in self.model_name:
+        #     api_params["extra_body"] = {
+        #         "thinking": {
+        #             "enabled": {
+        #                 "budget_tokens": 10000
+        #             }
+        #         }
+        #     }
+        
+        response = self.client.chat.completions.create(**api_params)
         response = response.choices[0].message.content
         message = {"role":"system",
                    "content":response}
@@ -153,13 +186,29 @@ class APIUSER():
 
         current_message = {}
         
-        response = self.client.chat.completions.create(
-            messages=self.messages,
-            model=self.model_name,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            top_p=self.top_p,
-        )
+        # Handle temperature for Claude models with extended thinking
+        temperature = self.temperature
+        if "thinking" in self.model_name and "anthropic" in self.model_name:
+            temperature = 1.0
+
+        api_params = {
+            "messages": self.messages,
+            "model": self.model_name,
+            "temperature": temperature,
+            "max_tokens": self.max_tokens,
+            "top_p": self.top_p,
+        }
+        # Add thinking parameters for Claude models with thinking enabled
+        if "thinking" in self.model_name and "anthropic" in self.model_name:
+            api_params["extra_body"] = {
+                "thinking": {
+                    "enabled": {
+                        "budget_tokens": 10000
+                    }
+                }
+            }
+        
+        response = self.client.chat.completions.create(**api_params)
         response = response.choices[0].message.content
         self.messages.append({"role": "system", "content": response})
 

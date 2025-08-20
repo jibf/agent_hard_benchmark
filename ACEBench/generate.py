@@ -36,7 +36,7 @@ def get_args():
     # Maximum number of dialog turns allowed for agent interactions
     parser.add_argument("--max-dialog-turns", type=int, default=40, help="Maximum number of dialog turns allowed for agent interactions")
     # Model used by the user role in the agent, it is recommended to use an advanced large model
-    parser.add_argument("--user-model", type=str, default="gpt-4o", help="Model used by the user role in the agent")
+    parser.add_argument("--user-model", type=str, default="openai/gpt-4o-20240806", help="Model used by the user role in the agent")
     args = parser.parse_args()
     return args
 

@@ -4,7 +4,7 @@ from model_inference.prompt_zh import *
 from model_inference.prompt_en import *
 
 from tqdm import tqdm
-
+import re
 from model_inference.multi_turn.common_agent import CommonAgent
 from model_inference.model_infer import get_model
 from model_inference.multi_turn.APIModel_user import APIUSER
@@ -27,7 +27,7 @@ SAVED_CLASS = {
 
 
 class CommonInference(BaseHandler):
-    def __init__(self, model_name, model_path=None, temperature=0.001, top_p=1, max_tokens=1000, max_dialog_turns=40, user_model="gpt-4o", language="zh", tensor_parallel_size=1) -> None:
+    def __init__(self, model_name, model_path=None, temperature=0.001, top_p=1, max_tokens=1000, max_dialog_turns=40, user_model="openai/gpt-4o-20240806", language="zh", tensor_parallel_size=1) -> None:
         super().__init__(model_name, model_path, temperature, top_p, max_tokens, language)
 
         self.model_name = model_name
@@ -85,6 +85,11 @@ class CommonInference(BaseHandler):
 
       
         result = self.model.inference(system_prompt, user_prompt)
+
+        if "Qwen" in self.model_name: # or "deepseek-r1" in self.model_name or "DeepSeek-R1" in self.model_name: # 
+            match = re.search(r'</think>\s*(.*)$', result, re.DOTALL)
+            if match:
+                result = match.group(1).strip()
         return result
 
     def multi_turn_inference(self, question, initial_config, functions, involved_classes, test_id, time):

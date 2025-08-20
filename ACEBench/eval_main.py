@@ -18,18 +18,17 @@ def extract_qwen_answer(result):
     For Qwen models, extract the answer after the </think> tag.
     If the tag is not present, return the original result.
     """
+    import re
     if isinstance(result, str):
-        # Find the closing </think> tag
-        think_end = result.find("</think>")
-        if think_end != -1:
-            # Return everything after </think>
-            return result[think_end + len("</think>"):].strip()
+        match = re.search(r'</think>\s*(.*)$', result, re.DOTALL)
+        if match:
+            return match.group(1).strip()
     return result
 
 
-def is_qwen_model(model_name):
+def is_qwen_or_ds_r1_model(model_name):
     # You may want to adjust this check for your Qwen model naming conventions
-    return "qwen" in model_name.lower()
+    return "Qwen" in model_name or "qwen" in model_name or "DeepSeek-R1" in model_name
 
 
 def normal_single_turn_eval(
@@ -51,8 +50,8 @@ def normal_single_turn_eval(
         prompt_item = prompt[i]["function"]
         possible_answer_item = possible_answer[i]["ground_truth"]
 
-        # For Qwen models on 'normal' category, extract the answer after </think>
-        if is_qwen_model(model_name) and test_category.startswith("normal"):
+        # For Qwen models, extract the answer after </think>
+        if is_qwen_or_ds_r1_model(model_name):
             model_result_item = extract_qwen_answer(model_result_item)
 
         try:
@@ -167,8 +166,8 @@ def normal_multi_turn_eval(
         prompt_item = prompt[i]["function"]
         possible_answer_item_ = possible_answer[i]["ground_truth"]
 
-        # For Qwen models on 'normal' category, extract the answer after </think>
-        if is_qwen_model(model_name) and test_category.startswith("normal"):
+        # For Qwen models, extract the answer after </think>
+        if is_qwen_or_ds_r1_model(model_name):
             model_result_item = extract_qwen_answer(model_result_item)
         
         
@@ -316,6 +315,11 @@ def special_eval(model_result, prompt, possible_answer, category, model_name, pa
         id = prompt[i]["id"]
         model_result_item = model_result[i]["result"]
         possible_answer_item_ = possible_answer[i]["ground_truth"]
+        
+        # For Qwen models, extract the answer after </think>
+        if is_qwen_or_ds_r1_model(model_name):
+            model_result_item = extract_qwen_answer(model_result_item)
+        
         result.append(
                 {
                     "id": id,
@@ -401,6 +405,10 @@ def agent_eval(model_result, prompt, possible_answer, test_category, model_name)
     for i in range(len(model_result)):
         model_result_item = model_result[i]["result"]
         possible_answer_item_ = possible_answer[i]["ground_truth"]
+        
+        # For Qwen models, extract the answer after </think>
+        if is_qwen_or_ds_r1_model(model_name):
+            model_result_item = extract_qwen_answer(model_result_item)
         
         if type(possible_answer_item_) != list:
             possible_answer_item_ = [possible_answer_item_]
@@ -571,6 +579,13 @@ def agent_eval_process(model_name, model_results, possible_answers, test_categor
 def runner(model_names, categories, paths):
     
     for model_name in model_names: 
+        # Dictionary to store accuracies and sample sizes by major category
+        category_groups = {
+            "normal": {"accuracies": [], "sample_sizes": []},
+            "special": {"accuracies": [], "sample_sizes": []},
+            "agent": {"accuracies": [], "sample_sizes": []}
+        }
+        
         for category in categories:
             print(f"🔍 Running test: {category}")
         
@@ -593,6 +608,8 @@ def runner(model_names, categories, paths):
                     paths,
                 )
                 print(f"Model: {model_name} | ✔️ Test '{category}' is done! 🚀 Accuracy: {accuracy}.")
+                category_groups["special"]["accuracies"].append(accuracy)
+                category_groups["special"]["sample_sizes"].append(len(model_result))
 
             elif "agent" in category:
                 end_accuracy, process_accuracy = agent_eval(
@@ -603,6 +620,8 @@ def runner(model_names, categories, paths):
                     model_name,
                 )
                 print(f"Model: {model_name} | ✔️ Test '{category}' is done! | End_to_End Accuracy: {end_accuracy} | Process Accuracy: {process_accuracy}")
+                category_groups["agent"]["accuracies"].append(end_accuracy)
+                category_groups["agent"]["sample_sizes"].append(len(model_result))
             
             elif "normal_multi_turn" in category:
                 end_accuracy  = normal_multi_turn_eval(
@@ -614,6 +633,8 @@ def runner(model_names, categories, paths):
                     paths,
                 )
                 print(f"Model: {model_name} | ✔️ Test '{category}' is done! | Accuracy: {end_accuracy}")
+                category_groups["normal"]["accuracies"].append(end_accuracy)
+                category_groups["normal"]["sample_sizes"].append(len(model_result))
 
             else:
                 accuracy = normal_single_turn_eval(
@@ -625,7 +646,32 @@ def runner(model_names, categories, paths):
                     paths,
                 )
                 print(f"Model: {model_name} | ✔️ Test '{category}' is done! | Accuracy: {accuracy}")
+                category_groups["normal"]["accuracies"].append(accuracy)
+                category_groups["normal"]["sample_sizes"].append(len(model_result))
 
+        # Calculate weighted total accuracy for each category group
+        print(f"\n{model_name}:")
+        overall_total_weighted_accuracy = 0
+        overall_total_samples = 0
+        for category_type, data in category_groups.items():
+            if data["accuracies"]:
+                # Calculate weighted average based on sample sizes
+                total_weighted_accuracy = 0
+                total_samples = 0
+                for accuracy, sample_size in zip(data["accuracies"], data["sample_sizes"]):
+                    total_weighted_accuracy += accuracy * sample_size
+                    total_samples += sample_size
+
+                weighted_accuracy = round(total_weighted_accuracy / total_samples, 3) if total_samples > 0 else 0
+                print(f"  {category_type}: {weighted_accuracy}")
+
+                # Accumulate for overall accuracy
+                overall_total_weighted_accuracy += total_weighted_accuracy
+                overall_total_samples += total_samples
+
+        # Calculate and print overall accuracy across all tasks and categories
+        overall_accuracy = round(overall_total_weighted_accuracy / overall_total_samples, 3) if overall_total_samples > 0 else 0
+        print(f"  overall: {overall_accuracy}\n")
       
     update_result_table_with_score_file(RESULT_TABLE, OUTPUT_PATH)
     generate_result_csv(RESULT_TABLE, OUTPUT_PATH)

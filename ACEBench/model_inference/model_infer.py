@@ -25,7 +25,7 @@ def get_free_gpu(use_gpu_num):
 
 
 class LLMInfer(object):
-    def __init__(self, model_path, temperature=0.001, top_p=1, max_tokens=1000, language="zh", max_model_len=8192, tensor_parallel_size=1) -> None:
+    def __init__(self, model_path, temperature=0.001, top_p=1, max_tokens=1000, language="zh", max_model_len=32768, tensor_parallel_size=1) -> None:
         gpu_ids = get_free_gpu(use_gpu_num=tensor_parallel_size)
         os.environ["CUDA_VISIBLE_DEVICES"] = gpu_ids
         self.sampling_params = SamplingParams(
@@ -66,7 +66,7 @@ class LLMInfer(object):
 
 
 class Llama(LLMInfer):
-    def __init__(self, model_path, temperature=0.001, top_p=1, max_tokens=1000, language="zh", max_model_len=8192, tensor_parallel_size=2) -> None:
+    def __init__(self, model_path, temperature=0.001, top_p=1, max_tokens=1000, language="zh", max_model_len=32768, tensor_parallel_size=2) -> None:
         super().__init__(model_path, temperature, top_p, max_tokens, language, max_model_len, tensor_parallel_size)
 
 
