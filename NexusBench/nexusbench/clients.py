@@ -41,27 +41,14 @@ class NexusflowAIFCClient(BaseClient):
         self, prompt, model="nexus-tool-use-20240816", contextual_history=None
     ):
         self.client: NexusflowAI
-        # Create base parameters
-        params = {
-            "model": model,
-            "messages": prompt["messages"],
-            "tools": prompt["tools"],
-            "max_tokens": 2048,
-            "temperature": 0.0,
-        }
-        
-        # Try to add parallel_tool_calls, but handle models that don't support it
-        try:
-            params["parallel_tool_calls"] = False
-            response = self.client.chat.completions.create(**params)
-        except Exception as e:
-            if "parallel_tool_calls" in str(e) and "not supported" in str(e).lower():
-                # Remove parallel_tool_calls parameter for unsupported models
-                del params["parallel_tool_calls"]
-                response = self.client.chat.completions.create(**params)
-            else:
-                # Re-raise if it's a different error
-                raise e
+        response = self.client.chat.completions.create(
+            model=model,
+            messages=prompt["messages"],
+            tools=prompt["tools"],
+            max_tokens=2048,
+            temperature=0.0,
+            parallel_tool_calls=False,
+        )
 
         return response
 
@@ -72,27 +59,14 @@ class NexusflowAICompletionsClient(NexusflowAIFCClient):
         self, prompt, model="nexus-tool-use-20240816", contextual_history=None
     ):
         self.client: NexusflowAI
-        # Create base parameters
-        params = {
-            "model": model,
-            "messages": prompt["messages"],
-            "tools": prompt["tools"],
-            "max_tokens": 2048,
-            "temperature": 0.0,
-        }
-        
-        # Try to add parallel_tool_calls, but handle models that don't support it
-        try:
-            params["parallel_tool_calls"] = False
-            response = self.client.completions.create_with_tools(**params)
-        except Exception as e:
-            if "parallel_tool_calls" in str(e) and "not supported" in str(e).lower():
-                # Remove parallel_tool_calls parameter for unsupported models
-                del params["parallel_tool_calls"]
-                response = self.client.completions.create_with_tools(**params)
-            else:
-                # Re-raise if it's a different error
-                raise e
+        response = self.client.completions.create_with_tools(
+            model=model,
+            messages=prompt["messages"],
+            tools=prompt["tools"],
+            max_tokens=2048,
+            temperature=0.0,
+            parallel_tool_calls=False,
+        )
 
         return response
 
@@ -143,54 +117,15 @@ class OpenAIFCClient(BaseClient):
     def get_completion(
         self, prompt, model="gpt-4-0125-preview", contextual_history=None
     ):
-        is_claude = "claude" in model.lower() or "anthropic/" in model.lower()
-        is_huggingface = "huggingface" in model.lower()
-
-        if is_claude:
-            # Claude models expect `tool_choice` to be a dict
-            params = {
-                "model": model,
-                "messages": prompt["messages"],
-                "tools": prompt["tools"],
-                "tool_choice": {"type": "auto"},
-                "max_tokens": 2048,
-                "temperature": 1.0 if "thinking-on-10k" in model.lower() else 0.0,
-            }
-            response = self.client.chat.completions.create(**params)
-        elif is_huggingface:
-            params = {
-                "model": model,
-                "messages": prompt["messages"],
-                "tools": prompt["tools"],
-                "tool_choice": "auto",
-                "max_tokens": 2048,
-                "temperature": 0.0,
-            }
-            response = self.client.chat.completions.create(**params)
-        else:
-            # Create base parameters
-            params = {
-                "model": model,
-                "messages": prompt["messages"],
-                "tools": prompt["tools"],
-                "tool_choice": "auto",
-                "max_tokens": 2048,
-                "temperature": 0.0,
-            }
-            
-            # Try to add parallel_tool_calls, but handle models that don't support it
-            try:
-                params["parallel_tool_calls"] = False
-                response = self.client.chat.completions.create(**params)
-            except Exception as e:
-                if "parallel_tool_calls" in str(e) and "not supported" in str(e).lower():
-                    # Remove parallel_tool_calls parameter for unsupported models
-                    del params["parallel_tool_calls"]
-                    response = self.client.chat.completions.create(**params)
-                else:
-                    # Re-raise if it's a different error
-                    raise e
-        
+        response = self.client.chat.completions.create(
+            model=model,
+            messages=prompt["messages"],
+            tools=prompt["tools"],
+            tool_choice="auto",
+            max_tokens=2048,
+            temperature=0.0,
+            parallel_tool_calls=False,
+        )
         return response
 
 
@@ -202,29 +137,14 @@ class MistralFCClient(BaseClient):
     def get_completion(
         self, prompt, model="mistral-large-2407", contextual_history=None
     ):
-        # Create base parameters
-        params = {
-            "model": model,
-            "messages": prompt["messages"],
-            "tools": prompt["tools"],
-            "tool_choice": "required",
-            "max_tokens": 2048,
-            "temperature": 0.0,
-        }
-        
-        # Try to add parallel_tool_calls, but handle models that don't support it
-        try:
-            params["parallel_tool_calls"] = False
-            response = self.client.chat(**params)
-        except Exception as e:
-            if "parallel_tool_calls" in str(e) and "not supported" in str(e).lower():
-                # Remove parallel_tool_calls parameter for unsupported models
-                del params["parallel_tool_calls"]
-                response = self.client.chat(**params)
-            else:
-                # Re-raise if it's a different error
-                raise e
-        
+        response = self.client.chat(
+            model=model,
+            messages=prompt["messages"],
+            tools=prompt["tools"],
+            tool_choice="required",
+            max_tokens=2048,
+            temperature=0.0,
+        )
         return response
 
 

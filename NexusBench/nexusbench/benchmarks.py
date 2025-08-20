@@ -156,8 +156,7 @@ class BaseBenchmark(ABC):
             for k, v in item.items():
                 item[k] = str(v)
 
-        # Replace characters that are invalid in Hugging Face repo IDs (e.g., '/')
-        model_id = prompter.get_model_id().replace("/", "-")
+        model_id = prompter.get_model_id()
         dataset = Dataset.from_list(context_history)
         current_time = datetime.now().strftime("%m%d%H%M")
         benchmark_name = f"{self.NAME}_{current_time}_{model_id}"
@@ -167,18 +166,10 @@ class BaseBenchmark(ABC):
             f"{benchmark_name}-{prompter.__class__.__name__.replace('Prompter', '')}"
         )
 
-        # Attempt to push to the Nexusflow org first.
-        try:
-            dataset_url = dataset.push_to_hub(
-                f"{BenchmarkConfigs.OWNER}/{dataset_name}", private=True
-            )
-        except Exception as e:
-            # Fallback: push to the current user's namespace if org push fails (e.g., 403).
-            print(
-                f"Unable to push to organisation '{BenchmarkConfigs.OWNER}' (reason: {e}). "
-                "Falling back to pushing under the authenticated user's namespace."
-            )
-            dataset_url = dataset.push_to_hub(dataset_name, private=True)
+        # Push to hub under the Nexusflow organization
+        dataset_url = dataset.push_to_hub(
+            f"{BenchmarkConfigs.OWNER}/{dataset_name}", private=True
+        )
 
         print(f"Pushed dataset to {dataset_url}")
 

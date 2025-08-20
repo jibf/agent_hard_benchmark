@@ -9,9 +9,6 @@ from time import time
 from os import environ
 
 import json
-import os
-from pathlib import Path
-from datetime import datetime
 
 from multiprocessing import Pool
 
@@ -22,8 +19,6 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 
-from dotenv import load_dotenv
-
 from nexusbench.config import (
     CLIENTS,
     BENCHMARKS,
@@ -32,12 +27,8 @@ from nexusbench.config import (
     get_unique_settings,
     get_unique_behaviors,
 )
-from nexusbench.utils import DEFAULT_MAX_EXECUTION_RETRIES, print_benchmark_results, save_benchmark_results_to_files, patch_json_serialization
+from nexusbench.utils import DEFAULT_MAX_EXECUTION_RETRIES, print_benchmark_results
 
-load_dotenv()   # Load environment variables from .env file
-
-# Ensure that all JSON dumps in the application use the tolerant encoder.
-patch_json_serialization()
 
 class BenchmarkRunner:
     def __init__(
@@ -110,8 +101,8 @@ class BenchmarkRunner:
         return [result for result in all_results if result is not None]
 
     def upload_predictions(self, results):
-        # Each result contains (benchmark_class, metrics, correct_calls, time_taken_s).
-        # We only need the first three items for uploading predictions.
+        # Results returned by `run_single_benchmark` include `time_taken_s` as the fourth element.
+        # We ignore this value when uploading predictions.
         for benchmark_class, metrics, correct_calls, _ in results:
             benchmark_class.upload_predictions(
                 self=benchmark_class,
@@ -119,10 +110,6 @@ class BenchmarkRunner:
                 correct_calls=correct_calls,
                 prompter=self.prompter,
             )
-
-    def save_results_locally(self, results, output_dir: str):
-        """Save benchmark results to local files."""
-        save_benchmark_results_to_files(results, output_dir, self.model, self.client)
 
 
 def discover_benchmarks(
@@ -258,13 +245,9 @@ def main():
         "--base_url",
         type=str,
         help="The base url for the inference backend used by the client.",
-        default=environ.get("BASE_URL"),
+        default=None,
     )
-    parser.add_argument(
-        "--api_key", 
-        help="API key for the model (if required)",
-        default=environ.get("API_KEY")
-    )
+    parser.add_argument("--api_key", help="API key for the model (if required)")
     parser.add_argument("--model", help="Specific model name to use")
     parser.add_argument(
         "--suite",
@@ -298,12 +281,6 @@ def main():
         type=int,
         help="Maximum number of retries for a failing sample",
         default=DEFAULT_MAX_EXECUTION_RETRIES,
-    )
-    parser.add_argument(
-        "--output_dir",
-        type=str,
-        help="Directory to save benchmark results locally.",
-        default=None,
     )
 
     args = parser.parse_args()
@@ -364,9 +341,6 @@ Running {runner.num_samples_parallel} samples per benchmark in parallel
 
     if args.upload:
         runner.upload_predictions(accuracies)
-
-    if args.output_dir:
-        runner.save_results_locally(accuracies, args.output_dir)
 
     print_benchmark_results(accuracies)
 
