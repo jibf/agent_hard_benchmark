@@ -405,6 +405,18 @@ api_inference_model_map = {
         is_fc_model=False,
         underscore_to_dot=False,
     ),
+    "/eic/data/binfei/gpu6/.cache/huggingface/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218/": ModelConfig(
+        model_name="togetherai/Qwen/Qwen3-8B",
+        display_name="Qwen3-8B (Prompt)",
+        url="https://together.com/index/Qwen3-8B/",
+        org="Together",
+        license="Proprietary",
+        model_handler=OpenAICompletionsHandler,
+        input_price=2.5,
+        output_price=10,
+        is_fc_model=False,
+        underscore_to_dot=False,
+    ),
     "deepseek-ai/DeepSeek-V3-0324": ModelConfig(
         model_name="deepseek-ai/DeepSeek-V3-0324",
         display_name="DeepSeek-V3-0324 (Prompt)",
