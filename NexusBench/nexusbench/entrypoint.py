@@ -110,7 +110,9 @@ class BenchmarkRunner:
         return [result for result in all_results if result is not None]
 
     def upload_predictions(self, results):
-        for benchmark_class, metrics, correct_calls in results:
+        # Each result contains (benchmark_class, metrics, correct_calls, time_taken_s).
+        # We only need the first three items for uploading predictions.
+        for benchmark_class, metrics, correct_calls, _ in results:
             benchmark_class.upload_predictions(
                 self=benchmark_class,
                 metrics=metrics,
