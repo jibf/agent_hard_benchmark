@@ -1,0 +1,220 @@
+2025-08-13 22:43:03,917 - evaluation_logger_Flights-32 - INFO - Test Example Flights-32
+2025-08-13 22:43:03,917 - evaluation_logger_Flights-32 - INFO - Query: Our company is planning to leave from London on December 1st, 2024, and travel to Paris and Berlin. We'll return to London on December 15th, 2024. We'll stay in each of those cities for a week. Help us find the best economy class flights for this journey and provide the detailed flight information and seat maps.
+2025-08-13 22:44:04,526 - evaluation_logger_Flights-32 - INFO - Function Calls: 
+[
+    {
+        "name": "Search_Flight_Location",
+        "arguments": {
+            "query": "London"
+        }
+    },
+    {
+        "name": "Search_Flight_Location",
+        "arguments": {
+            "query": "Paris"
+        }
+    },
+    {
+        "name": "Search_Flight_Location",
+        "arguments": {
+            "query": "Berlin"
+        }
+    }
+]
+
+2025-08-13 22:44:04,526 - evaluation_logger_Flights-32 - INFO - Golden Function Call: 
+[
+    {
+        "name": "Search_Flight_Location",
+        "arguments": {
+            "query": "London"
+        }
+    },
+    {
+        "name": "Search_Flight_Location",
+        "arguments": {
+            "query": "Paris"
+        }
+    },
+    {
+        "name": "Search_Flight_Location",
+        "arguments": {
+            "query": "Berlin"
+        }
+    },
+    {
+        "name": "Search_Flights_Multi_Stops",
+        "arguments": {
+            "cabinClass": "ECONOMY",
+            "sort": "BEST",
+            "legs": [
+                {
+                    "fromId": "LON.CITY",
+                    "toId": "PAR.CITY",
+                    "date": "2024-12-01"
+                },
+                {
+                    "fromId": "PAR.CITY",
+                    "toId": "BER.AIRPORT",
+                    "date": "2024-12-08"
+                },
+                {
+                    "fromId": "BER.AIRPORT",
+                    "toId": "LON.CITY",
+                    "date": "2024-12-15"
+                }
+            ]
+        }
+    }
+]
+
+2025-08-13 22:44:04,526 - evaluation_logger_Flights-32 - INFO - Start compare_single_call: 
+{'name': 'Search_Flight_Location', 'arguments': {'query': 'London'}}
+{'name': 'Search_Flight_Location', 'arguments': {'query': 'London'}}
+2025-08-13 22:44:04,526 - evaluation_logger_Flights-32 - INFO - Rule-based compare success.
+2025-08-13 22:44:04,526 - evaluation_logger_Flights-32 - INFO - Start compare_single_call: 
+{'name': 'Search_Flight_Location', 'arguments': {'query': 'Paris'}}
+{'name': 'Search_Flight_Location', 'arguments': {'query': 'Paris'}}
+2025-08-13 22:44:04,526 - evaluation_logger_Flights-32 - INFO - Rule-based compare success.
+2025-08-13 22:44:04,526 - evaluation_logger_Flights-32 - INFO - Start compare_single_call: 
+{'name': 'Search_Flight_Location', 'arguments': {'query': 'Berlin'}}
+{'name': 'Search_Flight_Location', 'arguments': {'query': 'Berlin'}}
+2025-08-13 22:44:04,526 - evaluation_logger_Flights-32 - INFO - Rule-based compare success.
+2025-08-13 22:44:04,526 - evaluation_logger_Flights-32 - INFO - Success matched: [{'name': 'Search_Flight_Location', 'arguments': {'query': 'London'}}, {'name': 'Search_Flight_Location', 'arguments': {'query': 'Paris'}}, {'name': 'Search_Flight_Location', 'arguments': {'query': 'Berlin'}}]
+2025-08-13 22:44:04,528 - evaluation_logger_Flights-32 - INFO - Observations:
+[
+    {
+        "status": true,
+        "message": "Success",
+        "data": [
+            {
+                "id": "LON.CITY",
+                "type": "CITY",
+                "name": "London",
+                "code": "LON",
+                "regionName": "Greater London",
+                "country": "GB",
+                "countryName": "United Kingdom"
+            }
+        ]
+    },
+    {
+        "status": true,
+        "message": "Success",
+        "data": [
+            {
+                "id": "PAR.CITY",
+                "type": "CITY",
+                "name": "Paris",
+                "code": "PAR",
+                "regionName": "Ile de France",
+                "country": "FR",
+                "countryName": "France"
+            }
+        ]
+    },
+    {
+        "status": true,
+        "message": "Success",
+        "data": [
+            {
+                "id": "BER.AIRPORT",
+                "type": "AIRPORT",
+                "name": "Berlin Brandenburg Airport Willy Brandt",
+                "code": "BER",
+                "city": "BER",
+                "cityName": "Berlin",
+                "regionName": "Berlin Federal State",
+                "country": "DE",
+                "countryName": "Germany",
+                "countryNameShort": "Germany",
+                "distanceToCity": {
+                    "value": 19.28047053602839,
+                    "unit": "km"
+                },
+                "parent": "BER"
+            }
+        ]
+    }
+]
+
+2025-08-13 22:45:12,443 - evaluation_logger_Flights-32 - INFO - Final Response: <think>
+Okay, let's see. The user wants to plan a trip from London to Paris and Berlin, staying a week in each, then returning to London. They need economy class flights with details and seat maps.
+
+First, I need to get the correct airport codes for each city. The previous tool calls for Search_Flight_Location gave me the IDs. For London, it's LON.CITY, Paris is PAR.CITY, and Berlin is BER.AIRPORT. Wait, Berlin's ID is BER.AIRPORT, which is an airport, while London and Paris are cities. But the Search_Flights_Multi_Stops requires fromId and toId as location IDs from the searchDestination endpoint.
+
+Wait, the user is traveling from London to Paris and Berlin. Wait, the itinerary is London -> Paris -> Berlin -> London? Or London to Paris, then Paris to Berlin, then Berlin back to London? The user said "leave from London on Dec 1, travel to Paris and Berlin. Stay in each for a week. Return to London on Dec 15." So Dec 1 to Dec 8 in Paris, Dec 8 to Dec 15 in Berlin, then return. Wait, but Dec 1 to Dec 15 is 14 days. If they stay a week in each, that's 7 days each, so total 14 days. So departure from London Dec 1, arrive Paris same day, stay until Dec 8, then go to Berlin Dec 8, stay until Dec 15, then return to London on Dec 15.
+
+So the flight legs would be:
+1. London (LON) to Paris (PAR) on Dec 1
+2. Paris (PAR) to Berlin (BER) on Dec 8
+3. Berlin (BER) to London (LON) on Dec 15
+
+Wait, but the user said "travel to Paris and Berlin" so maybe it's London -> Paris -> Berlin -> London. So three legs: outbound, then Paris to Berlin, then Berlin to London.
+
+But the Search_Flights_Multi_Stops function requires legs as an array. Each leg has fromId, toId, date.
+
+From the previous responses:
+- London's ID is LON.CITY
+- Paris's ID is PAR.CITY
+- Berlin's ID is BER.AIRPORT
+
+Wait, but for the flight search, the fromId and toId need to be airport codes. However, the Search_Flight_Location returns city codes (like LON.CITY, PAR.CITY) and sometimes airport codes (BER.AIRPORT). Wait, in the Berlin response, it's BER.AIRPORT, which is an airport. But London and Paris are cities. Maybe the actual airports are different. For example, London has multiple airports (LHR, LGW, etc.), but the city code is LON. Similarly, Paris is PAR, which might refer to the city, but the actual airports are CDG, ORY.
+
+Wait, the Search_Flight_Location endpoint returns locations, which can be cities or airports. The user needs to specify the correct fromId and toId. But in the responses, London and Paris are cities (LON.CITY, PAR.CITY), while Berlin is an airport (BER.AIRPORT). Hmm, maybe for London and Paris, the city code is used, and the system will handle the airports within that city. Or perhaps the city code is sufficient for the search.
+
+Assuming that the fromId and toId can be the city codes (LON.CITY, PAR.CITY, BER.AIRPORT), even though Berlin's ID is an airport. Wait, Berlin's ID in the response is BER.AIRPORT, which is specific to the airport. But London and Paris are cities. Maybe for consistency, we should use the city codes for all, but Berlin's response gave an airport. Wait, maybe the user needs to use the city codes for London and Paris, and for Berlin, since the response gave BER.AIRPORT, but perhaps the city code for Berlin is BER.CITY? Wait, the Berlin response shows "city": "BER", so maybe the city code is BER.CITY. But the data given for Berlin is an airport. Hmm, this is a bit confusing.
+
+Wait, looking at the Berlin response: "id": "BER.AIRPORT", "type": "AIRPORT", "name": "Berlin Brandenburg Airport...", "city": "BER", "cityName": "Berlin". So the city code for Berlin would be BER.CITY, but the airport is BER.AIRPORT. However, the user is traveling to the city, so maybe the city code is what's needed. But the Search_Flight_Location for Berlin returned an airport. Maybe the correct approach is to use the city codes for all three: LON.CITY, PAR.CITY, BER.CITY. But in the Berlin case, the search returned an airport. Wait, perhaps when searching for "Berlin", the endpoint returns the main airport as the location. But for flight searches, the fromId and toId can be city codes, which encompass all airports in that city.
+
+Alternatively, maybe the city codes are sufficient. For example, LON.CITY includes all London airports, PAR.CITY includes Paris airports, and BER.CITY would include Berlin airports. But in the Berlin response, the ID is BER.AIRPORT. Maybe the user should use the city codes. Wait, the London and Paris responses have type "CITY", while Berlin's is "AIRPORT". That's inconsistent. Maybe the correct IDs to use are LON.CITY, PAR.CITY, and BER.CITY. But how do we get BER.CITY? The search for Berlin returned BER.AIRPORT. Maybe there's a city code for Berlin as well, but the search query "Berlin" returned the airport. Perhaps the user needs to use the city codes for all, so maybe for Berlin, the city code is BER.CITY, but the tool response didn't provide it. Hmm, this is a problem.
+
+Wait, the user's previous tool calls for London and Paris returned city IDs (LON.CITY, PAR.CITY), but Berlin's search returned an airport ID (BER.AIRPORT). Maybe for Berlin, the city code is different. Alternatively, perhaps the city code for Berlin is BER.CITY, but the search for "Berlin" as a query returns the airport. Maybe the user should use the city codes for all, so LON.CITY, PAR.CITY, and BER.CITY. But how to confirm BER.CITY exists? Since the tool response for Berlin gave BER.AIRPORT, perhaps the city code is not available, and we have to use the airport code. But the user is traveling to the city, not a specific airport, so maybe the city code is preferred.
+
+Alternatively, maybe the system expects the airport codes. For London, the main airports are LHR, LGW, etc., but the city code is LON. Similarly, Paris is PAR, which covers CDG and ORY. So perhaps the fromId and toId should be the city codes (LON.CITY, PAR.CITY, BER.CITY). But in the Berlin case, the search returned BER.AIRPORT. Maybe BER.CITY is the correct city code, but the search for "Berlin" gave the airport. Maybe the user should proceed with the city codes.
+
+Assuming that LON.CITY, PAR.CITY, and BER.CITY are the correct IDs, even though Berlin's search returned an airport. Wait, but the Berlin response's "city" field is "BER", so maybe the city ID is BER.CITY. Let's proceed with that.
+
+So the legs would be:
+
+Leg 1: fromId LON.CITY, toId PAR.CITY, date 2024-12-01
+
+Leg 2: fromId PAR.CITY, toId BER.CITY, date 2024-12-08
+
+Leg 3: fromId BER.CITY, toId LON.CITY, date 2024-12-15
+
+But the user said they return to London on Dec 15, so the last leg is Berlin to London on Dec 15.
+
+Now, the Search_Flights_Multi_Stops function requires legs as an array of objects with fromId, toId, date.
+
+So the parameters would be:
+
+legs: [
+  {fromId: "LON.CITY", toId: "PAR.CITY", date: "2024-12-01"},
+  {fromId: "PAR.CITY", toId: "BER.CITY", date: "2024-12-08"},
+  {fromId: "BER.CITY", toId: "LON.CITY", date: "2024-12-15"}
+]
+
+Cabin class is economy, sort by best, cheapest, or fastest. The user said "best economy class flights", so maybe sort by BEST.
+
+Adults: assuming the company has multiple people, but the default is 1. The user didn't specify number of travelers, so maybe default to 1 adult.
+
+Children: not mentioned, so probably 0.
+
+So the next step is to call Search_Flights_Multi_Stops with these legs.
+
+After getting the flight options, we need to get flight details and seat maps. For flight details, use Get_Flight_Details with the token from the search results. For seat maps, use Get_Seat_Map with offerToken.
+
+But first, need to perform the multi-stop search.
+</think>
+
+<tool_call>
+{"name": "Search_Flights_Multi_Stops", "arguments": {"legs": [{"fromId": "LON.CITY", "toId": "PAR.CITY", "date": "20
+
+2025-08-13 22:45:12,443 - evaluation_logger_Flights-32 - INFO - turn id  = 2; len(golden_answer) = 3
+2025-08-13 22:45:12,443 - evaluation_logger_Flights-32 - INFO - golden_function_calls = [{'name': 'Search_Flights_Multi_Stops', 'arguments': {'cabinClass': 'ECONOMY', 'legs': [{'fromId': 'LON.CITY', 'toId': 'PAR.CITY', 'date': '2024-12-01'}, {'fromId': 'PAR.CITY', 'toId': 'BER.AIRPORT', 'date': '2024-12-08'}, {'fromId': 'BER.AIRPORT', 'toId': 'LON.CITY', 'date': '2024-12-15'}], 'sort': 'BEST'}}, {'name': 'Get_Flight_Details', 'arguments': {'token': 'd6a1f_H4sIAAAAAAAA_z2Q226jMBCGnya9WgzmTCVrRYC2yWLSJkCXK4sYSEgPVNhdSJ5-JwFV4_F8849lj-co5Ze4V9XmvT0cpVC-BTp0sjuUska8-1CbHrZ91721nwe1bHs13iTP_lbDYRT8AlhGW829MgCUsAWsYlUB4_fF73qUiug5uWv3NSqJ4nnehIITK5ixJzYyI39j0afsJvFOEhNZ2NY2uZFhPIk9edz4DzG9ZRWhwTDG4cr5iakvZndoZorZneT0ImZ3kjTSaeS90kvyd3ceME2LIcXFheKKxmE2Jqflc36il1zTnDhf7-KH43p7HsYk9_U4jHAWFvDe-JgHg6S7wUj9hRHCurVUc04wQqbjTQ13pSCuOSGXxHEnrCTZxet8N30VfqpreK6NBBuGa92J-r3msu0-_9RnkummbWoKTLzmuqkUDATXMRQY-4_g2rqrwOwnYaEHH-LNOv4DWBjQon9gGgIDOgJhpAOVLAxQsELLDSR75l2Pcua9QKiY3hhWCVQzXauu0DAT9pbh-Z4TW71CuLC94dii-Q_vhOuFRwIAAA..'}}, {'name': 'Get_Seat_Map', 'arguments': {'offerToken': 'd6a1f_H4sIAAAAAAAA_z2Q226jMBCGnya9WgzmTCVrRYC2yWLSJkCXK4sYSEgPVNhdSJ5-JwFV4_F8849lj-co5Ze4V9XmvT0cpVC-BTp0sjuUska8-1CbHrZ91721nwe1bHs13iTP_lbDYRT8AlhGW829MgCUsAWsYlUB4_fF73qUiug5uWv3NSqJ4nnehIITK5ixJzYyI39j0afsJvFOEhNZ2NY2uZFhPIk9edz4DzG9ZRWhwTDG4cr5iakvZndoZorZneT0ImZ3kjTSaeS90kvyd3ceME2LIcXFheKKxmE2Jqflc36il1zTnDhf7-KH43p7HsYk9_U4jHAWFvDe-JgHg6S7wUj9hRHCurVUc04wQqbjTQ13pSCuOSGXxHEnrCTZxet8N30VfqpreK6NBBuGa92J-r3msu0-_9RnkummbWoKTLzmuqkUDATXMRQY-4_g2rqrwOwnYaEHH-LNOv4DWBjQon9gGgIDOgJhpAOVLAxQsELLDSR75l2Pcua9QKiY3hhWCVQzXauu0DAT9pbh-Z4TW71CuLC94dii-Q_vhOuFRwIAAA..'}}]
+2025-08-13 22:45:20,294 - evaluation_logger_Flights-32 - INFO - Complete Result: {'score': 0, 'reason': 'The response does not provide any information about economy class flights, detailed flight information, or seat maps.'}
+2025-08-13 22:45:32,282 - evaluation_logger_Flights-32 - INFO - Correct Result: {'score': 0, 'reason': 'All information in the response is incorrect.'}
+2025-08-13 22:45:32,282 - evaluation_logger_Flights-32 - INFO - Message: {'error_type': 'stop_early', 'content': 'Stop early.'}
+2025-08-13 22:45:32,282 - evaluation_logger_Flights-32 - INFO - Success turn num = 1
+2025-08-13 22:45:32,282 - evaluation_logger_Flights-32 - INFO - ----------------------------------------------------------------------------------------------------
