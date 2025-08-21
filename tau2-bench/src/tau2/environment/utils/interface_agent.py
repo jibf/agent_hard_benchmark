@@ -63,11 +63,17 @@ class InterfaceAgent:
         user_message = UserMessage(role="user", content=message)
         message_history.append(user_message)
         messages = [system_message] + message_history
+        
+        # Extract base_url from llm_args if present
+        llm_args = self.llm_args.copy()
+        base_url = llm_args.pop("base_url", None)
+        
         assistant_message = generate(
             model=self.llm,
             tools=self.environment.get_tools(),
             messages=messages,
-            **self.llm_args,
+            base_url=base_url,
+            **llm_args,
         )
         while assistant_message.is_tool_call():
             message_history.append(assistant_message)
@@ -79,7 +85,8 @@ class InterfaceAgent:
                 model=self.llm,
                 tools=self.environment.get_tools(),
                 messages=messages,
-                **self.llm_args,
+                base_url=base_url,
+                **llm_args,
             )
         message_history.append(assistant_message)
         return assistant_message, message_history

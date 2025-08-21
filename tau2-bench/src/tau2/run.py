@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
+from copy import deepcopy
 
 from loguru import logger
 from tqdm import tqdm
@@ -80,6 +81,10 @@ def make_run_name(config: RunConfig) -> str:
     Make a run name from the run config
     """
     clean_llm_agent_name = config.llm_agent.split("/")[-1]
+    if "huggingface" in config.llm_agent:
+        for n in config.llm_agent.split("/"):
+            if "Qwen" in n:
+                clean_llm_agent_name = n
     agent_name = f"{config.agent}_{clean_llm_agent_name}"
 
     clean_llm_user_name = config.llm_user.split("/")[-1]
@@ -135,6 +140,7 @@ def run_domain(config: RunConfig) -> Results:
         max_concurrency=config.max_concurrency,
         seed=config.seed,
         log_level=config.log_level,
+        base_url=config.base_url,
     )
     metrics = compute_metrics(simulation_results)
     ConsoleDisplay.display_agent_metrics(metrics)
@@ -160,6 +166,7 @@ def run_tasks(
     max_concurrency: int = 1,
     seed: Optional[int] = 300,
     log_level: Optional[str] = "INFO",
+    base_url: Optional[str] = None,
 ) -> Results:
     """
     Runs tasks for a given domain.
@@ -328,6 +335,7 @@ def run_tasks(
                 evaluation_type=evaluation_type,
                 seed=seed,
                 max_concurrency=max_concurrency,
+                base_url=base_url,
             )
             simulation.trial = trial
             if console_display:
@@ -371,59 +379,60 @@ def run_tasks(
         console_text = Text(text=f"{progress_str}. Running task {task.id}, trial {trial + 1}", style="bold green")
         ConsoleDisplay.console.print(console_text)
         
-        try:
-            simulation = run_task(
-                domain=domain,
-                task=task,
-                agent=agent,
-                user=user,
-                llm_agent=llm_agent,
-                llm_args_agent=llm_args_agent,
-                llm_user=llm_user,
-                llm_args_user=llm_args_user,
-                max_steps=max_steps,
-                max_errors=max_errors,
-                evaluation_type=evaluation_type,
-                seed=seed,
-                max_concurrency=max_concurrency,
+        # try:
+        simulation = run_task(
+            domain=domain,
+            task=task,
+            agent=agent,
+            user=user,
+            llm_agent=llm_agent,
+            llm_args_agent=llm_args_agent,
+            llm_user=llm_user,
+            llm_args_user=llm_args_user,
+            max_steps=max_steps,
+            max_errors=max_errors,
+            evaluation_type=evaluation_type,
+            seed=seed,
+            max_concurrency=max_concurrency,
+            base_url=base_url,
+        )
+        simulation.trial = trial
+        if console_display:
+            ConsoleDisplay.display_simulation(simulation, show_details=False)
+        _save(simulation)
+        
+        # Update progress and timing
+        task_duration = time.time() - task_start_time
+        overall_pbar.update(1)
+        
+        # Calculate and display ETA
+        elapsed_time = time.time() - overall_start_time
+        completed_tasks = overall_pbar.n
+        if completed_tasks > 0:
+            avg_time_per_task = elapsed_time / completed_tasks
+            remaining_tasks = total_tasks - completed_tasks
+            eta_seconds = avg_time_per_task * remaining_tasks
+            eta_str = str(timedelta(seconds=int(eta_seconds)))
+            
+            # Update progress bar description with ETA
+            overall_pbar.set_description(
+                f"Overall Progress (ETA: {eta_str})"
             )
-            simulation.trial = trial
-            if console_display:
-                ConsoleDisplay.display_simulation(simulation, show_details=False)
-            _save(simulation)
+        
+        # Display task completion info
+        print(
+            "✅" if simulation.reward_info and simulation.reward_info.reward == 1.0 else "❌",
+            f"task_id={task.id}",
+            f"(trial {trial + 1}/{num_trials})",
+            f"[{task_duration:.1f}s]",
+            f"reward={simulation.reward_info.reward if simulation.reward_info else 'N/A'}"
+        )
+        print("-----")
             
-            # Update progress and timing
-            task_duration = time.time() - task_start_time
-            overall_pbar.update(1)
-            
-            # Calculate and display ETA
-            elapsed_time = time.time() - overall_start_time
-            completed_tasks = overall_pbar.n
-            if completed_tasks > 0:
-                avg_time_per_task = elapsed_time / completed_tasks
-                remaining_tasks = total_tasks - completed_tasks
-                eta_seconds = avg_time_per_task * remaining_tasks
-                eta_str = str(timedelta(seconds=int(eta_seconds)))
-                
-                # Update progress bar description with ETA
-                overall_pbar.set_description(
-                    f"Overall Progress (ETA: {eta_str})"
-                )
-            
-            # Display task completion info
-            print(
-                "✅" if simulation.reward_info and simulation.reward_info.reward == 1.0 else "❌",
-                f"task_id={task.id}",
-                f"(trial {trial + 1}/{num_trials})",
-                f"[{task_duration:.1f}s]",
-                f"reward={simulation.reward_info.reward if simulation.reward_info else 'N/A'}"
-            )
-            print("-----")
-            
-        except Exception as e:
-            logger.error(f"Error running task {task.id}, trial {trial}: {e}")
-            overall_pbar.update(1)
-            raise e
+        # except Exception as e:
+        #     logger.error(f"Error running task {task.id}, trial {trial}: {e}")
+        #     overall_pbar.update(1)
+        #     raise e
         
         return simulation
 
@@ -462,6 +471,7 @@ def run_task(
     evaluation_type: EvaluationType = EvaluationType.ALL,
     seed: Optional[int] = None,
     max_concurrency: int = 1,
+    base_url: Optional[str] = None,
 ) -> SimulationRun:
     """
     Runs tasks for a given domain.
@@ -498,29 +508,41 @@ def run_task(
 
     solo_mode = False
     if issubclass(AgentConstructor, LLMAgent):
+        # Add base_url to llm_args if provided
+        agent_llm_args = deepcopy(llm_args_agent) if llm_args_agent is not None else {}
+        if base_url is not None:
+            agent_llm_args["base_url"] = base_url
         agent = AgentConstructor(
             tools=environment.get_tools(),
             domain_policy=environment.get_policy(),
             llm=llm_agent,
-            llm_args=llm_args_agent,
+            llm_args=agent_llm_args,
         )
     elif issubclass(AgentConstructor, LLMGTAgent):
+        # Add base_url to llm_args if provided
+        agent_llm_args = deepcopy(llm_args_agent) if llm_args_agent is not None else {}
+        if base_url is not None:
+            agent_llm_args["base_url"] = base_url
         agent = AgentConstructor(
             tools=environment.get_tools(),
             domain_policy=environment.get_policy(),
             llm=llm_agent,
-            llm_args=llm_args_agent,
+            llm_args=agent_llm_args,
             task=task,
         )
     elif issubclass(AgentConstructor, LLMSoloAgent):
         solo_mode = True
         environment: Environment = environment_constructor(solo_mode=True)
         user_tools = environment.get_user_tools() if environment.user_tools else []
+        # Add base_url to llm_args if provided
+        agent_llm_args = deepcopy(llm_args_agent) if llm_args_agent is not None else {}
+        if base_url is not None:
+            agent_llm_args["base_url"] = base_url
         agent = AgentConstructor(
             tools=environment.get_tools() + user_tools,
             domain_policy=environment.get_policy(),
             llm=llm_agent,
-            llm_args=llm_args_agent,
+            llm_args=agent_llm_args,
             task=task,
         )
     else:
@@ -538,11 +560,16 @@ def run_task(
             "Dummy user can only be used with solo agent"
         )
 
+    # Add base_url to user llm_args if provided
+    user_llm_args = deepcopy(llm_args_user) if llm_args_user is not None else {}
+    if base_url is not None:
+        user_llm_args["base_url"] = base_url
+
     user = UserConstructor(
         tools=user_tools,
         instructions=str(task.user_scenario),
         llm=llm_user,
-        llm_args=llm_args_user,
+        llm_args=user_llm_args,
     )
 
     orchestrator = Orchestrator(

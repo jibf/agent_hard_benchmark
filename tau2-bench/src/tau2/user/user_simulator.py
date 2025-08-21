@@ -154,12 +154,17 @@ class UserSimulator(BaseUser):
             state.messages.append(message)
         messages = state.system_messages + state.flip_roles()
 
+        # Extract base_url from llm_args if present
+        llm_args = self.llm_args.copy()
+        base_url = llm_args.pop("base_url", None)
+
         # Generate response
         assistant_message = generate(
             model=self.llm,
             messages=messages,
             tools=self.tools,
-            **self.llm_args,
+            base_url=base_url,
+            **llm_args,
         )
 
         user_response = assistant_message.content

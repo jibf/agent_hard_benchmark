@@ -127,6 +127,11 @@ def add_run_args(parser):
         default=DEFAULT_LOG_LEVEL,
         help=f"The log level to use for the simulation. Default is {DEFAULT_LOG_LEVEL}.",
     )
+    parser.add_argument(
+        "--base-url",
+        type=str,
+        help="Base URL for custom API endpoints (for huggingface models)",
+    )
 
 
 def main():
@@ -156,6 +161,7 @@ def main():
                 max_concurrency=args.max_concurrency,
                 seed=args.seed,
                 log_level=args.log_level,
+                base_url=args.base_url,
             )
         )
     )

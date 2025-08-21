@@ -105,12 +105,20 @@ class LLMAgent(LocalAgent[LLMAgentState]):
         else:
             state.messages.append(message)
         messages = state.system_messages + state.messages
+        
+        # Extract base_url from llm_args if present
+        llm_args = self.llm_args.copy()
+        base_url = llm_args.pop("base_url", None)
+        
         assistant_message = generate(
             model=self.llm,
             tools=self.tools,
             messages=messages,
-            **self.llm_args,
+            base_url=base_url,
+            **llm_args,
         )
+
+       
         state.messages.append(assistant_message)
         return assistant_message, state
 
@@ -233,11 +241,17 @@ class LLMGTAgent(LocalAgent[LLMAgentState]):
         else:
             state.messages.append(message)
         messages = state.system_messages + state.messages
+        
+        # Extract base_url from llm_args if present
+        llm_args = self.llm_args.copy()
+        base_url = llm_args.pop("base_url", None)
+        
         assistant_message = generate(
             model=self.llm,
             tools=self.tools,
             messages=messages,
-            **self.llm_args,
+            base_url=base_url,
+            **llm_args,
         )
         state.messages.append(assistant_message)
         return assistant_message, state
@@ -453,12 +467,18 @@ class LLMSoloAgent(LocalAgent[LLMAgentState]):
         else:
             state.messages.append(message)
         messages = state.system_messages + state.messages
+        
+        # Extract base_url from llm_args if present
+        llm_args = self.llm_args.copy()
+        base_url = llm_args.pop("base_url", None)
+        
         assistant_message = generate(
             model=self.llm,
             tools=self.tools,
             messages=messages,
             tool_choice="required",
-            **self.llm_args,
+            base_url=base_url,
+            **llm_args,
         )
         if not assistant_message.is_tool_call():
             raise ValueError("LLMSoloAgent only supports tool calls.")
