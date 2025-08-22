@@ -406,6 +406,64 @@ def runner(model_names, test_categories, result_dir, score_dir):
         state["leaderboard_table"], score_dir, model_names, test_categories
     )
 
+#### BFCL evaluator ####
+def bfcl_evaluator(model_name, handler, test_categories, result_dir, score_dir):
+
+    # State udpated by each eval subtask.
+    state = dict(
+        # A dictionary to store the evaluation scores.
+        # Key is model name, value is a dictionary with keys as test category
+        # and values as a dictionary with accuracy and total count.
+        leaderboard_table={},
+    )
+
+    # Get a list of all entries in the folder
+    entries = result_dir.iterdir()
+
+    # Filter out the subdirectories
+    subdirs = [entry for entry in entries if entry.is_dir()]
+
+    # Traverse each subdirectory
+    for subdir in tqdm(subdirs, desc="Number of models evaluated"):
+
+        dir_name = subdir.relative_to(result_dir).name
+        if dir_name != model_name:
+            continue
+
+        print(f"🦍 Model: {model_name}")
+
+        # Find and process all JSON files in the subdirectory
+        for model_result_json in subdir.glob("*.json"):
+            test_category = extract_test_category(model_result_json)
+            if test_category not in test_categories:
+                continue
+
+            # We don't evaluate the following categories in the current iteration of the benchmark
+            if is_chatable(test_category) or is_sql(test_category) or is_executable(test_category):
+                continue
+
+            model_result = load_file(model_result_json, sort_by_id=True)
+
+            state = evaluate_task(
+                test_category,
+                result_dir,
+                score_dir,
+                model_result,
+                model_name,
+                handler,
+                state,
+            )
+
+    # This function reads all the score files from local folder and updates the
+    # leaderboard table. This is helpful when you only want to run the
+    # evaluation for a subset of models and test categories.
+    update_leaderboard_table_with_local_score_file(state["leaderboard_table"], score_dir)
+    # Write the leaderboard table to a file
+    generate_leaderboard_csv(
+        state["leaderboard_table"], score_dir, [model_name], test_categories
+    )
+    return state["leaderboard_table"]
+
 
 def evaluate_task(
     test_category,
