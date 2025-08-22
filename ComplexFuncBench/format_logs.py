@@ -3,7 +3,7 @@ import json
 from dataclasses import dataclass, asdict
 from tqdm import tqdm
 
-BENCHMARK_NAME = "ComplexFuncBench"
+BENCHMARK_NAME = "complex-func-bench"
 INPUT_BASE_DIR = "result/"
 OUTPUT_BASE_DIR = f"formatted_logs/{BENCHMARK_NAME}/"
 
@@ -23,7 +23,7 @@ class FormattedLog:
     meta: dict = None
 
 
-def process_log_entry(log_entry: dict) -> dict:
+def process_log_entry(model_path: str, log_entry: dict) -> dict:
     """
     Convert logs into following format ###
     {
@@ -91,7 +91,6 @@ def process_log_entry(log_entry: dict) -> dict:
     eval_result = {
         "score": 1.0 if log_entry['message'] == "Success." else 0.0,
         "message": log_entry.get('message', ""),
-        "count_dict": log_entry.get('count_dict', {}),
         "resp_eval": log_entry.get('resp_eval', {}),
     }
 
@@ -108,7 +107,8 @@ def process_log_entry(log_entry: dict) -> dict:
     } if "thinking-on" in model_path else None
 
     meta = {
-        "id": sample_id
+        "id": sample_id,
+        "count_dict": log_entry.get('count_dict', {}),
     }
 
     formatted_log = FormattedLog(
@@ -132,14 +132,14 @@ for model_path in model_paths:
     formatted_logs_by_category = {}
     with open(os.path.join(INPUT_BASE_DIR, model_path, "full-1000.jsonl"), "r") as f:
         for line in tqdm(f):
-            formatted_log_entry = process_log_entry(json.loads(line))
+            formatted_log_entry = process_log_entry(model_path, json.loads(line))
             if formatted_log_entry['task_name'] not in formatted_logs_by_category:
                 formatted_logs_by_category[formatted_log_entry['task_name']] = []
             formatted_logs_by_category[formatted_log_entry['task_name']].append(formatted_log_entry)
 
     for task_name, formatted_logs in formatted_logs_by_category.items():
         formatted_logs.sort(key=lambda x: int(x['meta']['id'].split("-")[-1]))  # Sort by sample ID
-        output_path = os.path.join(OUTPUT_BASE_DIR, model_path, f"{task_name}.jsonl")
+        output_path = os.path.join(OUTPUT_BASE_DIR, f"{model_path.split("/")[-1]}_{task_name.lower()}.jsonl")
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as out_file:
             for log in formatted_logs:
