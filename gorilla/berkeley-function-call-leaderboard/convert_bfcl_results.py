@@ -12,38 +12,36 @@ from typing import Dict, List, Any
 import glob
 import argparse
 
+# Mapping dictionary from model_path to model_name
+model_path_to_name = {
+    "xai/grok-4": "grok-4",
+    "togetherai/moonshotai/Kimi-K2-Instruct": "Kimi-K2-Instruct",
+    "togetherai/Qwen/Qwen3-8B": "Qwen3-8B",
+    "togetherai/Qwen/Qwen3-32B": "Qwen3-32B",
+    "togetherai/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8": "Qwen3-235B-A22B-Thinking-2507-FP8",
+    "togetherai/Qwen/Qwen3-235B-A22B-FP8": "Qwen3-235B-A22B-FP8",
+    "togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8": "Qwen3-235B-A22B-Instruct-2507-FP8",
+    "openai/o4-mini-high": "o4-mini-high",
+    "openai/o3-high": "o3-high",
+    "openai/gpt-4o-20240806": "gpt-4o-20240806",
+    "openai/gpt-4o-mini": "gpt-4o-mini",
+    "openai/gpt-4.1": "gpt-4.1",
+    "deepseek-ai/DeepSeek-V3-0324": "DeepSeek-V3-0324",
+    "deepseek-ai/DeepSeek-R1-0528": "DeepSeek-R1-0528",
+    "anthropic/claude-4-sonnet-thinking-on-10k": "claude-4-sonnet-thinking-on-10k",
+    "anthropic/claude-4-sonnet-thinking-off": "claude-4-sonnet-thinking-off"
+}
+
 
 def extract_model_path_from_filename(filename: str) -> str:
     """Extract model path from the filename."""
     # Example: "openai_gpt-4o-20240806" -> "openai/gpt-4o-20240806"
-    # Example: "togetherai_Qwen_Qwen3-32B-A22B-FP8" -> "togetherai/Qwen_Qwen3-32B-A22B-FP8"
-    # Example: "_data_jibf_.cache_huggingface_hub_models--Qwen--Qwen3-32B_snapshots_..." -> "Qwen/Qwen3-32B"
-    
-    # Handle cache paths for Qwen models
-    if filename.startswith('_') and 'cache_huggingface_hub_models--Qwen--' in filename:
-        # Extract model name from cache path
-        # Example: "_data_jibf_.cache_huggingface_hub_models--Qwen--Qwen3-32B_snapshots_..."
-        # Extract "Qwen3-32B" part
-        start_idx = filename.find('--Qwen--') + 8
-        end_idx = filename.find('_snapshots')
-        if start_idx > 7 and end_idx > start_idx:
-            model_name = filename[start_idx:end_idx]
-            return f"Qwen/{model_name}"
-    
-    # Handle standard TogetherAI Qwen models
-    if filename.startswith('togetherai_Qwen_'):
-        # Example: "togetherai_Qwen_Qwen3-32B-A22B-FP8" -> "togetherai/Qwen_Qwen3-32B-A22B-FP8"
-        model_name = filename[11:]  # Remove "togetherai_"
-        return f"togetherai/{model_name}"
-    
-    # Handle other standard formats
-    parts = filename.split('_')
-    if len(parts) >= 2:
-        provider = parts[0]
-        model_name = '_'.join(parts[1:])
-        return f"{provider}/{model_name}"
-    
-    return filename
+    if  "qwen" in filename.lower():
+        if "32b" in filename.lower():
+            return "togetherai/Qwen/Qwen3-32B"
+        elif "8b" in filename.lower():
+            return "togetherai/Qwen/Qwen3-8B"
+    return filename.replace('_', '/')
 
 
 def extract_task_type_from_filename(filename: str) -> str:
@@ -57,8 +55,8 @@ def extract_task_type_from_filename(filename: str) -> str:
     return "unknown"
 
 
-def convert_bfcl_file(input_file: str, output_dir: str, model_path: str = None, benchmark_name: str = "bfcl", score_data: List[Dict[str, Any]] = None, prompt_data: Dict[str, Dict[str, Any]] = None):
-    """Convert a BFCL results file to the target format and save by task type."""
+def convert_bfcl_file_with_results(input_file: str, output_dir: str, model_path: str = None, benchmark_name: str = "bfcl", score_data: List[Dict[str, Any]] = None, prompt_data: Dict[str, Dict[str, Any]] = None):
+    """Convert a BFCL results file to the target format and save by task type, return converted results."""
     
     # Read input file (BFCL files are JSONL format)
     results = []
@@ -77,6 +75,9 @@ def convert_bfcl_file(input_file: str, output_dir: str, model_path: str = None, 
     if model_path is None:
         dir_name = os.path.basename(os.path.dirname(input_file))
         model_path = extract_model_path_from_filename(dir_name)
+    
+    # Get model_name from mapping
+    model_name = model_path_to_name[model_path]
     
     # Extract task type from filename
     filename = os.path.basename(input_file)
@@ -112,7 +113,7 @@ def convert_bfcl_file(input_file: str, output_dir: str, model_path: str = None, 
         converted_results.append(converted_result)
     
     # Save as jsonl file
-    output_file = os.path.join(output_base_dir, f"{model_path.replace('/', '_')}_{task_type}.jsonl")
+    output_file = os.path.join(output_base_dir, f"{model_name}_{task_type}.jsonl")
     
     # Write as jsonl (one JSON object per line)
     with open(output_file, 'w', encoding='utf-8') as f:
@@ -120,6 +121,8 @@ def convert_bfcl_file(input_file: str, output_dir: str, model_path: str = None, 
             f.write(json.dumps(result, ensure_ascii=False) + '\n')
     
     print(f"Converted {len(converted_results)} results from {input_file} to {output_file}")
+    
+    return converted_results
 
 
 def convert_bfcl_result(result_data: Dict[str, Any], model_path: str, task_type: str, benchmark_name: str = "bfcl", score_info: Dict[str, Any] = None, prompt_data: Dict[str, Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -269,7 +272,7 @@ def load_score_data(score_dir: str, model_name: str, task_type: str) -> Dict[str
 
 def load_prompt_data(task_type: str) -> Dict[str, Dict[str, Any]]:
     """Load prompt data for a specific task type."""
-    prompt_file = os.path.join("bfcl_eval/data", f"BFCL_v3_{task_type}.json")
+    prompt_file = os.path.join("gorilla/berkeley-function-call-leaderboard/bfcl_eval/data", f"BFCL_v3_{task_type}.json")
     if os.path.exists(prompt_file):
         prompt_data = {}
         with open(prompt_file, 'r', encoding='utf-8') as f:
@@ -289,10 +292,14 @@ def convert_bfcl_results(bfcl_dir: str, output_dir: str, score_dir: str = None):
     
     for model_dir in model_dirs:
         model_path = extract_model_path_from_filename(model_dir)
+        model_name = model_path_to_name.get(model_path, model_path.replace('/', '_'))
         model_result_dir = os.path.join(bfcl_dir, model_dir)
         
         # Find all result files in this model directory
         result_files = glob.glob(os.path.join(model_result_dir, "BFCL_v3_*_result.json"))
+        
+        # Collect all results for this model
+        all_model_results = []
         
         for result_file in result_files:
             try:
@@ -308,9 +315,21 @@ def convert_bfcl_results(bfcl_dir: str, output_dir: str, score_dir: str = None):
                 # Load prompt data
                 prompt_data = load_prompt_data(task_type)
                 
-                convert_bfcl_file(result_file, output_dir, model_path, "bfcl", score_data, prompt_data)
+                # Convert and collect results
+                converted_results = convert_bfcl_file_with_results(result_file, output_dir, model_path, "bfcl", score_data, prompt_data)
+                all_model_results.extend(converted_results)
             except Exception as e:
                 print(f"Error converting {result_file}: {e}")
+        
+        # Save combined file with all results for this model
+        if all_model_results:
+            output_base_dir = os.path.join(output_dir, "bfcl", model_path.replace('/', '_'))
+            combined_output_file = os.path.join(output_base_dir, f"{model_name}.jsonl")
+            with open(combined_output_file, 'w', encoding='utf-8') as f:
+                for result in all_model_results:
+                    f.write(json.dumps(result, ensure_ascii=False) + '\n')
+            
+            print(f"Saved {len(all_model_results)} total results to combined file {combined_output_file}")
 
 
 def main():

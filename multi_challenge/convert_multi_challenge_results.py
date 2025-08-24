@@ -13,6 +13,27 @@ from typing import Dict, List, Any
 from datetime import datetime
 
 
+# Mapping dictionary from model_path to model_name
+model_path_to_name = {
+    "xai/grok-4": "grok-4",
+    "togetherai/moonshotai/Kimi-K2-Instruct": "Kimi-K2-Instruct",
+    "togetherai/Qwen/Qwen3-8B": "Qwen3-8B",
+    "togetherai/Qwen/Qwen3-32B": "Qwen3-32B",
+    "togetherai/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8": "Qwen3-235B-A22B-Thinking-2507-FP8",
+    "togetherai/Qwen/Qwen3-235B-A22B-FP8": "Qwen3-235B-A22B-FP8",
+    "togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8": "Qwen3-235B-A22B-Instruct-2507-FP8",
+    "openai/o4-mini-high": "o4-mini-high",
+    "openai/o3-high": "o3-high",
+    "openai/gpt-4o-20240806": "gpt-4o-20240806",
+    "openai/gpt-4o-mini": "gpt-4o-mini",
+    "openai/gpt-4.1": "gpt-4.1",
+    "deepseek-ai/DeepSeek-V3-0324": "DeepSeek-V3-0324",
+    "deepseek-ai/DeepSeek-R1-0528": "DeepSeek-R1-0528",
+    "anthropic/claude-4-sonnet-thinking-on-10k": "claude-4-sonnet-thinking-on-10k",
+    "anthropic/claude-4-sonnet-thinking-off": "claude-4-sonnet-thinking-off"
+}
+
+
 def extract_model_path_from_filename(filename: str) -> str:
     """Extract model path from the filename."""
     # Remove file extension and common suffixes
@@ -31,11 +52,11 @@ def extract_model_path_from_filename(filename: str) -> str:
         'claude4_thinking_sonnect': 'anthropic/claude-4-sonnet-thinking-on-10k',
         'grok4': 'xai/grok-4',
         'kimi_k2': 'togetherai/moonshotai/Kimi-K2-Instruct',
-        'Qwen3-8B': 'Qwen/Qwen3-8B',
-        'Qwen3-32B': 'Qwen/Qwen3-32B',
-        'qwen3-235B': 'Qwen/Qwen3-235B',
-        'Qwen235B_instruct': 'togetherai/Qwen_Qwen3-235B-A22B-Instruct-2507-FP8',
-        'qwen_thinking': 'togetherai/Qwen_Qwen3-235B-A22B-Thinking-2507-FP8',
+        'Qwen3-8B': 'togetherai/Qwen/Qwen3-8B',
+        'Qwen3-32B': 'togetherai/Qwen/Qwen3-32B',
+        'qwen3-235B': 'togetherai/Qwen/Qwen3-235B-A22B-FP8',
+        'Qwen235B_instruct': 'togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8',
+        'qwen_thinking': 'togetherai/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8',
     }
     
     return model_mapping[base_name]
@@ -109,6 +130,9 @@ def convert_multi_challenge_file(input_file: str, output_dir: str, model_path: s
         filename = os.path.basename(input_file)
         model_path = extract_model_path_from_filename(filename)
     
+    # Get model_name from mapping
+    model_name = model_path_to_name[model_path]
+    
     # Create output directory structure
     output_base_dir = os.path.join(output_dir, "multi_challenge", model_path.replace('/', '_'))
     os.makedirs(output_base_dir, exist_ok=True)
@@ -132,9 +156,10 @@ def convert_multi_challenge_file(input_file: str, output_dir: str, model_path: s
             task_results[task_name] = []
         task_results[task_name].append(result)
 
+    # Save each task to separate jsonl file
     for task_name in task_results:
         # Save as jsonl file
-        output_file = os.path.join(output_base_dir, f"{model_path.replace('/', '_')}_{task_name}.jsonl")
+        output_file = os.path.join(output_base_dir, f"{model_name}_{task_name}.jsonl")
 
         # Write as jsonl (one JSON object per line)
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -142,6 +167,14 @@ def convert_multi_challenge_file(input_file: str, output_dir: str, model_path: s
                 f.write(json.dumps(result, ensure_ascii=False) + '\n')
     
         print(f"Converted {len(task_results[task_name])} results from {input_file} to {output_file}")
+    
+    # Save combined file with all results for this model
+    combined_output_file = os.path.join(output_base_dir, f"{model_name}.jsonl")
+    with open(combined_output_file, 'w', encoding='utf-8') as f:
+        for result in converted_results:
+            f.write(json.dumps(result, ensure_ascii=False) + '\n')
+    
+    print(f"Saved {len(converted_results)} total results to combined file {combined_output_file}")
 
 
 def convert_multi_challenge_results(results_dir: str, output_dir: str):
