@@ -22,6 +22,9 @@ def savedate(data, jsonpath):
 
 
 def evaluator(result_path, eval_result, response_result):
+    if "Task_score" in response_result:
+        eval_result.append(response_result)
+        return eval_result
     if "Testpath" not in response_result:
         pre_code = response_result["Response_code"]
         test_code = process_code(pre_code)
