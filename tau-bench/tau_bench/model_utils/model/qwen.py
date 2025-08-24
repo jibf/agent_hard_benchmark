@@ -127,6 +127,7 @@ class QwenModel(ChatModel):
             messages=msgs,
             temperature=wrap_temperature(temperature),
             response_format={"type": "json_object" if force_json else "text"},
+            max_tokens=4096,  # Add max_tokens parameter
         )
         return self.handle_generate_message_response(
             prompt=msgs, content=res.choices[0].message.content, force_json=force_json

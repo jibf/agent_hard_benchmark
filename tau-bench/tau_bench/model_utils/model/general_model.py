@@ -148,7 +148,7 @@ def model_factory(
     if platform == Platform.OPENAI:
         from tau_bench.model_utils.model.openai import OpenAIModel
 
-        return OpenAIModel(model=model_id, api_key=api_key, temperature=temperature)
+        return OpenAIModel(model=model_id, api_key=api_key, base_url=base_url, temperature=temperature)
     elif platform == Platform.MISTRAL:
         from tau_bench.model_utils.model.mistral import MistralModel
 
@@ -156,16 +156,16 @@ def model_factory(
     elif platform == Platform.ANTHROPIC:
         from tau_bench.model_utils.model.claude import ClaudeModel
 
-        return ClaudeModel(model=model_id, api_key=api_key, temperature=temperature)
+        return ClaudeModel(model=model_id, api_key=api_key, base_url=base_url, temperature=temperature)
 
     elif platform == Platform.ANYSCALE:
         from tau_bench.model_utils.model.anyscale import AnyscaleModel
 
         return AnyscaleModel(model=model_id, api_key=api_key, temperature=temperature)
-    elif platform == Platform.QWEN:
-        from tau_bench.model_utils.model.qwen import QwenModel
+    # elif platform == Platform.QWEN:
+    #     from tau_bench.model_utils.model.qwen import QwenModel
 
-        return QwenModel(model=model_id, api_key=api_key, temperature=temperature)
+    #     return QwenModel(model=model_id, api_key=api_key, temperature=temperature)
     elif platform == Platform.OUTLINES:
         if base_url is None:
             raise ValueError("base_url must be provided for custom models")

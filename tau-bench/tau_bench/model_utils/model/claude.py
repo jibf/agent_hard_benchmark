@@ -37,6 +37,7 @@ class ClaudeModel(ChatModel):
         self,
         model: str | None = None,
         api_key: str | None = None,
+        base_url: str | None = None,
         temperature: float = 0.0,
     ) -> None:
         from anthropic import Anthropic, AsyncAnthropic
@@ -46,16 +47,38 @@ class ClaudeModel(ChatModel):
         else:
             self.model = model
 
+        if 'thinking-on' in self.model: # enforce to follow claude's setting
+            temperature = 1.0
+
         api_key = None
         if api_key is None:
             api_key = os.getenv(ENV_VAR_API_KEY)
             if api_key is None:
                 raise ValueError(f"{ENV_VAR_API_KEY} environment variable is not set")
-        # `anthropic-beta` header is needed for the 8192 context length (https://docs.anthropic.com/en/docs/about-claude/models)
-        self.client = Anthropic(
-            api_key=api_key, default_headers={"anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15"}
-        )
-        self.async_client = AsyncAnthropic(api_key=api_key)
+        
+        # Support custom base URL for custom APIs
+        if base_url:
+            # For custom APIs, use OpenAI-compatible client with Anthropic headers
+            from openai import OpenAI, AsyncOpenAI
+            self.client = OpenAI(
+                base_url=base_url,
+                api_key=api_key,
+                default_headers={"anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15"}
+            )
+            self.async_client = AsyncOpenAI(
+                base_url=base_url,
+                api_key=api_key,
+                default_headers={"anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15"}
+            )
+            self.use_openai_client = True
+        else:
+            # Use standard Anthropic client
+            self.client = Anthropic(
+                api_key=api_key, default_headers={"anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15"}
+            )
+            self.async_client = AsyncAnthropic(api_key=api_key)
+            self.use_openai_client = False
+            
         self.temperature = temperature
 
     def get_approx_cost(self, dp: Datapoint) -> float:
@@ -126,13 +149,31 @@ class ClaudeModel(ChatModel):
     ) -> Message:
         if temperature is None:
             temperature = self.temperature
+        if 'thinking-on' in self.model: # enforce to follow claude's setting
+            temperature = 1.0
+            
         msgs = self.build_generate_message_state(messages)
-        res = self.client.messages.create(
-            model=self.model,
-            messages=msgs,
-            temperature=wrap_temperature(temperature),
-            max_tokens=DEFAULT_MAX_TOKENS,
-        )
+        
+        if self.use_openai_client:
+            # Use OpenAI-compatible client for custom APIs
+            # Don't include response_format for custom APIs that don't support it
+            res = self.client.chat.completions.create(
+                model=self.model,
+                messages=msgs,
+                temperature=wrap_temperature(temperature),
+                max_tokens=DEFAULT_MAX_TOKENS,
+            )
+            content = res.choices[0].message.content
+        else:
+            # Use standard Anthropic client
+            res = self.client.messages.create(
+                model=self.model,
+                messages=msgs,
+                temperature=wrap_temperature(temperature),
+                max_tokens=DEFAULT_MAX_TOKENS,
+            )
+            content = res.content[0].text
+            
         return self.handle_generate_message_response(
-            prompt=msgs, content=res.content[0].text, force_json=force_json
+            prompt=msgs, content=content, force_json=force_json
         )

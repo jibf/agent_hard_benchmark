@@ -76,6 +76,7 @@ class OpenAIModel(ChatModel):
         model: str | None = None,
         api_key: str | None = None,
         temperature: float = 0.0,
+        base_url: str | None = None,
     ) -> None:
         from openai import AsyncOpenAI, OpenAI
 
@@ -84,13 +85,24 @@ class OpenAIModel(ChatModel):
         else:
             self.model = model
 
-        api_key = None
+        # Support custom API setup
         if api_key is None:
             api_key = os.getenv(API_KEY_ENV_VAR)
             if api_key is None:
                 raise ValueError(f"{API_KEY_ENV_VAR} environment variable is not set")
-        self.client = OpenAI(api_key=api_key)
-        self.async_client = AsyncOpenAI(api_key=api_key)
+        
+        # Support custom base URL for custom API endpoints
+        if base_url is None:
+            base_url = os.getenv("OPENAI_API_BASE")
+        
+        # Initialize client with custom base URL if provided
+        if base_url:
+            self.client = OpenAI(api_key=api_key, base_url=base_url)
+            self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        else:
+            self.client = OpenAI(api_key=api_key)
+            self.async_client = AsyncOpenAI(api_key=api_key)
+        
         self.temperature = temperature
 
     def generate_message(
@@ -107,6 +119,7 @@ class OpenAIModel(ChatModel):
             messages=msgs,
             temperature=wrap_temperature(temperature),
             response_format={"type": "json_object" if force_json else "text"},
+            max_tokens=4096,  # Add max_tokens parameter
         )
         return self.handle_generate_message_response(
             prompt=msgs, content=res.choices[0].message.content, force_json=force_json

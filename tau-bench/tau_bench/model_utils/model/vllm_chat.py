@@ -127,6 +127,7 @@ class VLLMChatModel(ChatModel):
             model=self.model,
             messages=msgs,
             temperature=wrap_temperature(temperature=temperature),
+            max_tokens=4096,  # Add max_tokens parameter
         )
         return self.handle_generate_message_response(
             prompt=msgs, content=res.choices[0].message.content, force_json=force_json
