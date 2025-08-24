@@ -234,10 +234,17 @@ def convert(data_dir: Path, out_dir: Path) -> None:
         # Write (append) to the appropriate jsonl file
         #   <out-dir>/<agent>/<scenario>.jsonl
         # ----------------------------------------------------------------
-        # Directory hierarchy mirrors model_path components
-        agent_out_dir = out_dir.joinpath(*([provider] + org_model_parts))
-        agent_out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = agent_out_dir / f"{scenario}.jsonl"
+        # Save ONE file per model (llm). Keep provider/org directory tree, but
+        # filename is just the model (last component) plus .jsonl
+        if org_model_parts:
+            *org_parts, model_name = org_model_parts
+        else:
+            org_parts = []
+            model_name = provider  # degenerate case
+
+        model_dir = out_dir.joinpath(provider, *org_parts)
+        model_dir.mkdir(parents=True, exist_ok=True)
+        out_path = model_dir / f"{model_name}.jsonl"
 
         with out_path.open("a", encoding="utf-8") as fp:
             json.dump(obj, fp, ensure_ascii=False)
