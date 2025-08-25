@@ -36,10 +36,11 @@ class Drafter_agent:
                     model=self.model,
                     messages=messages,
                     temperature=self.temperature,
-                    max_tokens=4096,
+                    max_tokens=16384,
+                    timeout=None,
                 )
             response = res.choices[0].message.content
             code_search = re.search(r"`python\s*([^`]+)`", response)
             generated_code = code_search.group(1) if code_search else None
             trail += 1
-        return generated_code if generated_code else "Fail to generate code"
+        return generated_code if generated_code else "Fail to generate code.\n" + response
