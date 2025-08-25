@@ -49,6 +49,8 @@ MODEL_MAPPING = {
     "togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8": GPTRunner,
     "togetherai/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8": GPTRunner,
     "deepseek-ai/DeepSeek-V3-0324": GPTRunner, 
+    "deepseek-ai/DeepSeek-V3.1-thinking-on": GPTRunner, 
+    "deepseek-ai/DeepSeek-V3.1-thinking-off": GPTRunner, 
     "deepseek-ai/DeepSeek-R1-0528": GPTRunner,
     "mistral-large-2407": GPTRunner,
     "google/gemini-2.5-flash-thinking-off": GPTRunner,
@@ -56,7 +58,9 @@ MODEL_MAPPING = {
     "google/gemini-2.5-pro-thinking-off": GPTRunner,
     "google/gemini-2.5-pro-thinking-on": GPTRunner,
     "xai/grok-4": GPTRunner,
-    "togetherai/moonshotai/Kimi-K2-Instruct": GPTRunner
+    "togetherai/moonshotai/Kimi-K2-Instruct": GPTRunner,
+    "Qwen/Qwen3-8B": GPTRunner,
+    "Qwen/Qwen3-32B": GPTRunner
 }
 
 
@@ -99,10 +103,14 @@ def process_example(data, args):
 
     convs, message, turn_id, correct_count = model.run(data)
 
-    # API Error
-    if isinstance(message, dict) and message["error_type"] == "unknown_error":
-        print(f"\nError in sample {data['id']}: {message['content']}", file=sys.stderr)
-        return None
+    # Handle API errors
+    if isinstance(message, dict):
+        if message["error_type"] == "unknown_error":
+            print(f"\nError in sample {data['id']}: {message['content']}", file=sys.stderr)
+            return None
+        elif message["error_type"] == "context_length_exceeded":
+            print(f"\nContext length exceeded in sample {data['id']}: {message['content']}", file=sys.stderr)
+            # Continue processing to save partial results instead of returning None
     
     real_turn_count = 0
     for turn in convs:

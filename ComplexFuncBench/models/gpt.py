@@ -51,8 +51,13 @@ class GPTModel:
                 )
             return completion.choices[0].message.content
         except Exception as e:
-            print(f"Exception: {e}", file=sys.stderr)
-            return None
+            error_msg = str(e).lower()
+            if any(keyword in error_msg for keyword in ['context length', 'token limit', 'maximum context', 'too many tokens']):
+                print(f"Context length error: {e}", file=sys.stderr)
+                return {"error_type": "context_length_exceeded", "error_message": str(e)}
+            else:
+                print(f"Exception: {e}", file=sys.stderr)
+                return None
 
 
 class FunctionCallGPT(GPTModel):
@@ -85,8 +90,13 @@ class FunctionCallGPT(GPTModel):
             )
             return completion.choices[0].message
         except Exception as e:
-            print(f"Exception: {e}", file=sys.stderr)
-            return None
+            error_msg = str(e).lower()
+            if any(keyword in error_msg for keyword in ['context length', 'token limit', 'maximum context', 'too many tokens']):
+                print(f"Context length error: {e}", file=sys.stderr)
+                return {"error_type": "context_length_exceeded", "error_message": str(e)}
+            else:
+                print(f"Exception: {e}", file=sys.stderr)
+                return None
 
 
 if __name__ == "__main__":

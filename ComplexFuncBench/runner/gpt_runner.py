@@ -9,6 +9,10 @@ class GPTRunner(ModelRunner):
     def __init__(self, args, logger):
         super().__init__(args, logger)
         self.model_name = args.model_name
+        if "thinking-on" in self.model_name and "claude" in self.model_name:
+            self.is_claude_thinking = True
+        else:
+            self.is_claude_thinking = False
         self.model = FunctionCallGPT(self.model_name)
 
     def replace_invalid_chars(self, s):
@@ -54,6 +58,10 @@ class GPTRunner(ModelRunner):
             llm_response = self.model(messages, tools=gpt_functions)
             if llm_response is None:
                 return self.return_result(messages, {"error_type": "unknown_error", "content": "llm_response is None"})
+            
+            # Check for context length error
+            if isinstance(llm_response, dict) and llm_response.get("error_type") == "context_length_exceeded":
+                return self.return_result(messages, {"error_type": "context_length_exceeded", "content": llm_response.get("error_message", "Context length exceeded")})
 
             if llm_response.tool_calls:
                 if self.golden_fcs == []:
@@ -102,7 +110,7 @@ class GPTRunner(ModelRunner):
                         }
                     )
 
-                if "thinking-on" in self.model_name and llm_response.reasoning_content: # thinking model requires user message after tool
+                if self.is_claude_thinking and llm_response.reasoning_content: # thinking model requires user message after tool
                     self.model.messages.append({"role": "user", "content": "The tool has finished running. Please continue your reasoning."})   # dummy user message
 
                 self.process_matches(success_matched)

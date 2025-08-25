@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 BENCHMARK_NAME = "complex-func-bench"
 INPUT_BASE_DIR = "result/"
-OUTPUT_BASE_DIR = f"formatted_logs/{BENCHMARK_NAME}/"
+OUTPUT_BASE_DIR = f"formatted_logs/{BENCHMARK_NAME}-evaluation/"
 
 @dataclass
 class FormattedLog:
@@ -94,17 +94,18 @@ def process_log_entry(model_path: str, log_entry: dict) -> dict:
         "resp_eval": log_entry.get('resp_eval', {}),
     }
 
+    is_claude_thinking = ("thinking-on" in model_path) and ("claude" in model_path)
+
     sampling_params = {
         'max_tokens': 2048,
-        'temperature': 1.0 if ("thinking-on" in model_path) else 0.0,
+        'temperature': 1.0 if is_claude_thinking else 0.0,
     }
 
-    user_sampling_params = {
-        "thinking": {
+    if is_claude_thinking:
+        sampling_params['thinking'] = {
             "type": "enabled",
             "budget_tokens": 10000
         }
-    } if "thinking-on" in model_path else None
 
     meta = {
         "id": sample_id,
@@ -113,7 +114,7 @@ def process_log_entry(model_path: str, log_entry: dict) -> dict:
 
     formatted_log = FormattedLog(
         model_path=model_path, benchmark_name=BENCHMARK_NAME, messages=messages, sampling_params=sampling_params, eval_result=eval_result,
-        user_sampling_params=user_sampling_params, meta=meta, task_name=task_name
+        meta=meta, task_name=task_name
     )
 
     return asdict(formatted_log)
