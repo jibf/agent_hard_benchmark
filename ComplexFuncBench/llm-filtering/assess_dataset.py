@@ -1,3 +1,4 @@
+
 import json
 import os
 from typing import Dict, List, Any
@@ -7,6 +8,8 @@ from prompt import prompt
 from tqdm import tqdm
 
 load_dotenv()
+
+# TODO: add multiprocessing
 
 class DatasetAssessor:
     def __init__(self):
@@ -19,6 +22,7 @@ class DatasetAssessor:
     def extract_prompt_and_function_call(self, line_data: Dict[str, Any]) -> tuple:
         """Extract prompt and ground-truth function call from a data line."""
         conversations = line_data.get('conversations', [])
+        function_list = line_data.get('functions', [])
         
         # Extract user prompt
         user_prompt = ""
@@ -30,14 +34,15 @@ class DatasetAssessor:
             elif conv.get('role') == 'assistant' and 'function_call' in conv:
                 function_call = json.dumps(conv['function_call'], indent=2)
         
-        return user_prompt, function_call
-    
-    def assess_sample(self, user_prompt: str, function_call: str) -> Dict[str, Any]:
+        return user_prompt, function_call, function_list
+
+    def assess_sample(self, user_prompt: str, function_call: str, functions: list) -> Dict[str, Any]:
         """Assess a single sample using GPT-4.1."""
         
         evaluation_prompt = prompt.format(
             prompt=user_prompt,
-            function_call=json.dumps(function_call)
+            function_call=json.dumps(function_call),
+            functions=json.dumps(functions)
         )
         try:
             response = self.client.chat.completions.create(
@@ -72,14 +77,14 @@ class DatasetAssessor:
                 print(f"Processing {sample_id} (line {line_num})...")
                 
                 # Extract prompt and function call
-                user_prompt, function_call = self.extract_prompt_and_function_call(line_data)
+                user_prompt, function_call, function_list = self.extract_prompt_and_function_call(line_data)
                 
                 if not user_prompt or not function_call:
                     print(f"Warning: Missing prompt or function call in {sample_id}")
                     continue
                 
                 # Assess the sample
-                assessment = self.assess_sample(user_prompt, function_call)
+                assessment = self.assess_sample(user_prompt, function_call, function_list)
                 print(assessment)
                 
                 # Prepare result

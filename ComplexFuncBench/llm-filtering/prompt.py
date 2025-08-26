@@ -109,8 +109,13 @@ For example, the output for a sample could look like this:
 ### Task Prompt
 {prompt}
 
+### Available Functions
+{functions}
+
 ### Ground-Truth Function Call
 {function_call}
+
 """
 
-## ground truth에 오류가 있는 것도 LLM-as-a-judge로 판정 
+## ground truth에 오류가 있는 것도 LLM-as-a-judge로 판정하기. e.g. API contains insufficient info
+
