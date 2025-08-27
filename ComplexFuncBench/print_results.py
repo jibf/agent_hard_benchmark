@@ -4,15 +4,26 @@ from utils.utils import *
 from collections import Counter
 import argparse
 
+def get_excluded_samples_per_domain(excluded_list):
+    excluded_samples = defaultdict(int)
+    for sample in excluded_list:
+        domain = sample.rsplit("-", 1)[0]
+        excluded_samples[domain] += 1
+    return excluded_samples
 
-def basic_metric(result_dir):
+def basic_metric(result_dir, excluded_ids=[]):
     results = load_json(result_dir)
     domain_success = defaultdict(int)
     domain_turn_count = defaultdict(lambda: [0, 0])
     domain_call_count = defaultdict(lambda: [0, 0])
     complete_score_count = defaultdict(lambda: [0, 0])
     correct_score_count = defaultdict(lambda: [0, 0])
+
+    excluded_samples_per_domain = get_excluded_samples_per_domain(excluded_ids)
+
     for result in results:
+        if result['id'] in excluded_ids:
+            continue
         domain = result['id'].rsplit("-", 1)[0]
         if result['message'] == "Success.":
             domain_success[domain] += 1
@@ -33,11 +44,11 @@ def basic_metric(result_dir):
             correct_score_count[domain][0] += result["resp_eval"]['correct']['score']
             correct_score_count[domain][1] += 1
 
-    domain_success_rate = {k: v / 150 * 100 if k != "Cross" else v / 400 * 100 for k, v in domain_success.items()}
+    domain_success_rate = {k: v / (150 - excluded_samples_per_domain[k]) * 100 if k != "Cross" else v / (400 - excluded_samples_per_domain[k]) * 100 for k, v in domain_success.items()}
     domain_turn_acc = {k: v[0] / v[1] * 100 if v[1] != 0 else 0 for k, v in domain_turn_count.items()}
     domain_call_acc = {k: v[0] / v[1] * 100 if v[1] != 0 else 0 for k, v in domain_call_count.items()}
 
-    overall_success = sum(domain_success.values()) / 1000 * 100
+    overall_success = sum(domain_success.values()) / (1000 - sum(excluded_samples_per_domain.values())) * 100
     overall_call_acc = sum([v[0] for v in domain_call_count.values()]) / sum([v[1] for v in domain_call_count.values()]) * 100
 
     complete_score, complete_total = 0, 0
@@ -66,9 +77,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--log_dir", type=str, default="logs/test.log")
     parser.add_argument("--result_dir", type=str, default="result/../All.jsonl")
+    parser.add_argument("--exclude_list", type=str, default=None)
     args = parser.parse_args()
-    basic_metric(args.result_dir)
 
+    excluded_ids = []
+    if args.exclude_list is not None:
+        with open (args.exclude_list, "r") as f:
+            excluded_ids = f.read().splitlines()
+    basic_metric(args.result_dir, excluded_ids)
 
 
 

@@ -31,4 +31,4 @@ if [ ! -d "result/$MODEL_NAME/full-1000" ]; then
 fi
 
 echo "Running print_results.py for model: $MODEL_NAME"
-uv run print_results.py --log_dir result/$MODEL_NAME/full-1000/logs --result_dir result/$MODEL_NAME/full-1000.jsonl
+uv run print_results.py --log_dir result/$MODEL_NAME/full-1000/logs --result_dir result/$MODEL_NAME/full-1000.jsonl --exclude_list llm-filtering/incorrect_ids_llm.txt
