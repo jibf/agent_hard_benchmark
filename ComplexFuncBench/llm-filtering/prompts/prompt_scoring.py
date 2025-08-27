@@ -16,7 +16,7 @@ Evaluate the sample on each of the following dimensions using a 1-5 point scale.
 
 1. Tool Necessity
 * 5 points: Every single step of the sub-task required to solve the given task is fundamentally impossible without the specific tools provided.
-* 3 points: The core task requires tools to complete, but small peripheral aspects or subtasks could be handled using internal knowledge of model intensively trained on up-to-date data.
+* 3 points: The core task requires tools to complete, but small peripheral aspects or subtasks could be handled using internal knowledge of model intensively trained on up-to-date data. e.g., identifying the airport name given the city
 * 1 points: A model intensively trained on up-to-date data could potentially solve the task without any tools, making the tool calls feel optional or of limited value.
 
 2. Planning and Context Depth 
@@ -51,33 +51,28 @@ Example:
 [
     {{
     "dimension": "tool necessity",
-    "reasoning": "The user's goal of booking a flight and a taxi involves interacting with external reservation systems. This is **fundamentally impossible to achieve with only the model's internal knowledge**. The task's core requires real-world actions via APIs, perfectly matching the 5-point criteria.",
-    "reasoning_summary": "Task is impossible without external APIs, making tools essential.",
-    "score": 5
+    "reasoning": "The user's goal of booking a flight and a taxi involves interacting with external reservation systems. This is fundamentally impossible to achieve with only the model's internal knowledge. However, small sub-tasks such as identifying the closest airport from the user's location could be handled without external APIs.",
+    "score": 3
     }},
     {{
     "dimension": "planning and context depth",
     "reasoning": "The task requires a sequence: 1. Search for a flight, 2. Use the flight's arrival airport to book a taxi. This is a **standard multi-step plan with a clear, linear dependency**. However, it does not require **complex, non-linear planning or adaptation to unexpected results**, which would be necessary for a score of 5.",
-    "reasoning_summary": "Standard multi-step plan with a simple dependency; not complex or non-linear.",
-    "score": 3
+    "score": 4
     }},
     {{
     "dimension": "parameter generation",
     "reasoning": "Assuming the user prompt mentioned 'tomorrow', the agent needs to calculate the exact date. This is a **form of basic reasoning**, fitting the 3-point criteria. It does not require **deep semantic inference or the generation of a long, complex value** (like a full JSON object for filtering).",
-    "reasoning_summary": "Requires basic reasoning (date calculation) but not deep inference.",
     "score": 3
     }},
     {{
     "dimension": "tool selection difficulty",
     "reasoning": "The user's intent to 'search for a flight' and 'book a taxi' maps directly to tools like `search_flights` and `book_taxi`. There are **no plausible or confusing distractor tools** mentioned. The choice is obvious and straightforward.",
-    "reasoning_summary": "Tool choices are obvious and straightforward with no plausible distractors.",
-    "score": 1
+    "score": 2
     }},
     {{
     "dimension": "real-world applicability",
-    "reasoning": "Booking a flight and then arranging for transportation from the airport is an **extremely common and practical real-world scenario** for travelers. The task is highly realistic.",
-    "reasoning_summary": "Represents a common and highly realistic travel planning scenario.",
-    "score": 5
+    "reasoning": "Booking a flight and then arranging for transportation from the airport is a very common and practical real-world scenario for travelers. However, some of the conditions that the user demands are a bit unrealistic.",
+    "score": 3
     }}
 ]
 
