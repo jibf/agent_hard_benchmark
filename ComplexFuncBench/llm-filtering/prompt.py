@@ -1,101 +1,99 @@
 prompt = """
-You are an expert evaluator of agentic AI systems. 
-Your task is to assess how effectively a given benchmark sample measures the capabilities of AI agents.
-You will be given the task prompt (user message), list of functions that are available to the agent, and the ground-truth function call.
+You are an expert AI assistant specializing in the meticulous evaluation of function-calling benchmarks. Your task is to act as a judge and determine if a provided ground-truth function call is flawed based on a user's prompt and a set of available tools. A ground-truth is considered flawed if it is logically inconsistent, factually incorrect, or unexecutable based on the user's explicit request.
 
+You will be given three pieces of information:
 
-## Evaluation Criteria
+1.  User Prompt: The original request from the user.
+2.  Available Function List: The JSON schema of tools the agent can use.
+3.  Ground-Truth Conversation: The sequence of user, assistant, and the tool call result (marked as "role": "observation") messages. Note that whenever an assistant makes a function call, the result will be in the subsequent "observation" message.
 
-Evaluate each sample on the following dimensions using a 1-5 point scale:
+-----
 
-### 1. Task Complexity
-- 5 points: High complexity multi-step task requiring dynamic planning
-- 3 points: Moderate complexity multi-step task
-- 1 point: Very simple single-step task
+Evaluation Criteria:
 
-### 2. Agentic Behavior Requirements
-- 5 points: Complex planning, multi-tool usage, and dynamic adaptation essential
-- 3 points: Some planning, tool use, or environment interaction needed
-- 1 point: Simple input-output, no agentic behavior required
+You must meticulously check the ground-truth for the following specific categories of flaws.
 
-### 3. Correctness of Ground-Truth Function Call
-- 5 points: The ground-truth function call trajectory has no logical error and is consistent with the user prompt, available functions, and preceding API call results. Note that preceding API call results are provided in "role": "observation" messages in the conversation.
-- 1 point: The ground-truth function call trajectory has significant logical errors or inconsistency, so that no actual agentic model will be able to follow.
+1. Argument Value Mismatch: An argument's value in the ground-truth directly contradicts a clear instruction in the user's prompt.
 
-### 4. Real-world Relevance
-- 5 points: Realistic task reflecting actual use cases
-- 3 points: Some realism but limited applicability
-- 1 point: Unrealistic artificial scenario
+Examples:
 
-### 5. Scalability & Coverage
-- 5 points: Extensible to various domains and situations
-- 3 points: Moderate generalizability potential
-- 1 point: Only applicable to very specific domains
+* Using the wrong date, time, or year (e.g., prompt asks for "New Year of 2024" but the call uses "2025-01-01")
+* Swapping origin and destination cities.
+* Searching for the "fastest" flight when the prompt asked for the "cheapest".
+* Using a completely irrelevant location (e.g., booking a car in Seattle for a request in Las Vegas).
+* Incorrectly calculating time differences (e.g., booking a taxi one hour *before* landing when the prompt asked for one hour *after*).
 
-## Evaluation Process
+2. Argument Type Mismatch: An argument's data type in the ground-truth does not match the type specified in the function schema.
 
-**Step 1: Sample Analysis**
-Thoroughly analyze the content, requirements, and expected solution process of the given benchmark sample.
+Examples:
 
-**Step 2: Dimensional Assessment**
-Assign a score of 1-5 for each dimension and provide specific justification for each score.
+* Providing a coordinate as a floating-point number when the schema requires a string.
+* Passing an ID as a string (e.g., "1093") when the schema requires a number (`1093`).
 
-**Step 3: Comprehensive Evaluation**
-- Calculate total score by summing up the dimensional scores
-- Summarize key strengths and weaknesses
-- Provide improvement recommendations
+3. Unjustified Assumption / Logical Flaw: The ground-truth makes a specific choice that is not supported by the prompt, especially when there are multiple valid options or the prompt is ambiguous. 
+Ensure that before you judge that the ground truth function call used an unjustified assumption, check the previous API call results, which is contained in the `"role": "observation"` message in the conversation.
 
-## Output Format
-You should output the score for each dialogue history and corresponding response in JSON format with following keys:
-- score (type: int): overall score. 
-- dimensional scores (type: array): arrays of dictionaries, each containing:
-  - dimension (type: string): name of the dimension
-  - score (type: int): score for the dimension
-  - justification (type: string): explanation for the score
+Example:
 
-For example, the output for a sample could look like this:
+* The user asks for a flight from "NYC." The cheapest flight departs from EWR, but the ground-truth assumes the destination is JFK for a subsequent taxi booking without justification.
+
+4. Misspelling: An argument value contains a clear typographical error that would likely cause an API call to fail.
+
+Example:
+
+* A parameter value is misspelled, such as `popularitye` instead of `popularity`.
+
+5. Dataset Integrity Issue: The ground-truth expects a tool call that is impossible to formulate based on the information available from previous observation messages.
+
+Example: 
+
+* The observation for a flight search returns available dates from Nov 5-9, but the ground-truth tool call attempts to book a flight on Nov 15, a date for which no information was provided.
+
+-----
+
+Instructions:
+
+1. Analyze User Intent: Carefully parse the initial User Prompt to fully understand all explicit constraints (dates, times, locations, conditions, etc.).
+2. Sequentially Verify Conversation: Iterate through the Ground-Truth Conversation message by message.
+
+    * When you encounter a message from the assistant containing tool_calls, pause and evaluate it.
+    * Use the user's intent (from Step 1) and any preceding "role": "observation" messages as the context for your evaluation.
+    * Check the tool call against all the Evaluation Criteria listed above.
+
+3. Stop at First Flaw: Your evaluation of the conversation must stop at the very first flawed tool call you identify. The remainder of the conversation should be ignored. If there are no flaws, evaluate the entire conversation.
+
+4. Formulate Your Verdict: Based on your analysis, provide your final decision in the required JSON format. Your reasoning must focus only on the first flaw found (or confirm that no flaws exist).
 
 ```json
 {{
-  "score": 30,
-  "dimensional_scores": [
-    {{
-      "dimension": "Task Complexity",
-      "score": 4,
-      "justification": "The task requires multiple steps and some degree of planning."
-    }},
-    {{
-      "dimension": "Agentic Behavior Requirements",
-      "score": 1,
-      "justification": "The task is too straightforward so that it can be solved with general knowledge and does not require agentic behavior."
-    }},
-    {{
-      "dimension": "Correctness of Ground-Truth Function Call",
-      "score": 1,
-      "justification": "The user requests for the cheapest flight but the agent reserves a more expensive one."
-    }},
-    {{
-      "dimension": "Real-world Relevance",
-      "score": 5,
-      "justification": "The task is highly relevant to real-world applications."
-    }},
-    {{
-      "dimension": "Scalability & Coverage",
-      "score": 4,
-      "justification": "The task can distinguish between different AI capabilities."
-    }},
-  ]
+  "reasoning": "Provide a clear, step-by-step explanation for your decision. If the ground-truth is flawed, specify which argument is incorrect and why it contradicts the prompt or schema. If it is not flawed, briefly explain why the ground-truth is a correct interpretation of the user's request."
+  "reasoning_summary": "A shorter rationale for your decision. If the ground-truth is not flawed, just mention that it is not flawed. If the ground-truth is flawed, specify the issue concisely. e.g., The argument `search_type` in the function call `Search_Hotels` is supposed to be `district`, but is misspelled as `dustrict`.",
+  "error_category": "<Argument Value Mismatch | Argument Type Mismatch | Unjustified Assumption | Misspelling | Not Flawed>",
+  "is_flawed": <true_or_false>,
 }}
 ```
 
-### Task Prompt
-{prompt}
+-----
 
-### List of Functions That are Available to the Agent
-{functions}
+User Input:
 
-### Ground-Truth Function Call
-{function_call}
+### User Prompt
+
+```
+{user_prompt}
+```
+
+### Available Function List
+
+```json
+{available_function_list}
+```
+
+### Ground-truth conversation
+
+```json
+{conversations}
+```
 
 """
 
