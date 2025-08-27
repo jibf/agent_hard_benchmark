@@ -4,7 +4,7 @@ import argparse
 from typing import Dict, Any
 from openai import OpenAI
 from dotenv import load_dotenv
-from prompt import prompt
+from prompts import flawed_gt_filtering
 from tqdm import tqdm
 
 import multiprocessing
@@ -31,8 +31,8 @@ class DatasetAssessor:
 
     def assess_sample(self, user_prompt: str, conversations: str, available_function_list: list) -> Dict[str, Any]:
         """Assess a single sample using LLM."""
-        
-        evaluation_prompt = prompt.format(
+
+        evaluation_prompt = flawed_gt_filtering.prompt.format(
             user_prompt=user_prompt,
             conversations=json.dumps(conversations),
             available_function_list=json.dumps(available_function_list)
