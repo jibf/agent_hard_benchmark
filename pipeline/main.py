@@ -14,11 +14,10 @@ from typing import Dict, List, Tuple
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from comprehensive_rule_filtering import ComprehensiveRuleFilter
-from llm_judge_filtering import LLMJudgeFilter, LLMJudgeConfig, Step
-from data_loader import BenchmarkDataLoader
-from benchmark_types import BenchmarkType
-from utils.formatters.tau_formatter import TauBenchFormatter
+from src.comprehensive_rule_filtering import ComprehensiveRuleFilter
+from src.llm_judge_filtering import LLMJudgeAssessor, LLMJudgeConfig, Step
+from src.data_loader import BenchmarkDataLoader
+from src.utils.types import Benchmark
 
 # Set up logging
 logging.basicConfig(
@@ -52,7 +51,7 @@ class BenchmarkFilteringPipeline:
             logger.info("RUNNING LLM-AS-JUDGE ON QUESTIONS INDEPENDENTLY")
             logger.info("=" * 40)
             
-            return self._run_llm_judge_independent()
+            return self._run_llm_judge_independently()
         else:  # Step 1: Rule-based filtering
             logger.info("\n" + "=" * 40)
             logger.info("STEP 1: COMPREHENSIVE RULE-BASED FILTERING")
@@ -72,7 +71,7 @@ class BenchmarkFilteringPipeline:
             logger.info("STEP 2: LLM-AS-JUDGE FILTERING")
             logger.info("=" * 40)
             
-            step2_passed, step2_dropped = self._run_step2_llm_judge(step1_passed)
+            step2_passed, step2_dropped = self._run_llm_judge(step1_passed)
             
             # Save Step 2 results
             self._save_results(step2_passed, step2_dropped, "step2_llm_judge")
@@ -95,7 +94,7 @@ class BenchmarkFilteringPipeline:
         logger.info(f"Step 1 completed: {len(passed_samples):,} samples passed")
         return passed_samples, dropped_samples
     
-    def _run_step2_llm_judge(self, step1_passed: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    def _run_llm_judge(self, step1_passed: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
         """Run Step 2: LLM-as-Judge filtering."""
         logger.info(f"Starting LLM-as-Judge filtering on {len(step1_passed):,} samples from Step 1")
         
@@ -105,15 +104,11 @@ class BenchmarkFilteringPipeline:
             max_samples=self.config.get("llm_max_samples", None),  # None = process all
             batch_size=self.config.get("llm_batch_size", 10),
             max_retries=self.config.get("llm_max_retries", 3),
-            retry_delay=self.config.get("llm_retry_delay", 1.0)
+            retry_delay=self.config.get("llm_retry_delay", 1.0),
+            num_proc=self.config.get("num_proc", 1)
         )
         
-        logger.info(f"LLM-as-Judge configuration:")
-        logger.info(f"  Model: {llm_config.model}")
-        logger.info(f"  Max samples: {llm_config.max_samples or 'All'}")
-        logger.info(f"  Batch size: {llm_config.batch_size}")
-        
-        llm_filter = LLMJudgeFilter(llm_config)
+        llm_filter = LLMJudgeAssessor(llm_config)
         passed_samples, dropped_samples = llm_filter.filter_samples(step1_passed)
         
         logger.info(f"Step 2 completed: {len(passed_samples):,} samples passed")
@@ -220,8 +215,24 @@ class BenchmarkFilteringPipeline:
         
         return len(question_ids)
     
-    def _run_llm_judge_independent(self) -> Tuple[List[Dict], List[Dict]]:
+    def _run_llm_judge_independently(self) -> Tuple[List[Dict], List[Dict]]:
         """Run LLM judge independently on questions from benchmark datasets."""
+        benchmarks = [Benchmark.TAU_BENCH, Benchmark.COMPLEX_FUNC_BENCH]
+
+        llm_config = LLMJudgeConfig(
+            model=self.config.get("llm_model", "gpt-4o-mini"),
+            max_samples=self.config.get("llm_max_samples", None),
+            batch_size=self.config.get("llm_batch_size", 10),
+            max_retries=self.config.get("llm_max_retries", 3),
+            retry_delay=self.config.get("llm_retry_delay", 1.0),
+            num_proc=self.config.get("num_proc", 1)
+        )
+
+        for benchmark in benchmarks:
+            assessor = LLMJudgeAssessor(benchmark, llm_config)
+            assessor.load_benchmark_and_get_step_results(Step.FILTER)
+
+
         logger.info("Loading questions from benchmark datasets...")
         
         # For now, we'll process ComplexFuncBench questions
@@ -234,21 +245,13 @@ class BenchmarkFilteringPipeline:
         
         logger.info(f"Loaded {len(questions):,} questions")
         
-        # Configure LLM-as-Judge
-        llm_config = LLMJudgeConfig(
-            model=self.config.get("llm_model", "gpt-4o-mini"),
-            max_samples=self.config.get("llm_max_samples", None),
-            batch_size=self.config.get("llm_batch_size", 10),
-            max_retries=self.config.get("llm_max_retries", 3),
-            retry_delay=self.config.get("llm_retry_delay", 1.0)
-        )
-        
         logger.info(f"LLM-as-Judge configuration:")
         logger.info(f"  Model: {llm_config.model}")
         logger.info(f"  Max samples: {llm_config.max_samples or 'All'}")
         logger.info(f"  Batch size: {llm_config.batch_size}")
         
-        llm_filter = LLMJudgeFilter(llm_config)
+        # TODO: refactor this part
+        llm_filter = LLMJudgeAssessor(llm_config)
         
         # Process questions independently
         step = Step.FILTER  # Default to filter step
@@ -256,13 +259,13 @@ class BenchmarkFilteringPipeline:
         # Determine benchmark type based on target
         target_benchmark = self.config.get("target_benchmark")
         if target_benchmark == "tau_bench":
-            benchmark_type = BenchmarkType.TAU_BENCH
+            benchmark_type = Benchmark.TAU_BENCH
         else:
-            benchmark_type = BenchmarkType.COMPLEX_FUNC_BENCH  # Default benchmark type
+            benchmark_type = Benchmark.COMPLEX_FUNC_BENCH  # Default benchmark type
             
-        proc_num = self.config.get("proc_num", 1)
+        num_proc = self.config.get("num_proc", 1)
         
-        results = llm_filter.assess_questions(questions, step, benchmark_type, proc_num)
+        results = llm_filter.assess_questions(questions, step, benchmark_type, num_proc)
         
         # Separate passed and dropped questions based on assessment
         passed_questions = []
@@ -292,146 +295,6 @@ class BenchmarkFilteringPipeline:
         
         return passed_questions, dropped_questions
     
-    def _load_benchmark_questions(self) -> List[Dict]:
-        """Load questions from benchmark datasets for independent assessment."""
-        target_benchmark = self.config.get("target_benchmark")
-        questions = []
-        
-        # Map benchmark names to their directories and file patterns
-        benchmark_mapping = {
-            "tau_bench": "data",  # tau_bench files are stored in data/ directory
-            "complex_func_bench": "data",
-            "bfcl": "benchmark/BFCL-evaluation",
-            "nexus_bench": "benchmark/NexusBench-evaluation", 
-            "drafter_bench": "benchmark/DrafterBench-evaluation"
-        }
-        
-        # Map benchmark names to their file patterns
-        file_patterns = {
-            "tau_bench": ["tau_bench_*.jsonl"],  # Look for converted tau_bench files
-            "complex_func_bench": ["ComplexFuncBench.jsonl"],
-            "bfcl": ["*.jsonl"],
-            "nexus_bench": ["*.jsonl"],
-            "drafter_bench": ["*.jsonl"]
-        }
-        
-        if target_benchmark:
-            # Load specific benchmark
-            benchmarks_to_load = [target_benchmark]
-        else:
-            # Load all available benchmarks
-            benchmarks_to_load = list(benchmark_mapping.keys())
-        
-        for benchmark_name in benchmarks_to_load:
-            benchmark_dir = benchmark_mapping.get(benchmark_name)
-            patterns = file_patterns.get(benchmark_name, ["*.jsonl"])
-            
-            if not benchmark_dir or not os.path.exists(benchmark_dir):
-                logger.warning(f"Benchmark directory {benchmark_dir} for {benchmark_name} not found")
-                continue
-                
-            # Special handling for tau_bench
-            if benchmark_name == "tau_bench":
-                questions.extend(self._load_tau_bench_questions())
-                continue
-            
-            # Load files matching patterns
-            files_loaded = 0
-            for pattern in patterns:
-                import glob
-                file_pattern = os.path.join(benchmark_dir, pattern)
-                matching_files = glob.glob(file_pattern)
-                
-                for file_path in matching_files:
-                    logger.info(f"Loading questions from {file_path}")
-                    file_questions = self._load_questions_from_file(file_path, benchmark_name)
-                    questions.extend(file_questions)
-                    files_loaded += 1
-                    
-                    # Limit files per benchmark to avoid overwhelming
-                    if files_loaded >= 5:  # Limit to first 5 files per benchmark
-                        break
-                        
-                if files_loaded >= 5:
-                    break
-            
-            if files_loaded == 0:
-                logger.warning(f"No files found for benchmark {benchmark_name} in {benchmark_dir}")
-        
-        logger.info(f"Total questions loaded: {len(questions)}")
-        return questions
-    
-    def _load_tau_bench_questions(self) -> List[Dict]:
-        """Load tau_bench questions using the original assess_dataset_mine logic."""
-        questions = []
-        
-        # Use TauBenchFormatter to convert tau-bench tasks
-        try:
-            from assess_dataset_mine import DatasetAssessor
-            from benchmark_types import BenchmarkType
-            
-            # Create assessor to use tau formatter
-            assessor = DatasetAssessor()
-            
-            # Try airline domain first
-            domains = ['airline', 'retail']
-            for domain in domains:
-                try:
-                    logger.info(f"Generating tool schemas for tau-bench {domain}...")
-                    assessor.tau_formatter.get_tool_schemas(domain)
-                    
-                    logger.info(f"Converting tau-bench {domain} tasks...")
-                    converted_tasks = assessor.tau_formatter.process_tau_bench_tasks(domain)
-                    
-                    if converted_tasks:
-                        for i, task in enumerate(converted_tasks):
-                            task_dict = task.model_dump() if hasattr(task, 'model_dump') else task
-                            task_dict['id'] = f'tau_{domain}_{i+1}'
-                            task_dict['benchmark_name'] = 'tau_bench'
-                            task_dict['domain'] = domain
-                            questions.append(task_dict)
-                        
-                        logger.info(f"Loaded {len(converted_tasks)} questions from tau-bench {domain}")
-                    else:
-                        logger.warning(f"No converted tasks found for tau-bench {domain}")
-                        
-                except Exception as e:
-                    logger.warning(f"Failed to load tau-bench {domain}: {e}")
-                    continue
-                    
-        except ImportError as e:
-            logger.warning(f"Could not import tau-bench dependencies: {e}")
-            
-        return questions
-    
-    def _load_questions_from_file(self, file_path: str, benchmark_name: str) -> List[Dict]:
-        """Load questions from a single JSONL file."""
-        questions = []
-        
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                for line_num, line in enumerate(f, 1):
-                    try:
-                        question_data = json.loads(line.strip())
-                        question_data['id'] = question_data.get('id', f'{benchmark_name}_{os.path.basename(file_path)}_{line_num}')
-                        question_data['benchmark_name'] = benchmark_name
-                        question_data['source_file'] = file_path
-                        questions.append(question_data)
-                        
-                        # Limit questions per file to avoid overwhelming
-                        if len(questions) >= 100:  # Limit to first 100 questions per file
-                            logger.info(f"Limited to first 100 questions from {file_path}")
-                            break
-                            
-                    except json.JSONDecodeError as e:
-                        logger.warning(f"Error parsing line {line_num} in {file_path}: {e}")
-                        
-        except Exception as e:
-            logger.warning(f"Error reading file {file_path}: {e}")
-            
-        logger.info(f"Loaded {len(questions)} questions from {file_path}")
-        return questions
-
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Benchmark Filtering Pipeline")
@@ -474,7 +337,7 @@ def main():
         help="Delay between retries in seconds (default: 1.0)"
     )
     parser.add_argument(
-        "--proc-num", 
+        "--num-proc", 
         type=int,
         default=1,
         help="Number of processes for multiprocessing (default: 1)"
@@ -494,7 +357,7 @@ def main():
         "llm_batch_size": args.llm_batch_size,
         "llm_max_retries": args.llm_max_retries,
         "llm_retry_delay": args.llm_retry_delay,
-        "proc_num": args.proc_num,
+        "num_proc": args.num_proc,
         "target_benchmark": args.target_benchmark
     }
     

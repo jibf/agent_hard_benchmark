@@ -1,7 +1,7 @@
 prompt="""
 You are an expert AI assistant specializing in the meticulous evaluation of function-calling benchmarks. Your task is to assess how effectively a given benchmark sample measures the capabilities of AI agents.
 
-This evaluation is for the {benchmark_type} benchmark.
+This evaluation is for the {benchmark} benchmark.
 
 You will be given three pieces of information:
 

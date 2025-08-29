@@ -1,7 +1,7 @@
 prompt = """
 You are an expert AI assistant specializing in the meticulous evaluation of function-calling benchmarks. Your task is to act as a judge and determine if a provided ground-truth function call is flawed based on a user's prompt and a set of available tools. A ground-truth is considered flawed if it is logically inconsistent, factually incorrect, or unexecutable based on the user's explicit request.
 
-This evaluation is for the {benchmark_type} benchmark.
+This evaluation is for the {benchmark} benchmark.
 
 You will be given three pieces of information:
 

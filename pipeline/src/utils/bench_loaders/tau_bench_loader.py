@@ -2,13 +2,13 @@ import json
 import os
 import sys
 from typing import Dict, Any, List
-from . import BaseFormatter
+from . import BaseLoader
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from benchmark_types import FormattedQuestion, BenchmarkType
+from src.utils.types import FormattedQuestion, Benchmark
 
 
 
-class TauBenchFormatter(BaseFormatter):
+class TauBenchLoader(BaseLoader):
     """Formatter for tau-bench dataset"""
     
     def __init__(self):
@@ -62,8 +62,11 @@ class TauBenchFormatter(BaseFormatter):
         functions = self.load_tau_bench_tools(domain)
         
         return FormattedQuestion(
+            question_id=sample_id or f"tau_bench_{domain}_{user_id}",
+            user_prompt=user_prompt,
             conversations=conversations,
             available_function_list=functions,
+            benchmark=Benchmark.TAU_BENCH,
             meta={
                 'tau_bench_context': {
                     'user_id': user_id,
@@ -71,9 +74,6 @@ class TauBenchFormatter(BaseFormatter):
                     'expected_outputs': outputs,
                     'env_data': env_data
                 },
-                'id': sample_id or f"tau_bench_{domain}_{user_id}",
-                'benchmark': BenchmarkType.TAU_BENCH,
-                'user_prompt': user_prompt
             }
         )
     
@@ -158,12 +158,6 @@ class TauBenchFormatter(BaseFormatter):
         """Convert tau-bench actions to conversation format with real tool execution results"""
         
         conversations = []
-        
-        # Initial user message
-        # conversations.append({
-        #     "role": "user",
-        #     "content": instruction
-        # })
         
         # Convert each action to assistant message with tool call + real observation
         for i, action in enumerate(actions):
@@ -565,3 +559,11 @@ class TauBenchFormatter(BaseFormatter):
         
         print(f"Generated {len(schemas)} tool schemas for {domain} domain")
         return schemas
+    
+    def load_questions(self) -> List[FormattedQuestion]:
+        """Load all questions from two domains and format them into FormattedQuestion objects"""
+        all_questions = []
+        all_questions.extend(self.process_tau_bench_tasks("retail"))
+        all_questions.extend(self.process_tau_bench_tasks("airline"))
+
+        return all_questions
