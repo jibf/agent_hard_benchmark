@@ -101,16 +101,33 @@ class LLMJudgeAssessor:
         self.benchmark = benchmark
 
     def load_benchmark_and_get_results(self) -> List[Dict]:
-        """Load benchmark questions and run LLM-as-Judge assessment."""
+        """Load benchmark questions and run both FILTER and SCORE assessments."""
         questions = self._load_benchmark_questions()
 
         if self.config.max_samples:
             questions = questions[:self.config.max_samples]
 
-        filter_result = self.assess_questions(questions, Step.FILTER)
-        score_result = self.assess_questions(questions, Step.SCORE)
+        logger.info(f"Running FILTER assessment on {len(questions)} questions")
+        filter_results = self.assess_questions(questions, Step.FILTER)
+        
+        logger.info(f"Running SCORE assessment on {len(questions)} questions")  
+        score_results = self.assess_questions(questions, Step.SCORE)
 
-        return self.assess_questions(questions)
+        # Combine results for each question
+        combined_results = []
+        for i, question in enumerate(questions):
+            combined_result = {
+                "benchmark": question.benchmark.value,
+                "question_id": question.question_id,
+                "user_prompt": question.user_prompt,
+                "available_function_list": question.available_function_list,
+                "conversations": question.conversations,
+                "filter_assessment": filter_results[i].get("assessment", {}),
+                "score_assessment": score_results[i].get("assessment", {})
+            }
+            combined_results.append(combined_result)
+            
+        return combined_results
 
     def load_benchmark_and_get_step_results(self, step: Step = Step.FILTER) -> List[Dict]:
         """Run the LLM-as-Judge assessment."""

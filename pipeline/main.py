@@ -228,72 +228,23 @@ class BenchmarkFilteringPipeline:
             num_proc=self.config.get("num_proc", 1)
         )
 
+        all_results = []
         for benchmark in benchmarks:
+            logger.info(f"Processing {benchmark.value} benchmark...")
             assessor = LLMJudgeAssessor(benchmark, llm_config)
-            assessor.load_benchmark_and_get_step_results(Step.FILTER)
-
-
-        logger.info("Loading questions from benchmark datasets...")
-        
-        # For now, we'll process ComplexFuncBench questions
-        # This can be extended to support other benchmark types
-        questions = self._load_benchmark_questions()
-        
-        if not questions:
-            logger.warning("No questions found to process")
-            return [], []
-        
-        logger.info(f"Loaded {len(questions):,} questions")
-        
-        logger.info(f"LLM-as-Judge configuration:")
-        logger.info(f"  Model: {llm_config.model}")
-        logger.info(f"  Max samples: {llm_config.max_samples or 'All'}")
-        logger.info(f"  Batch size: {llm_config.batch_size}")
-        
-        # TODO: refactor this part
-        llm_filter = LLMJudgeAssessor(llm_config)
-        
-        # Process questions independently
-        step = Step.FILTER  # Default to filter step
-        
-        # Determine benchmark type based on target
-        target_benchmark = self.config.get("target_benchmark")
-        if target_benchmark == "tau_bench":
-            benchmark_type = Benchmark.TAU_BENCH
-        else:
-            benchmark_type = Benchmark.COMPLEX_FUNC_BENCH  # Default benchmark type
+            benchmark_results = assessor.load_benchmark_and_get_results()
+            all_results.extend(benchmark_results)
             
-        num_proc = self.config.get("num_proc", 1)
+        # Save combined results as JSON
+        output_filename = "llm_judge_filter_and_score_results.json"
+        with open(output_filename, "w", encoding='utf-8') as f:
+            json.dump(all_results, f, indent=2, ensure_ascii=False)
+            
+        logger.info(f"Combined results saved to {output_filename}")
+        logger.info(f"Total questions processed: {len(all_results)}")
         
-        results = llm_filter.assess_questions(questions, step, benchmark_type, num_proc)
-        
-        # Separate passed and dropped questions based on assessment
-        passed_questions = []
-        dropped_questions = []
-        
-        for result in results:
-            assessment = result.get("assessment", {})
-            if not assessment.get("error"):
-                if step == Step.FILTER:
-                    # For filter step, check if_flawed
-                    if not assessment.get("is_flawed", True):
-                        passed_questions.append(result)
-                    else:
-                        dropped_questions.append(result)
-                else:
-                    # For score step, could add different logic
-                    passed_questions.append(result)
-            else:
-                dropped_questions.append(result)
-        
-        # Save results
-        self._save_results(passed_questions, dropped_questions, "llm_judge_independent")
-        
-        logger.info(f"Independent LLM judge completed:")
-        logger.info(f"  Passed: {len(passed_questions):,}")
-        logger.info(f"  Dropped: {len(dropped_questions):,}")
-        
-        return passed_questions, dropped_questions
+        # For compatibility, return empty lists since we're saving to JSON
+        return [], []
     
 def main():
     """Main entry point."""
