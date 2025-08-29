@@ -80,6 +80,11 @@ python main.py --llm-model gpt-4o-mini --llm-max-samples 100 --llm-batch-size 5
 python main.py --skip-llm-judge
 ```
 
+### Run Only Step 2 (LLM-as-a-Judge Filtering)
+```bash
+# Skip LLM-as-Judge step (no API costs)
+python main.py --skip-rule-based --proc-num 32
+```
 ## Command Line Options
 
 ```bash
@@ -87,7 +92,8 @@ python main.py [OPTIONS]
 
 Options:
   --skip-llm-judge          Skip Step 2 (LLM-as-Judge filtering)
-  --llm-model MODEL         LLM model to use (default: gpt-4o-mini)
+  --skip-rule-based         Skip Step 1 (Rule-based filtering)
+  --llm-model MODEL         LLM model to use (default: gpt-4.1)
   --llm-max-samples N       Maximum samples for Step 2 (default: all)
   --llm-batch-size N        Batch size for LLM processing (default: 10)
   --llm-max-retries N       Max retries for LLM calls (default: 3)

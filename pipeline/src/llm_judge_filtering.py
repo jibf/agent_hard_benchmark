@@ -6,17 +6,34 @@ Evaluates benchmark quality using LLM-based assessment.
 
 import json
 import logging
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
-import openai
+from enum import Enum
+from openai import OpenAI
+import os
 import time
+from tqdm import tqdm
+from utils.prompts import flawed_gt_filtering, prompt_scoring
+from utils.formatters.tau_formatter import TauBenchFormatter
+from benchmark_types import BenchmarkType
+import multiprocessing
+from multiprocessing import Pool
+from datetime import datetime
+import hashlib
+from dotenv import load_dotenv
 
+load_dotenv()
 logger = logging.getLogger(__name__)
+
+
+class Step(Enum):
+    FILTER = "filter"
+    SCORE = "score"
 
 @dataclass
 class LLMJudgeConfig:
     """Configuration for LLM-as-Judge filtering."""
-    model: str = "gpt-4o-mini"  # Default model
+    model: str = "openai/gpt-4.1"  # Default model
     max_retries: int = 3
     retry_delay: float = 1.0
     batch_size: int = 10
@@ -27,7 +44,10 @@ class LLMJudgeFilter:
     
     def __init__(self, config: LLMJudgeConfig = None):
         self.config = config or LLMJudgeConfig()
-        self.client = openai.OpenAI()
+        self.client = OpenAI(
+            api_key=os.getenv("API_KEY"),
+            base_url=os.getenv("BASE_URL")
+        )
         
     def filter_samples(self, samples: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
         """Apply LLM-as-Judge filtering to samples."""
@@ -60,6 +80,41 @@ class LLMJudgeFilter:
         
         return passed_samples, dropped_samples
     
+    def assess_questions(self, questions: List[Dict], step: Step = Step.FILTER, benchmark_type: BenchmarkType = BenchmarkType.COMPLEX_FUNC_BENCH, proc_num: int = 1) -> List[Dict]:
+        """Assess questions independently using LLM-as-Judge."""
+        logger.info(f"Starting question assessment with {len(questions)} questions")
+        
+        if self.config.max_samples:
+            questions = questions[:self.config.max_samples]
+            logger.info(f"Limited to {len(questions)} questions for testing")
+        
+        results = []
+        
+        if proc_num > 1:
+            # Use multiprocessing
+            with Pool(processes=proc_num) as pool:
+                with tqdm(total=len(questions), desc="Processing questions", unit="question") as pbar:
+                    pool_results = []
+                    for question_data in questions:
+                        result = pool.apply_async(self._process_question_mp, (question_data, step, benchmark_type, self.config.model))
+                        pool_results.append(result)
+                    
+                    # Collect results as they complete
+                    for result in pool_results:
+                        result_data = result.get()
+                        if result_data:
+                            results.append(result_data)
+                        pbar.update(1)
+        else:
+            # Sequential processing
+            for question_data in tqdm(questions, desc="Processing questions"):
+                result = self._process_question(question_data, step, benchmark_type)
+                if result:
+                    results.append(result)
+        
+        logger.info(f"Question assessment completed: {len(results)} results")
+        return results
+    
     def _process_batch(self, batch: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
         """Process a batch of samples."""
         passed_samples = []
@@ -88,6 +143,80 @@ class LLMJudgeFilter:
                 dropped_samples.append(sample)
         
         return passed_samples, dropped_samples
+    
+    def _process_question(self, question_data: Dict, step: Step = Step.FILTER, benchmark_type: BenchmarkType = BenchmarkType.COMPLEX_FUNC_BENCH) -> Optional[Dict]:
+        """Process a single question for assessment."""
+        try:
+            # Extract conversation data based on benchmark type
+            user_prompt, conversations, available_function_list = self._extract_conversation_from_question(question_data, benchmark_type)
+            
+            if not user_prompt or not conversations:
+                logger.warning(f"Missing prompt or conversations in question")
+                logger.debug(f"Question data type: {type(question_data)}")
+                logger.debug(f"Question data keys: {list(question_data.keys()) if isinstance(question_data, dict) else 'Not a dict'}")
+                logger.debug(f"Has conversations attr: {hasattr(question_data, 'conversations')}")
+                logger.debug(f"User prompt: '{user_prompt}'")
+                logger.debug(f"Conversations: {conversations}")
+                return None
+            
+            # Assess the question
+            assessment = self._assess_question(user_prompt, conversations, available_function_list, step, benchmark_type)
+            
+            # Prepare result
+            question_id = question_data.get('id', f'question_{hash(str(question_data))}')
+            result = {
+                "id": question_id,
+                "original_data": question_data,
+                "assessment": assessment
+            }
+            
+            return result
+            
+        except Exception as e:
+            logger.warning(f"Error processing question: {e}")
+            return None
+    
+    @staticmethod
+    def _process_question_mp(question_data: Dict, step: Step, benchmark_type: BenchmarkType, model: str) -> Optional[Dict]:
+        """Process a single question for multiprocessing."""
+        # Create assessor instance in worker process
+        config = LLMJudgeConfig(model=model)
+        assessor = LLMJudgeFilter(config)
+        return assessor._process_question(question_data, step, benchmark_type)
+    
+    def _extract_conversation_from_question(self, question_data: Dict, benchmark_type: BenchmarkType = BenchmarkType.COMPLEX_FUNC_BENCH) -> Tuple[str, List[Dict], List[Dict]]:
+        """Extract conversation data from question, handling different benchmark formats."""
+        
+        if benchmark_type == BenchmarkType.COMPLEX_FUNC_BENCH:
+            # Original ComplexFuncBench format
+            conversations = question_data.get('conversations', [])
+            available_function_list = question_data.get('functions', [])
+            user_prompt = conversations[0].get('content', '') if conversations else ''
+            return user_prompt, conversations, available_function_list
+        
+        elif benchmark_type == BenchmarkType.TAU_BENCH:
+            # Tau-bench format - check if it's a FormattedQuestion object or dict
+            if hasattr(question_data, 'conversations'):
+                # It's a FormattedQuestion object
+                conversations = question_data.conversations
+                available_function_list = question_data.available_function_list
+                # For tau-bench, create a synthetic user prompt since ground truth starts with assistant
+                user_prompt = "This is a tau-bench evaluation task with ground truth conversation."
+                return user_prompt, conversations, available_function_list
+            elif 'conversations' in question_data:
+                # It's a dict representation  
+                conversations = question_data.get('conversations', [])
+                available_function_list = question_data.get('available_function_list', [])
+                # For tau-bench, create a synthetic user prompt since ground truth starts with assistant
+                user_prompt = "This is a tau-bench evaluation task with ground truth conversation."
+                return user_prompt, conversations, available_function_list
+            else:
+                # Use tau_formatter to extract
+                tau_formatter = TauBenchFormatter()
+                return tau_formatter.extract_conversation(question_data)
+        
+        else:
+            raise ValueError(f"Unsupported benchmark type: {benchmark_type}")
     
     def _extract_conversation_data(self, sample: Dict) -> Optional[Dict]:
         """Extract conversation data for LLM evaluation."""
@@ -411,3 +540,58 @@ User Input:
         except Exception as e:
             logger.warning(f"Error parsing flaw response: {e}")
             return {"is_flawed": True, "error_category": "Parse Error", "reasoning": str(e)}
+    
+    def _assess_question(self, user_prompt: str, conversations: List[Dict], available_function_list: List[Dict], step: Step = Step.FILTER, benchmark_type: BenchmarkType = BenchmarkType.COMPLEX_FUNC_BENCH) -> Dict[str, Any]:
+        """Assess a single question using LLM."""
+        
+        if step == Step.FILTER:
+            prompt_module = flawed_gt_filtering
+        elif step == Step.SCORE:
+            prompt_module = prompt_scoring
+        else:
+            raise ValueError(f"Invalid step: {step}. Must be Step.FILTER or Step.SCORE")
+        
+        # Map benchmark type to readable string
+        benchmark_type_str = "ComplexFuncBench" if benchmark_type == BenchmarkType.COMPLEX_FUNC_BENCH else "Tau-bench"
+        
+        evaluation_prompt = prompt_module.prompt.format(
+            benchmark_type=benchmark_type_str,
+            user_prompt=user_prompt,
+            conversations=json.dumps(conversations),
+            available_function_list=json.dumps(available_function_list)
+        )
+        
+        try:
+            # Only use json_object format for filter step, score step returns an array
+            response_format = {"type": "json_object"} if step == Step.FILTER else None
+            
+            response = self.client.chat.completions.create(
+                model=self.config.model,
+                messages=[
+                    {"role": "user", "content": evaluation_prompt}
+                ],
+                temperature=0.0,
+                response_format=response_format
+            )
+            
+            response_content = response.choices[0].message.content
+            if not response_content or response_content.strip() == "":
+                return {"error": "Empty response from API"}
+                
+            result = json.loads(response_content)
+
+            if step == Step.FILTER:
+                try:
+                    result = {
+                        "is_flawed": result["is_flawed"], 
+                        "reasoning_summary": result["reasoning_summary"],
+                        **{k: v for k, v in result.items() if k not in ["is_flawed", "reasoning_summary"]}
+                    }
+                except KeyError as ke:
+                    logger.warning(f"KeyError: {ke} not found in result")
+                    return {"error": f"Missing key in response: {ke}"}
+            return result
+            
+        except Exception as e:
+            logger.warning(f"Error assessing question: {e}")
+            return {"error": str(e)}
