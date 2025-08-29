@@ -18,7 +18,7 @@ class ComprehensiveRuleFilter:
     """Comprehensive rule-based filtering that combines sample and question-level filtering."""
     
     def __init__(self):
-        self.prompt_hashes = set()  # Track seen prompt hashes for duplicate detection
+        self.sample_ids = set()  # Track seen prompt hashes for duplicate detection
         
     def filter_samples(self, samples: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
         """Apply comprehensive rule-based filtering (sample + question level)."""
@@ -26,12 +26,15 @@ class ComprehensiveRuleFilter:
         
         # Step 1: Sample-level filtering
         logger.info("Step 1: Applying sample-level filtering...")
-        sample_pass_samples, sample_dropped_samples = self._sample_level_filtering(samples)
+        sample_pass_samples, sample_dropped_samples, sample_reason_stats = self._sample_level_filtering(samples)
         logger.info(f"Sample filtering: {len(sample_pass_samples)}/{len(samples)} samples passed")
+        logger.info(f"Reason distribution on sample level: {json.dumps(sample_reason_stats, indent=2)}")
         
         # Step 2: Question-level filtering
         logger.info("Step 2: Applying question-level filtering...")
-        final_passed, question_dropped = self._question_level_filtering(sample_pass_samples)
+        final_passed, question_dropped, question_reson_stats = self._question_level_filtering(sample_pass_samples)
+        logger.info(f"Reason distribution on question level: {json.dumps(question_reson_stats, indent=2)}")
+
         
         # Combine results
         final_dropped = sample_dropped_samples + question_dropped
@@ -49,41 +52,47 @@ class ComprehensiveRuleFilter:
         """Apply sample-level rule-based filtering."""
         passed_samples = []
         dropped_samples = []
+        reasons = []
         
         for sample in samples:
             # Apply sample-level rules
             passes, reason = self._check_sample_rules(sample)
+            reasons.append(reason)
             
             if passes:
                 passed_samples.append(sample)
             else:
                 dropped_samples.append(sample)
         
-        return passed_samples, dropped_samples
+        reason_stats = {}
+        for error_type in set(reasons):
+            reason_stats[error_type] = reasons.count(error_type)
+
+        return passed_samples, dropped_samples, reason_stats
     
     def _check_sample_rules(self, sample: Dict) -> Tuple[bool, str]:
         """Apply sample-level rule-based filtering to a single sample."""
-        
-        # 1. Structure sanity
-        if not self._check_structure(sample):
-            return False, "invalid_structure"
-        
-        # 2. Conversation length sanity
-        if not self._check_conversation_length(sample):
-            return False, "invalid_conversation_length"
-        
-        # 3. Scoring sanity
-        if not self._check_score_sanity(sample):
-            return False, "invalid_score"
-        
-        # 4. Obvious broken samples
-        if not self._check_obvious_broken(sample):
-            return False, "obviously_broken"
-        
-        # 5. Duplicate detection
+
+        # 1. Duplicate detection
         if self._is_duplicate(sample):
             return False, "duplicate"
         
+        # 2. Structure sanity
+        if not self._check_structure(sample):
+            return False, "invalid_structure"
+        
+        # 3. Conversation length sanity
+        if not self._check_conversation_length(sample):
+            return False, "invalid_conversation_length"
+        
+        # 4. Scoring sanity
+        if not self._check_score_sanity(sample):
+            return False, "invalid_score"
+        
+        # 5. Obvious broken samples
+        if not self._check_obvious_broken(sample):
+            return False, "obviously_broken"
+
         return True, "passed"
     
     def _check_structure(self, sample: Dict) -> bool:
@@ -247,41 +256,13 @@ class ComprehensiveRuleFilter:
     
     def _is_duplicate(self, sample: Dict) -> bool:
         """Check for duplicates based on prompt hash + model reply."""
-        messages = sample.get("messages", [])
-        
-        # Extract user prompt (first user message)
-        user_prompt = ""
-        for msg in messages:
-            if msg.get("role") == "user":
-                content = msg.get("content", "")
-                if content:
-                    # Handle both string and list content
-                    if isinstance(content, list):
-                        text_parts = []
-                        for part in content:
-                            if isinstance(part, dict) and part.get("type") == "text":
-                                text_parts.append(part.get("text", ""))
-                            elif isinstance(part, str):
-                                text_parts.append(part)
-                        content = " ".join(text_parts)
-                    
-                    if isinstance(content, str):
-                        user_prompt = content
-                        break
-        
-        # Get final assistant reply
-        assistant_messages = [msg for msg in messages if msg.get("role") == "assistant"]
-        final_reply = assistant_messages[-1].get("content", "") if assistant_messages else ""
-        
-        # Create hash of prompt + reply
-        combined_text = user_prompt + "|||" + final_reply
-        combined_hash = hashlib.md5(combined_text.encode()).hexdigest()
-        
-        if combined_hash in self.prompt_hashes:
+
+        sample_id = sample["model_name"] + "_" + sample["task_name"] + "_" + sample["meta"]["id"]
+        if sample_id not in self.sample_ids:
+            self.sample_ids.add(sample_id)
+            return False
+        else:
             return True
-        
-        self.prompt_hashes.add(combined_hash)
-        return False
     
     def _question_level_filtering(self, samples: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
         """Apply question-level filtering based on multi-model performance."""
@@ -292,58 +273,31 @@ class ComprehensiveRuleFilter:
         # Analyze each question and decide to keep or drop
         kept_questions = []
         dropped_questions = []
+        resons = []
         
         for question_id, question_samples in question_groups.items():
             keep_question, reason = self._analyze_question(question_id, question_samples)
-            
+            resons.append(reason)
             if keep_question:
                 kept_questions.extend(question_samples)
             else:
                 dropped_questions.extend(question_samples)
         
-        return kept_questions, dropped_questions
+        reason_stats = {}
+        for reason_type in set(resons):
+            reason_stats[reason_type] = resons.count(reason_type)
+        
+        return kept_questions, dropped_questions, reason_stats
     
     def _group_samples_by_question(self, samples: List[Dict]) -> Dict[str, List[Dict]]:
         """Group samples by question ID."""
         question_groups = defaultdict(list)
         
         for sample in samples:
-            question_id = self._compute_question_id(sample)
+            question_id = sample["task_name"] + "_" + sample["meta"]["id"]
             question_groups[question_id].append(sample)
         
         return question_groups
-    
-    def _compute_question_id(self, sample: Dict) -> str:
-        """Compute unique question ID based on prompt content and task."""
-        messages = sample.get("messages", [])
-        
-        # Extract user prompt (first user message)
-        user_prompt = ""
-        for msg in messages:
-            if msg.get("role") == "user":
-                content = msg.get("content", "")
-                if content:
-                    # Handle both string and list content
-                    if isinstance(content, list):
-                        text_parts = []
-                        for part in content:
-                            if isinstance(part, dict) and part.get("type") == "text":
-                                text_parts.append(part.get("text", ""))
-                            elif isinstance(part, str):
-                                text_parts.append(part)
-                        content = " ".join(text_parts)
-                    
-                    if isinstance(content, str):
-                        user_prompt = content
-                        break
-        
-        # Create question ID from prompt + task + benchmark
-        task_name = sample.get("task_name", "unknown")
-        benchmark_name = sample.get("benchmark_name", "unknown")
-        question_text = f"{benchmark_name}|||{task_name}|||{user_prompt}"
-        question_id = hashlib.md5(question_text.encode()).hexdigest()
-        
-        return question_id
     
     def _analyze_question(self, question_id: str, question_samples: List[Dict]) -> Tuple[bool, str]:
         """Analyze a question and decide whether to keep it based on multi-model performance."""
@@ -392,10 +346,8 @@ class ComprehensiveRuleFilter:
             mean_score = np.mean(normalized_scores)
             
             # Apply variance-based filtering rules
-            if variance < 0.005:  # Too easy - all models get similar scores
-                return False, "too_easy_low_variance"
-            elif variance > 0.8:  # Too hard - high variance indicates inconsistent performance
-                return False, "too_hard_high_variance"
+            if variance < 0.005:  # Too easy or too hard - all models get similar scores
+                return False, "low_variance"
             elif mean_score > 0.98:  # Too easy - almost perfect scores
                 return False, "too_easy_high_mean"
             elif mean_score < 0.02:  # Too hard - almost all failures
