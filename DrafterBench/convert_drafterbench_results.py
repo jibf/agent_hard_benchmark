@@ -29,6 +29,8 @@ model_path_to_name = {
     "openai/gpt-4.1": "gpt-4.1",
     "deepseek-ai/DeepSeek-V3-0324": "DeepSeek-V3-0324",
     "deepseek-ai/DeepSeek-R1-0528": "DeepSeek-R1-0528",
+    "deepseek-ai/DeepSeek-V3.1-thinking-off": "DeepSeek-V3.1-thinking-off",
+    "deepseek-ai/DeepSeek-V3.1-thinking-on": "DeepSeek-V3.1-thinking-on",
     "anthropic/claude-4-sonnet-thinking-on-10k": "claude-4-sonnet-thinking-on-10k",
     "anthropic/claude-4-sonnet-thinking-off": "claude-4-sonnet-thinking-off"
 }

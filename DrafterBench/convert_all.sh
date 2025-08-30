@@ -14,3 +14,5 @@ python convert_drafterbench_results.py results/togetherai_moonshotai_Kimi-K2-Ins
 python convert_drafterbench_results.py results/xai_grok-4/xai_grok-4_2025-08-13-15-30_All_score.json  converted_results --model-path  xai/grok-4
 python convert_drafterbench_results.py results/Qwen3-8B/2025-08-17-19-09_All_score.json  converted_results --model-path togetherai/Qwen/Qwen3-8B
 python convert_drafterbench_results.py results/Qwen3-32B/2025-08-18-02-37_All_score.json  converted_results --model-path togetherai/Qwen/Qwen3-32B
+python convert_drafterbench_results.py results/deepseek-ai_DeepSeek-V3.1-thinking-off/2025-08-27-04-11_All.json  converted_results --model-path deepseek-ai/DeepSeek-V3.1-thinking-off
+python convert_drafterbench_results.py results/deepseek-ai_DeepSeek-V3.1-thinking-on/2025-08-27-04-11_All.json  converted_results --model-path deepseek-ai/DeepSeek-V3.1-thinking-on
