@@ -5,6 +5,8 @@ from typing import Optional
 class Benchmark(Enum):
     COMPLEX_FUNC_BENCH = "complex_func_bench"
     TAU_BENCH = "tau_bench"
+    DRAFTER_BENCH = "drafter_bench"
+    NEXUS_BENCH = "nexus_bench"
 
 class FormattedQuestion(BaseModel):
     """Data model for a benchmark question."""
@@ -13,4 +15,5 @@ class FormattedQuestion(BaseModel):
     user_prompt: str
     conversations: list
     available_function_list: list
+    system_prompt: Optional[str] = None
     meta: Optional[dict] = None 
