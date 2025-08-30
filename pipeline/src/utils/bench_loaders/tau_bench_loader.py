@@ -62,7 +62,7 @@ class TauBenchLoader(BaseLoader):
         functions = self.load_tau_bench_tools(domain)
         
         return FormattedQuestion(
-            question_id=sample_id or f"tau_bench_{domain}_{user_id}",
+            question_id=sample_id or f"{domain}-{user_id}",
             user_prompt=user_prompt,
             conversations=conversations,
             available_function_list=functions,
@@ -212,7 +212,7 @@ class TauBenchLoader(BaseLoader):
         converted_tasks = []
         for i, task in enumerate(tasks):
             try:
-                formatted_task = self.format_sample(task, domain, env_data, sample_id=f"tau_bench_{domain}_{i}")
+                formatted_task = self.format_sample(task, domain, env_data, sample_id=f"{domain}-{i}")
                 converted_tasks.append(formatted_task)
             except Exception as e:
                 print(f"Error converting task {i}: {e}")
@@ -220,229 +220,7 @@ class TauBenchLoader(BaseLoader):
         
         print(f"Converted {len(converted_tasks)} tau-bench {domain} tasks")
         return converted_tasks
-    
-    def _create_manual_tool_schemas(self) -> Dict[str, List[Dict[str, Any]]]:
-        """Create manual tool schemas for tau-bench (fallback)"""
-        
-        airline_tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "book_reservation",
-                    "description": "Book a new flight reservation",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "user_id": {"type": "string", "description": "User ID"},
-                            "origin": {"type": "string", "description": "Departure airport code"},
-                            "destination": {"type": "string", "description": "Arrival airport code"},
-                            "flight_type": {"type": "string", "enum": ["one_way", "round_trip"]},
-                            "cabin": {"type": "string", "enum": ["basic_economy", "economy", "business", "first"]},
-                            "flights": {"type": "array", "items": {"type": "object"}},
-                            "passengers": {"type": "array", "items": {"type": "object"}},
-                            "payment_methods": {"type": "array", "items": {"type": "object"}},
-                            "total_baggages": {"type": "integer"},
-                            "nonfree_baggages": {"type": "integer"},
-                            "insurance": {"type": "string", "enum": ["yes", "no"]}
-                        },
-                        "required": ["user_id", "origin", "destination", "flight_type", "cabin", "flights", "passengers", "payment_methods"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "cancel_reservation",
-                    "description": "Cancel an existing reservation",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "reservation_id": {"type": "string", "description": "Reservation ID to cancel"}
-                        },
-                        "required": ["reservation_id"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_user_details",
-                    "description": "Get user profile information",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "user_id": {"type": "string", "description": "User ID"}
-                        },
-                        "required": ["user_id"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_reservation_details",
-                    "description": "Get details of a reservation",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "reservation_id": {"type": "string", "description": "Reservation ID"}
-                        },
-                        "required": ["reservation_id"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_direct_flight",
-                    "description": "Search for direct flights",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "origin": {"type": "string", "description": "Departure airport code"},
-                            "destination": {"type": "string", "description": "Arrival airport code"},
-                            "date": {"type": "string", "description": "Flight date in YYYY-MM-DD format"}
-                        },
-                        "required": ["origin", "destination", "date"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "update_reservation_flights",
-                    "description": "Update flights in an existing reservation",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "reservation_id": {"type": "string"},
-                            "cabin": {"type": "string"},
-                            "flights": {"type": "array"},
-                            "payment_id": {"type": "string"}
-                        },
-                        "required": ["reservation_id", "flights"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "update_reservation_passengers",
-                    "description": "Update passengers in an existing reservation",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "reservation_id": {"type": "string"},
-                            "passengers": {"type": "array"}
-                        },
-                        "required": ["reservation_id", "passengers"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "update_reservation_baggages",
-                    "description": "Update baggage information in a reservation",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "reservation_id": {"type": "string"},
-                            "total_baggages": {"type": "integer"},
-                            "nonfree_baggages": {"type": "integer"},
-                            "payment_id": {"type": "string"}
-                        },
-                        "required": ["reservation_id"]
-                    }
-                }
-            }
-        ]
-        
-        retail_tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "find_user_id_by_name_zip",
-                    "description": "Find user ID by name and zip code",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "first_name": {"type": "string"},
-                            "last_name": {"type": "string"},
-                            "zip": {"type": "string"}
-                        },
-                        "required": ["first_name", "last_name", "zip"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_order_details",
-                    "description": "Get details of an order",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "order_id": {"type": "string", "description": "Order ID (starts with #)"}
-                        },
-                        "required": ["order_id"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_product_details",
-                    "description": "Get details of a product",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "product_id": {"type": "string", "description": "Product ID"}
-                        },
-                        "required": ["product_id"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "exchange_delivered_order_items",
-                    "description": "Exchange items from a delivered order",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "order_id": {"type": "string"},
-                            "item_ids": {"type": "array"},
-                            "new_item_ids": {"type": "array"},
-                            "payment_method_id": {"type": "string"}
-                        },
-                        "required": ["order_id", "item_ids", "new_item_ids", "payment_method_id"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "return_delivered_order_items",
-                    "description": "Return items from a delivered order",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "order_id": {"type": "string"},
-                            "item_ids": {"type": "array"},
-                            "payment_method_id": {"type": "string"}
-                        },
-                        "required": ["order_id", "item_ids", "payment_method_id"]
-                    }
-                }
-            }
-        ]
-        
-        return {
-            "airline": airline_tools,
-            "retail": retail_tools
-        }
-    
+
     def _extract_tool_schemas_from_domain(self, domain: str) -> List[Dict[str, Any]]:
         """Extract tool schemas from tau-bench tools using get_info() method"""
         tools_path = f"data/tau-bench-envs/{domain}/tools"
@@ -561,14 +339,7 @@ class TauBenchLoader(BaseLoader):
     
     def get_tool_schemas(self, domain: str) -> List[Dict[str, Any]]:
         """Generate and return tool schemas"""
-        try:
-            schemas = self._extract_tool_schemas_from_domain(domain)
-            print(f"Successfully extracted {len(schemas)} schemas using get_info() method")
-        except Exception as e:
-            print(f"Failed to extract schemas using get_info(), using manual schemas: {e}")
-            manual_schemas = self._create_manual_tool_schemas()
-            schemas = manual_schemas.get(domain, [])
-        
+        schemas = self._extract_tool_schemas_from_domain(domain)
         print(f"Generated {len(schemas)} tool schemas for {domain} domain")
         return schemas
     

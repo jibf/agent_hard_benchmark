@@ -217,7 +217,25 @@ class BenchmarkFilteringPipeline:
     
     def _run_llm_judge_independently(self) -> Tuple[List[Dict], List[Dict]]:
         """Run LLM judge independently on questions from benchmark datasets."""
-        benchmarks = [Benchmark.TAU_BENCH, Benchmark.COMPLEX_FUNC_BENCH]
+        # Determine which benchmarks to process based on target_benchmark config
+        target_benchmark = self.config.get("target_benchmark")
+        
+        if target_benchmark:
+            # Map string names to Benchmark enum values
+            benchmark_map = {
+                "tau_bench": Benchmark.TAU_BENCH,
+                "complex_func_bench": Benchmark.COMPLEX_FUNC_BENCH
+            }
+            
+            if target_benchmark in benchmark_map:
+                benchmarks = [benchmark_map[target_benchmark]]
+                logger.info(f"Processing {target_benchmark}")
+            else:
+                logger.warning(f"Unknown target benchmark: {target_benchmark}. Processing all available benchmarks.")
+                benchmarks = [Benchmark.TAU_BENCH, Benchmark.COMPLEX_FUNC_BENCH]
+        else:
+            benchmarks = [Benchmark.TAU_BENCH, Benchmark.COMPLEX_FUNC_BENCH]
+            logger.info("Processing all available benchmarks")
 
         llm_config = LLMJudgeConfig(
             model=self.config.get("llm_model", "gpt-4o-mini"),
@@ -236,11 +254,11 @@ class BenchmarkFilteringPipeline:
             all_results.extend(benchmark_results)
             
         # Save combined results as JSON
-        output_filename = "llm_judge_filter_and_score_results.json"
+        output_filename = "llm_judge_results.json"
         with open(output_filename, "w", encoding='utf-8') as f:
             json.dump(all_results, f, indent=2, ensure_ascii=False)
             
-        logger.info(f"Combined results saved to {output_filename}")
+        logger.info(f"Results saved to {output_filename}")
         logger.info(f"Total questions processed: {len(all_results)}")
         
         # For compatibility, return empty lists since we're saving to JSON
