@@ -79,10 +79,6 @@ def construct_messages(task: Dict[str, Any]) -> List[Dict[str, Any]]:
     
     messages = [
         {
-            "role": "system",
-            "content": system_message
-        },
-        {
             "role": "user", 
             "content": user_instruction
         },
@@ -121,7 +117,7 @@ def convert_drafterbench_result(task: Dict[str, Any], model_path: str, benchmark
         "user_sampling_params": {},
         "messages": construct_messages(task),
         "eval_result": {
-            "score": task["Task_score"]["Task_score"],
+            "score": task["Task_score"]["Task_score"] / 100,
         },
         "meta": {
             "id": str(task.get("Id", "")),
