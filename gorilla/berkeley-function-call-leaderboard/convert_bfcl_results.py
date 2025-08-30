@@ -150,7 +150,7 @@ def convert_bfcl_result(result_data: Dict[str, Any], model_path: str, task_type:
             "error": score_info.get("error", []) if score_info else result_data.get("error", []),
             "error_type": score_info.get("error_type", "") if score_info else result_data.get("error_type", ""),
             "result": result_data.get("result", ""),
-                            "model_result_raw": score_info.get("model_result_raw", "") if score_info else "",
+            "model_result_raw": score_info.get("model_result_raw", "") if score_info else "",
             "model_result_decoded": result_data.get("model_result_decoded", ""),
             "possible_answer": result_data.get("possible_answer", ""),
             "input_token_count": result_data.get("input_token_count", 0),
@@ -168,19 +168,19 @@ def construct_messages_from_bfcl_result(result_data: Dict[str, Any], task_type: 
     messages = []
     
     # Add system message - use BFCL's default system prompt
-    system_prompt = """You are an expert in composing functions. You are given a question and a set of possible functions. Based on the question, you will need to make one or more function/tool calls to achieve the purpose.
-If none of the functions can be used, point it out. If the given question lacks the parameters required by the function, also point it out.
-You should only return the function calls in your response.
+#     system_prompt = """You are an expert in composing functions. You are given a question and a set of possible functions. Based on the question, you will need to make one or more function/tool calls to achieve the purpose.
+# If none of the functions can be used, point it out. If the given question lacks the parameters required by the function, also point it out.
+# You should only return the function calls in your response.
 
-If you decide to invoke any of the function(s), you MUST put it in the format of [func_name1(params_name1=params_value1, params_name2=params_value2...), func_name2(params)]
-You SHOULD NOT include any other text in the response.
+# If you decide to invoke any of the function(s), you MUST put it in the format of [func_name1(params_name1=params_value1, params_name2=params_value2...), func_name2(params)]
+# You SHOULD NOT include any other text in the response.
 
-At each turn, you should try your best to complete the tasks requested by the user within the current turn. Continue to output functions to call until you have fulfilled the user's request to the best of your ability. Once you have no more functions to call, the system will consider the current turn complete and proceed to the next turn or task."""
+# At each turn, you should try your best to complete the tasks requested by the user within the current turn. Continue to output functions to call until you have fulfilled the user's request to the best of your ability. Once you have no more functions to call, the system will consider the current turn complete and proceed to the next turn or task."""
     
-    messages.append({
-        "role": "system",
-        "content": system_prompt
-    })
+#     messages.append({
+#         "role": "system",
+#         "content": system_prompt
+#     })
     
     # Add user message from the prompt - try to get from prompt_data first, then from score_info, then from result_data
     user_content = ""
@@ -235,9 +235,10 @@ At each turn, you should try your best to complete the tasks requested by the us
             "role": "user",
             "content": user_content
         })
+    else:
+        raise
     
     # Add assistant response - use the original raw result from score_info if available, otherwise from result_data
-    assistant_content = ""
     if score_info and "model_result_raw" in score_info:
         assistant_content = score_info["model_result_raw"]
     elif "model_result_raw" in result_data:
@@ -245,12 +246,18 @@ At each turn, you should try your best to complete the tasks requested by the us
     elif "result" in result_data:
         assistant_content = result_data["result"]
     else:
-        assistant_content = ""
-    
-    messages.append({
-        "role": "assistant",
-        "content": assistant_content,
-    })
+        raise ValueError
+    if isinstance(assistant_content, list):
+        for turn in assistant_content:
+            messages.append({
+                "role": "assistant",
+                "content": turn,
+            })
+    else:
+        messages.append({
+                "role": "assistant",
+                "content": assistant_content,
+            })
     
     return messages
 
@@ -272,7 +279,7 @@ def load_score_data(score_dir: str, model_name: str, task_type: str) -> Dict[str
 
 def load_prompt_data(task_type: str) -> Dict[str, Dict[str, Any]]:
     """Load prompt data for a specific task type."""
-    prompt_file = os.path.join("gorilla/berkeley-function-call-leaderboard/bfcl_eval/data", f"BFCL_v3_{task_type}.json")
+    prompt_file = os.path.join("bfcl_eval/data", f"BFCL_v3_{task_type}.json")
     if os.path.exists(prompt_file):
         prompt_data = {}
         with open(prompt_file, 'r', encoding='utf-8') as f:
@@ -302,24 +309,21 @@ def convert_bfcl_results(bfcl_dir: str, output_dir: str, score_dir: str = None):
         all_model_results = []
         
         for result_file in result_files:
-            try:
-                # Extract task type from filename
-                filename = os.path.basename(result_file)
-                task_type = extract_task_type_from_filename(filename)
-                
-                # Load score data if available
-                score_data = {}
-                if score_dir:
-                    score_data = load_score_data(score_dir, model_dir, task_type)
-                
-                # Load prompt data
-                prompt_data = load_prompt_data(task_type)
-                
-                # Convert and collect results
-                converted_results = convert_bfcl_file_with_results(result_file, output_dir, model_path, "bfcl", score_data, prompt_data)
-                all_model_results.extend(converted_results)
-            except Exception as e:
-                print(f"Error converting {result_file}: {e}")
+            # Extract task type from filename
+            filename = os.path.basename(result_file)
+            task_type = extract_task_type_from_filename(filename)
+
+            # Load score data if available
+            score_data = {}
+            if score_dir:
+                score_data = load_score_data(score_dir, model_dir, task_type)
+
+            # Load prompt data
+            prompt_data = load_prompt_data(task_type)
+
+            # Convert and collect results
+            converted_results = convert_bfcl_file_with_results(result_file, output_dir, model_path, "bfcl", score_data, prompt_data)
+            all_model_results.extend(converted_results)
         
         # Save combined file with all results for this model
         if all_model_results:
