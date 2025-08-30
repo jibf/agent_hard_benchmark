@@ -125,7 +125,8 @@ class NexusBenchLoader(BaseLoader):
         return str(data.get(field_spec, ''))
 
     def load_task(self, task_name: str) -> List[FormattedQuestion]:
-        pass
+        # TODO: Implement specific task loading
+        return self.load_specific_benchmark(task_name)
 
     def load_questions(self) -> List[FormattedQuestion]:
         """Load all questions from NexusBench benchmarks by directly using datasets"""
@@ -162,7 +163,6 @@ class NexusBenchLoader(BaseLoader):
                 # Check if we need to truncate this benchmark to 30 samples
                 if benchmark_name in self.TASKS_TO_TRUNCATE_30 and i >= 30:
                     break
-                    
                 # Extract query and reference using field mappings
                 query = self._extract_field_value(data, field_mapping['query'])
                 reference = self._extract_field_value(data, field_mapping['reference'])
@@ -172,6 +172,9 @@ class NexusBenchLoader(BaseLoader):
                     reference = reference.replace("r = nvdlib.", "")
 
                 sample = Sample(query=query, reference=reference)
+                # Store original data for special handling (e.g., TMIHallucination json_tools)
+                if hasattr(sample, '__dict__'):
+                    sample.__dict__['_original_data'] = data
                 samples.append(sample)
 
             # Create benchmark config dynamically
@@ -217,8 +220,8 @@ class NexusBenchLoader(BaseLoader):
             else:
                 user_prompt = str(query)
 
-            # Get tool schemas
-            tool_schemas = self._get_tool_schemas_from_config(config)
+            # Get tool schemas - handle special cases
+            tool_schemas = self._get_tool_schemas_from_config(config, sample)
 
             # Create conversations based on benchmark type
             conversations = self._create_conversations(sample, config)
@@ -243,20 +246,83 @@ class NexusBenchLoader(BaseLoader):
             print(f"Error formatting sample {sample_id}: {e}")
             return None
 
-    def _get_tool_schemas_from_config(self, config) -> List[Dict[str, Any]]:
-        """Create tool schemas from configuration with improved parameter detection"""
-        tool_schemas = []
-        benchmark_instance = self._get_benchmark_instance(config['name'])
-
-        if benchmark_instance:
-            # Get actual tool functions from benchmark instance
+    def _get_tool_schemas_from_config(self, config, sample=None) -> List[Dict[str, Any]]:
+        """Create tool schemas from configuration using benchmark's get_json_representation"""
+        
+        # Special handling for TMIHallucination - use sample's json_tools
+        if config['name'] == 'TMIHallucination' and sample:
             try:
-                tools = benchmark_instance.tools
-                return self._create_schemas_from_tools(tools)
+                import json
+                # Try to get json_tools from original data
+                original_data = getattr(sample, '_original_data', None)
+                json_tools_raw = None
+                
+                if original_data and 'json_tools' in original_data:
+                    json_tools_raw = original_data['json_tools']
+                elif hasattr(sample, 'json_tools'):
+                    json_tools_raw = sample.json_tools
+                    
+                if json_tools_raw:
+                    # Parse JSON if it's a string
+                    if isinstance(json_tools_raw, str):
+                        json_tools = json.loads(json_tools_raw)
+                    else:
+                        json_tools = json_tools_raw
+                        
+                    if isinstance(json_tools, list) and len(json_tools) > 0:
+                        tool_schemas = []
+                        for func_spec in json_tools:
+                            if isinstance(func_spec, dict) and 'name' in func_spec:
+                                tool_schemas.append({
+                                    "type": "function",
+                                    "function": func_spec
+                                })
+                        return tool_schemas
             except Exception as e:
-                print(f"Error getting tools from benchmark instance: {e}")
+                print(f"Error getting json_tools from TMIHallucination sample: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Special handling for VirusTotal - use get_all_json_specs
+        if config['name'] == 'VirusTotal':
+            try:
+                from data.nexusbench.tools.virustotal import get_all_json_specs
+                json_schemas = get_all_json_specs()
+                tool_schemas = []
+                
+                if json_schemas:
+                    for _, func_schema in json_schemas.items():
+                        tool_schemas.append({
+                            "type": "function",
+                            "function": func_schema
+                        })
+                return tool_schemas
+            except Exception as e:
+                print(f"Error getting VirusTotal json specs: {e}")
+        
+        # Standard handling using benchmark instance
+        benchmark_instance = self._get_benchmark_instance(config['name'])
+        if benchmark_instance:
+            try:
+                # Use get_json_representation to get proper function schemas
+                json_schemas = benchmark_instance.get_json_representation
+                tool_schemas = []
+                
+                if json_schemas:  # Check if json_schemas is not empty
+                    for _, func_schema in json_schemas.items():
+                        tool_schemas.append({
+                            "type": "function",
+                            "function": func_schema
+                        })
+                else:
+                    print(f"Warning: {config['name']} has empty get_json_representation")
+                
+                return tool_schemas
+            except Exception as e:
+                print(f"Error getting json representation from benchmark instance: {e}")
 
         # Fallback to basic schema creation if benchmark instance not available
+        tool_schemas = []
         for tool_name in config['tools']:
             tool_schemas.append({
                 "type": "function",
