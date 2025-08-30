@@ -158,6 +158,8 @@ class TauBenchLoader(BaseLoader):
         """Convert tau-bench actions to conversation format with real tool execution results"""
         
         conversations = []
+        # Create a mutable copy of env_data to track state changes
+        current_env_data = json.loads(json.dumps(env_data)) if env_data else {}
         
         # Convert each action to assistant message with tool call + real observation
         for i, action in enumerate(actions):
@@ -172,9 +174,10 @@ class TauBenchLoader(BaseLoader):
                 ]
             })
             
-            # Execute the actual tool to get real observation
+            # Execute the actual tool to get real observation with updated env_data
             try:
-                result = self._execute_tool(action["name"], action.get("arguments", {}), domain, env_data)
+                result, updated_env_data = self._execute_tool_with_state(action["name"], action.get("arguments", {}), domain, current_env_data)
+                current_env_data = updated_env_data
                 observation_content = result
             except Exception as e:
                 observation_content = f"Error executing {action['name']}: {str(e)}"
@@ -496,7 +499,12 @@ class TauBenchLoader(BaseLoader):
         return schemas
     
     def _execute_tool(self, tool_name: str, arguments: Dict[str, Any], domain: str, env_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a tau-bench tool and return the result"""
+        """Execute a tau-bench tool and return the result (legacy method)"""
+        result, _ = self._execute_tool_with_state(tool_name, arguments, domain, env_data)
+        return result
+    
+    def _execute_tool_with_state(self, tool_name: str, arguments: Dict[str, Any], domain: str, env_data: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        """Execute a tau-bench tool and return both result and updated env_data"""
         tools_path = f"data/tau-bench-envs/{domain}/tools"
         
         # Add tau-bench-envs to Python path
@@ -509,7 +517,7 @@ class TauBenchLoader(BaseLoader):
         # Load the specific tool module
         tool_file = os.path.join(tools_path, f"{tool_name}.py")
         if not os.path.exists(tool_file):
-            return {"error": f"Tool file {tool_name}.py not found"}
+            return {"error": f"Tool file {tool_name}.py not found"}, env_data
         
         try:
             # Read and fix imports
@@ -530,22 +538,26 @@ class TauBenchLoader(BaseLoader):
                 tool_class = getattr(tool_module, class_name)
                 
                 # Execute the tool with environment data and arguments
+                # env_data is passed as mutable reference, so changes persist
                 if hasattr(tool_class, 'invoke'):
                     result = tool_class.invoke(env_data, **arguments)
                     # Try to parse as JSON if it's a string, otherwise return as-is
                     if isinstance(result, str):
                         try:
-                            return json.loads(result)
+                            parsed_result = json.loads(result)
                         except json.JSONDecodeError:
-                            return {"result": result}
-                    return result if isinstance(result, dict) else {"result": result}
+                            parsed_result = {"result": result}
+                    else:
+                        parsed_result = result if isinstance(result, dict) else {"result": result}
+                    
+                    return parsed_result, env_data
                 else:
-                    return {"error": f"Tool {class_name} does not have invoke method"}
+                    return {"error": f"Tool {class_name} does not have invoke method"}, env_data
             else:
-                return {"error": f"Could not find class {class_name} in {tool_name}.py"}
+                return {"error": f"Could not find class {class_name} in {tool_name}.py"}, env_data
                 
         except Exception as e:
-            return {"error": f"Error executing {tool_name}: {str(e)}"}
+            return {"error": f"Error executing {tool_name}: {str(e)}"}, env_data
     
     def get_tool_schemas(self, domain: str) -> List[Dict[str, Any]]:
         """Generate and return tool schemas"""
