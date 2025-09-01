@@ -143,6 +143,9 @@ def _build_jsonl_obj(
 
     # Optional meta
     meta: Dict[str, Any] = {}
+    # Always populate a stable id – use task_name (scenario) which is unique
+    model_name_only = model_path.split("/")[-1]
+    meta["id"] = f"{model_name_only}_{task_name}"
     if run_timestamp:
         meta["run_timestamp"] = run_timestamp
     if meta:
@@ -234,17 +237,15 @@ def convert(data_dir: Path, out_dir: Path) -> None:
         # Write (append) to the appropriate jsonl file
         #   <out-dir>/<agent>/<scenario>.jsonl
         # ----------------------------------------------------------------
-        # Save ONE file per model (llm). Keep provider/org directory tree, but
-        # filename is just the model (last component) plus .jsonl
+        # Flat layout: write files directly under out_dir with no sub-folders.
+        # Use only the model name (last path component) as the file stem.
         if org_model_parts:
-            *org_parts, model_name = org_model_parts
+            model_name = org_model_parts[-1]
         else:
-            org_parts = []
-            model_name = provider  # degenerate case
+            model_name = provider  # fallback
 
-        model_dir = out_dir.joinpath(provider, *org_parts)
-        model_dir.mkdir(parents=True, exist_ok=True)
-        out_path = model_dir / f"{model_name}.jsonl"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{model_name}.jsonl"
 
         with out_path.open("a", encoding="utf-8") as fp:
             json.dump(obj, fp, ensure_ascii=False)
