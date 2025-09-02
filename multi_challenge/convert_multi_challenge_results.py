@@ -91,7 +91,7 @@ def convert_multi_challenge_result(row: Dict[str, Any], model_path: str, origina
     })
     
     # Calculate score based on passed field
-    score = 1.0 if row.get('passed', '').lower() == 'true' else 0.0
+    score = 1.0 if row['passed'].lower() == 'passed' else 0.0
     
     return {
         "model_path": model_path,
@@ -100,7 +100,7 @@ def convert_multi_challenge_result(row: Dict[str, Any], model_path: str, origina
         "task_name": row.get('axis', 'unknown'),
         "sampling_params": {
             "max_tokens": 4096,  # Default for multi_challenge
-            "temperature": 0.0
+            "temperature": 0.0 if model_path != "anthropic/claude-4-sonnet-thinking-on-10k" else 1.0,
         },
         "user_sampling_params": {},
         "messages": messages,
