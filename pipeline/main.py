@@ -221,10 +221,18 @@ class BenchmarkFilteringPipeline:
         target_benchmark = self.config.get("target_benchmark")
         
         if target_benchmark:
-            # Map string names to Benchmark enum values
+            # Map string names to Benchmark enum values (only implemented loaders)
             benchmark_map = {
                 "tau_bench": Benchmark.TAU_BENCH,
-                "complex_func_bench": Benchmark.COMPLEX_FUNC_BENCH
+                "tau2_bench": Benchmark.TAU2_BENCH,
+                "ace_bench": Benchmark.ACE_BENCH,
+                "nexus_bench": Benchmark.NEXUS_BENCH,
+                "tool_sandbox": Benchmark.TOOL_SANDBOX,
+                "complex_func_bench": Benchmark.COMPLEX_FUNC_BENCH,
+                "drafter_bench": Benchmark.DRAFTER_BENCH,
+                "bfcl_v2": Benchmark.BFCLV2,
+                "bfcl_v3": Benchmark.BFCLV3,
+                "multi_challenge": Benchmark.MULTI_CHALLENGE
             }
             
             if target_benchmark in benchmark_map:
@@ -232,10 +240,10 @@ class BenchmarkFilteringPipeline:
                 logger.info(f"Processing {target_benchmark}")
             else:
                 logger.warning(f"Unknown target benchmark: {target_benchmark}. Processing all available benchmarks.")
-                benchmarks = [Benchmark.TAU_BENCH, Benchmark.COMPLEX_FUNC_BENCH]
+                benchmarks = list(benchmark_map.values())
         else:
             benchmarks = [Benchmark.TAU_BENCH, Benchmark.COMPLEX_FUNC_BENCH]
-            logger.info("Processing all available benchmarks")
+            logger.info("Processing default benchmarks (tau_bench, complex_func_bench)")
 
         llm_config = LLMJudgeConfig(
             model=self.config.get("llm_model", "gpt-4o-mini"),
@@ -313,7 +321,11 @@ def main():
     )
     parser.add_argument(
         "--target_benchmark",
-        choices=["tau_bench", "complex_func_bench", "bfcl", "nexus_bench", "drafter_bench"],
+        choices=[
+            "tau_bench", "tau2_bench", "ace_bench", "nexus_bench", 
+            "tool_sandbox", "complex_func_bench", "drafter_bench", 
+            "bfcl_v2", "bfcl_v3", "multi_challenge"
+        ],
         help="Target benchmark to process (default: all available benchmarks)"
     )
     

@@ -4,7 +4,7 @@ import sys
 from typing import Dict, Any, List
 from . import BaseLoader
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from src.utils.types import FormattedQuestion, Benchmark
+from src.utils.types import TauBenchQuestion, Benchmark
 
 
 
@@ -38,7 +38,7 @@ class TauBenchLoader(BaseLoader):
             manual_schemas = self._create_manual_tool_schemas()
             return manual_schemas.get(domain, [])
     
-    def format_sample(self, sample: Dict[str, Any], domain: str = None, env_data: Dict[str, Any] = None, sample_id: str = None) -> FormattedQuestion:
+    def format_sample(self, sample: Dict[str, Any], domain: str = None, env_data: Dict[str, Any] = None, sample_id: str = None) -> TauBenchQuestion:
         """Format tau-bench task to standard evaluation format"""
         if domain is None:
             raise ValueError("domain parameter is required for tau-bench formatting")
@@ -61,12 +61,13 @@ class TauBenchLoader(BaseLoader):
         # Get function schemas
         functions = self.load_tau_bench_tools(domain)
         
-        return FormattedQuestion(
+        return TauBenchQuestion(
             question_id=sample_id or f"{domain}-{user_id}",
-            user_prompt=user_prompt,
-            conversations=conversations,
+            instruction=user_prompt,
+            gt_conv_traj=conversations,
             available_function_list=functions,
             benchmark=Benchmark.TAU_BENCH,
+            agent_system_prompt=instruction,
             meta={
                 'tau_bench_context': {
                     'user_id': user_id,
@@ -189,7 +190,7 @@ class TauBenchLoader(BaseLoader):
         
         return conversations
     
-    def process_tau_bench_tasks(self, domain: str) -> List[FormattedQuestion]:
+    def process_tau_bench_tasks(self, domain: str) -> List[TauBenchQuestion]:
         """Process tau-bench tasks and return formatted questions"""
         # Load environment data
         env_data = self.load_tau_bench_data(domain)
@@ -343,7 +344,7 @@ class TauBenchLoader(BaseLoader):
         print(f"Generated {len(schemas)} tool schemas for {domain} domain")
         return schemas
     
-    def load_questions(self) -> List[FormattedQuestion]:
+    def load_questions(self) -> List[TauBenchQuestion]:
         """Load all questions from two domains and format them into FormattedQuestion objects"""
         all_questions = []
         all_questions.extend(self.process_tau_bench_tasks("retail"))

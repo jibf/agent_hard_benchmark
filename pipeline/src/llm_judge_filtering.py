@@ -16,10 +16,12 @@ from multiprocessing import Pool
 from dotenv import load_dotenv
 from tqdm import tqdm
 from functools import wraps
-from src.utils.prompts import filtration_prompt, scoring_prompt
-
-from src.utils.bench_loaders import TauBenchLoader, ComplexFuncBenchLoader
+from src.bench_loaders import (
+    TauBenchLoader, Tau2BenchLoader, ComplexFuncBenchLoader, NexusBenchLoader, DrafterBenchLoader,
+    AceBenchLoader, BfclV2Loader, BfclV3Loader, MultiChallengeLoader, ToolSandBoxLoader
+)
 from src.utils.types import Benchmark, FormattedQuestion
+from src.utils.format_judge_prompt import format_judge_prompt
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -52,18 +54,9 @@ def _assess_question_worker(args):
     # Create OpenAI client for this process
     client = OpenAI(api_key=api_key, base_url=base_url)
     
-    # Construct prompt
-    if step == Step.FILTER:
-        prompt = filtration_prompt.prompt
-    elif step == Step.SCORE:
-        prompt = scoring_prompt.prompt
-    
-    evaluation_prompt = prompt.format(
-        benchmark=question.benchmark.value,
-        user_prompt=question.user_prompt,
-        available_function_list=question.available_function_list,
-        conversations=question.conversations
-    )
+    # Construct prompt using format_judge_prompt
+    eval_type = 'filtration' if step == Step.FILTER else 'scoring'
+    evaluation_prompt, _ = format_judge_prompt(question, eval_type)
     
     # Retry logic
     for attempt in range(max_retries):
@@ -127,9 +120,9 @@ class LLMJudgeAssessor:
             combined_result = {
                 "benchmark": question.benchmark.value,
                 "question_id": question.question_id,
-                "user_prompt": question.user_prompt,
+                "user_prompt": question.instruction,
                 "available_function_list": question.available_function_list,
-                "conversations": question.conversations,
+                "conversations": question.gt_conv_traj,
                 "filter_assessment": filter_results[i].get("assessment", {}),
                 "score_assessment": score_results[i].get("assessment", {})
             }
@@ -150,28 +143,29 @@ class LLMJudgeAssessor:
         return results
 
     def _load_benchmark_questions(self) -> List[FormattedQuestion]:
-        if self.benchmark == Benchmark.TAU_BENCH:
-            loader = TauBenchLoader()
-        elif self.benchmark == Benchmark.COMPLEX_FUNC_BENCH:
-            loader = ComplexFuncBenchLoader()
-        else:
+        loader_class_map = {
+            Benchmark.TAU_BENCH: TauBenchLoader,
+            Benchmark.TAU2_BENCH: Tau2BenchLoader,
+            Benchmark.COMPLEX_FUNC_BENCH: ComplexFuncBenchLoader,
+            Benchmark.NEXUS_BENCH: NexusBenchLoader,
+            Benchmark.DRAFTER_BENCH: DrafterBenchLoader,
+            Benchmark.ACE_BENCH: AceBenchLoader,
+            Benchmark.BFCLV2: BfclV2Loader,
+            Benchmark.BFCLV3: BfclV3Loader,
+            Benchmark.MULTI_CHALLENGE: MultiChallengeLoader,
+            Benchmark.TOOL_SANDBOX: ToolSandBoxLoader
+        }
+        
+        loader_class = loader_class_map.get(self.benchmark)
+        loader = loader_class()
+        if not loader:
             raise ValueError(f"Unsupported benchmark type: {self.benchmark}")
         
         return loader.load_questions()
 
     def _construct_judge_prompt(self, question: FormattedQuestion, step: Step) -> str:
-        if step == Step.FILTER:
-            prompt = filtration_prompt.prompt
-        elif step == Step.SCORE:
-            prompt = scoring_prompt.prompt
-        
-        prompt = prompt.format(
-            benchmark=question.benchmark.value,
-            user_prompt=question.user_prompt,
-            available_function_list=question.available_function_list,
-            conversations=question.conversations
-        )
-
+        eval_type = 'filtration' if step == Step.FILTER else 'scoring'
+        prompt, _ = format_judge_prompt(question, eval_type)
         return prompt
 
     def _assess_question(self, question: FormattedQuestion, step: Step) -> Dict:
@@ -199,6 +193,7 @@ class LLMJudgeAssessor:
                     raise ValueError("Empty response from API")
                     
                 result = json.loads(response_content)
+                print(result)
 
                 if step == Step.FILTER:
                     try:

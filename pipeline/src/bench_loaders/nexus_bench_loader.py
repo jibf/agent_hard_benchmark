@@ -8,7 +8,7 @@ from datasets import load_dataset
 from . import BaseLoader
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from src.utils.types import FormattedQuestion, Benchmark
+from src.utils.types import NexusBenchQuestion, Benchmark
 
 # Import nexusbench components at module level
 try:
@@ -124,11 +124,11 @@ class NexusBenchLoader(BaseLoader):
         # Simple field access
         return str(data.get(field_spec, ''))
 
-    def load_task(self, task_name: str) -> List[FormattedQuestion]:
+    def load_task(self, task_name: str) -> List[NexusBenchQuestion]:
         # TODO: Implement specific task loading
         return self.load_specific_benchmark(task_name)
 
-    def load_questions(self) -> List[FormattedQuestion]:
+    def load_questions(self) -> List[NexusBenchQuestion]:
         """Load all questions from NexusBench benchmarks by directly using datasets"""
         all_questions = []
 
@@ -206,7 +206,7 @@ class NexusBenchLoader(BaseLoader):
         print(f"Total loaded {len(all_questions)} questions from NexusBench")
         return all_questions
 
-    def format_nexus_sample(self, sample, config, sample_id: str) -> Optional[FormattedQuestion]:
+    def format_nexus_sample(self, sample, config, sample_id: str) -> Optional[NexusBenchQuestion]:
         """Format a NexusBench sample to standard evaluation format"""
         try:
             # Extract query and reference from sample
@@ -226,10 +226,10 @@ class NexusBenchLoader(BaseLoader):
             # Create conversations based on benchmark type
             conversations = self._create_conversations(sample, config)
 
-            return FormattedQuestion(
+            return NexusBenchQuestion(
                 question_id=sample_id,
-                user_prompt=user_prompt,
-                conversations=conversations,
+                instruction=user_prompt,
+                gt_conv_traj=conversations,
                 available_function_list=tool_schemas,
                 benchmark=Benchmark.NEXUS_BENCH,
                 meta={
@@ -434,7 +434,7 @@ class NexusBenchLoader(BaseLoader):
 
         return metadata
 
-    def load_specific_benchmark(self, benchmark_name: str) -> List[FormattedQuestion]:
+    def load_specific_benchmark(self, benchmark_name: str) -> List[NexusBenchQuestion]:
         """Load questions from a specific benchmark"""
         try:
             if benchmark_name not in self.TASK_SIZE_DICT:

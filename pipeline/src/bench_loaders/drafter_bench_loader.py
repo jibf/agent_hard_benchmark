@@ -4,7 +4,7 @@ import sys
 from typing import Dict, Any, List
 from . import BaseLoader
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from src.utils.types import FormattedQuestion, Benchmark
+from src.utils.types import DrafterBenchQuestion, Benchmark
 import re
 
 
@@ -25,7 +25,7 @@ class DrafterBenchLoader(BaseLoader):
         
         assert len(self.system_prompts) == 12
         
-    def load_questions(self) -> List[FormattedQuestion]:
+    def load_questions(self) -> List[DrafterBenchQuestion]:
         """Load all DrafterBench questions from JSON files"""
         all_questions = []
         
@@ -50,7 +50,7 @@ class DrafterBenchLoader(BaseLoader):
         print(f"Loaded {len(all_questions)} DrafterBench questions")
         return all_questions
 
-    def _format_sample(self, sample: Dict[str, Any]) -> FormattedQuestion:
+    def _format_sample(self, sample: Dict[str, Any]) -> DrafterBenchQuestion:
         """Format DrafterBench task to standard evaluation format"""
         
         # Extract task components
@@ -72,13 +72,12 @@ class DrafterBenchLoader(BaseLoader):
         # TODO: No available function call for DrafterBench
         available_function_list = []
         
-        return FormattedQuestion(
+        return DrafterBenchQuestion(
             question_id=f"{task_type}-{task_id}",
-            user_prompt=instruction,
-            conversations=conversations,
+            instruction=instruction,
+            gt_conv_traj=conversations,
             available_function_list=available_function_list,
             benchmark=Benchmark.DRAFTER_BENCH,
-            system_prompt=self.system_prompts[task_type],
             meta={
                 'drafter_bench_context': {
                     'task_type': task_type,
@@ -88,7 +87,8 @@ class DrafterBenchLoader(BaseLoader):
                     'single_multiple_objects': sample.get('Single|Multiple_objects', ''),
                     'single_multiple_operations': sample.get('Single|Multiple_operations', ''),
                     'structured_unstructured': sample.get('Structured/Unstructured', ''),
-                    'groundtruth': groundtruth
+                    'groundtruth': groundtruth,
+                    'system_prompt': self.system_prompts[task_type]
                 }
             }
         )
