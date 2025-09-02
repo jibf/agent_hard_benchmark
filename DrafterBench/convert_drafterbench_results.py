@@ -67,11 +67,8 @@ Backend_prompt = load_backend_prompts()
 
 def get_system_message(task_type: str) -> str:
     """Get the system message for a given task type."""
-    try:
-        task_index = str(task_sets.index(task_type) + 1)
-        return Backend_prompt[task_index]
-    except (ValueError, KeyError):
-        return "You are a helpful assistant for PDF editing tasks."
+    task_index = str(task_sets.index(task_type) + 1)
+    return Backend_prompt[task_index]
 
 
 def construct_messages(task: Dict[str, Any]) -> List[Dict[str, Any]]:
