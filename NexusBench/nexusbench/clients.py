@@ -117,15 +117,26 @@ class OpenAIFCClient(BaseClient):
     def get_completion(
         self, prompt, model="gpt-4-0125-preview", contextual_history=None
     ):
-        response = self.client.chat.completions.create(
-            model=model,
-            messages=prompt["messages"],
-            tools=prompt["tools"],
-            tool_choice="auto",
-            max_tokens=2048,
-            temperature=0.0,
-            parallel_tool_calls=False,
-        )
+        if "claude" in model.lower() or "anthropic/" in model.lower():
+            # Claude models expect `tool_choice` to be a dict
+            response = self.client.chat.completions.create(
+                model=model,
+                messages=prompt["messages"],
+                tools=prompt["tools"],
+                tool_choice={"type": "auto"},
+                max_tokens=2048,
+                temperature=1.0 if "thinking-on-10k" in model.lower() else 0.0,
+            )
+        else:
+            response = self.client.chat.completions.create(
+                model=model,
+                messages=prompt["messages"],
+                tools=prompt["tools"],
+                tool_choice="auto",
+                max_tokens=2048,
+                temperature=0.0,
+                parallel_tool_calls=False,
+            )
         return response
 
 

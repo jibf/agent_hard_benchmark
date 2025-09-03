@@ -282,8 +282,19 @@ def main():
         help="Maximum number of retries for a failing sample",
         default=DEFAULT_MAX_EXECUTION_RETRIES,
     )
+    parser.add_argument(
+        "--hf_owner",
+        type=str,
+        help="Hugging Face namespace/owner under which to upload datasets",
+        default=None,
+    )
 
     args = parser.parse_args()
+
+    # Override the default Hugging Face owner if provided via CLI.
+    if args.hf_owner:
+        from nexusbench.benchmarks import BenchmarkConfigs  # Imported here to avoid circular deps
+        BenchmarkConfigs.OWNER = args.hf_owner
 
     if args.discover:
         discover_benchmarks()

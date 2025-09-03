@@ -10,6 +10,8 @@ import re
 
 import json
 
+from re import sub  # Added for slug sanitization
+
 
 @dataclass
 class FCAPIPrompter:
@@ -18,7 +20,28 @@ class FCAPIPrompter:
     base_url: Optional[str] = None
 
     def get_model_id(self):
-        return self.model
+        """Return a sanitized model identifier that is safe to embed in Hugging Face repo names.
+
+        Hugging Face repository names (the slug part after the namespace) must match
+        the regular expression ``[A-Za-z0-9][A-Za-z0-9._\-]*``. In particular, they
+        cannot contain forward slashes ``/`` which commonly appear in model names
+        like ``togetherai/Qwen/...``.  We therefore replace any character that is
+        not allowed with a hyphen ``-``.
+        """
+        if self.model is None:
+            return "unknown-model"
+
+        # Replace any character that is not alphanumeric, dot, underscore, or hyphen
+        sanitized = sub(r"[^A-Za-z0-9._\-]", "-", self.model)
+
+        # Collapse consecutive dashes that can appear after replacement
+        sanitized = sub(r"-+", "-", sanitized).strip("-")
+
+        # Ensure it starts with an alphanumeric char per HF rules
+        if not sanitized or not sanitized[0].isalnum():
+            sanitized = f"m-{sanitized}"
+
+        return sanitized
 
     def get_prompt_completions_from_context(
         self, contextual_history
