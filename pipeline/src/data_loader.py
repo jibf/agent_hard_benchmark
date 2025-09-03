@@ -18,8 +18,13 @@ class BenchmarkDataLoader:
     def __init__(self):
         self.loaded_samples = []
     
-    def load_benchmark_data(self, benchmarks_dir: str) -> List[Dict]:
-        """Load all benchmark data from the specified directory."""
+    def load_benchmark_data(self, benchmarks_dir: str, target_benchmark: Optional[str] = None) -> List[Dict]:
+        """Load benchmark data from the specified directory.
+        
+        Args:
+            benchmarks_dir: Directory containing benchmark data
+            target_benchmark: If specified, only load this specific benchmark
+        """
         logger.info(f"Loading benchmark data from {benchmarks_dir}")
         
         benchmarks_path = Path(benchmarks_dir)
@@ -28,14 +33,25 @@ class BenchmarkDataLoader:
         
         all_samples = []
         
-        # Process each benchmark directory
-        for benchmark_dir in benchmarks_path.iterdir():
-            if benchmark_dir.is_dir() and benchmark_dir.name.endswith('-evaluation'):
-                benchmark_name = benchmark_dir.name.replace('-evaluation', '')
-                logger.info(f"Processing benchmark: {benchmark_name}")
-                
-                benchmark_samples = self._load_benchmark_directory(benchmark_dir, benchmark_name)
+        if target_benchmark:
+            # Load only the target benchmark
+            target_dir = benchmarks_path / f"{target_benchmark}-evaluation"
+            if target_dir.exists() and target_dir.is_dir():
+                logger.info(f"Loading only target benchmark: {target_benchmark}")
+                benchmark_samples = self._load_benchmark_directory(target_dir, target_benchmark)
                 all_samples.extend(benchmark_samples)
+            else:
+                logger.warning(f"Target benchmark directory not found: {target_dir}")
+                return []
+        else:
+            # Process each benchmark directory (original behavior)
+            for benchmark_dir in benchmarks_path.iterdir():
+                if benchmark_dir.is_dir() and benchmark_dir.name.endswith('-evaluation'):
+                    benchmark_name = benchmark_dir.name.replace('-evaluation', '')
+                    logger.info(f"Processing benchmark: {benchmark_name}")
+                    
+                    benchmark_samples = self._load_benchmark_directory(benchmark_dir, benchmark_name)
+                    all_samples.extend(benchmark_samples)
         
         logger.info(f"Loaded {len(all_samples)} total samples")
         return all_samples

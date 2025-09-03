@@ -35,6 +35,9 @@ DEFAULT_DATASETS = [
     "AgentHard/multi_challenge-evaluation",
     "AgentHard/BFCL-evaluation",
     "AgentHard/ToolSandbox-evaluation",
+    "AgentHard/ACEBench-evaluation",
+    "AgentHard/tau2-bench-evaluation",
+    "AgentHard/tau-bench-evaluation",
 ]
 
 def download_dataset(repo_id: str, allow_patterns: Optional[List[str]] = None, base_dir: Path = Path(".")) -> Path:
@@ -47,19 +50,43 @@ def download_dataset(repo_id: str, allow_patterns: Optional[List[str]] = None, b
     if allow_patterns:
         print(f"    allow_patterns={allow_patterns}")
 
-    # snapshot_download will create the directory and populate it.
-    # local_dir_use_symlinks=False ensures you get actual files, not symlinks.
-    cache_dir = snapshot_download(
-        repo_id=repo_id,
-        repo_type="dataset",
-        local_dir=str(local_dir),
-        local_dir_use_symlinks=False,
-        allow_patterns=allow_patterns,  # e.g., ["*.jsonl"]
-        # You can tune max_workers if you want: max_workers=8,
-        # resume_download=True is default behavior.
-    )
-
-    print(f"    Done. Cached at: {cache_dir}")
+    # Add rate limiting and better error handling
+    import time
+    max_retries = 3
+    retry_delay = 5  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            # snapshot_download will create the directory and populate it.
+            # local_dir_use_symlinks=False ensures you get actual files, not symlinks.
+            cache_dir = snapshot_download(
+                repo_id=repo_id,
+                repo_type="dataset",
+                local_dir=str(local_dir),
+                local_dir_use_symlinks=False,
+                allow_patterns=allow_patterns,  # e.g., ["*.jsonl"]
+                max_workers=4,  # Reduce concurrent downloads to avoid rate limiting
+                resume_download=True,
+                token=True,  # Use the authenticated token
+            )
+            
+            print(f"    Done. Cached at: {cache_dir}")
+            return local_dir
+            
+        except Exception as e:
+            if "429" in str(e) or "rate limit" in str(e).lower():
+                if attempt < max_retries - 1:
+                    print(f"    Rate limited. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_retries}")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                    continue
+                else:
+                    print(f"    Failed after {max_retries} attempts due to rate limiting")
+                    raise
+            else:
+                print(f"    Error: {e}")
+                raise
+    
     return local_dir
 
 def parse_args() -> argparse.Namespace:
@@ -86,7 +113,7 @@ def main():
     args = parse_args()
     repos = args.repo if args.repo else DEFAULT_DATASETS
     patterns = args.patterns
-    base_dir = Path(args.out).resolve()
+    base_dir = Path("benchmark").resolve()  # Changed to benchmark folder
 
     print(f"Hugging Face Hub version: {huggingface_hub.__version__}")
     print(f"Output directory: {base_dir}")

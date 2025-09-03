@@ -1,136 +1,114 @@
 # AgentHard Dataset Downloader
 
-This script downloads multiple AgentHard evaluation datasets from Hugging Face in one go, with optional file filtering capabilities.
+This repository contains a comprehensive pipeline for downloading, filtering, and evaluating AI agent benchmarks from the AgentHard dataset.
 
-## Features
+## Overview
 
-- **Batch Download**: Download all six AgentHard evaluation datasets at once
-- **Selective Download**: Choose specific repositories to download
-- **File Filtering**: Download only specific file types (e.g., only JSONL files)
-- **Custom Output Directory**: Specify where to save the datasets
-- **Error Handling**: Graceful error handling with detailed error messages
-- **Resume Support**: Automatically resumes interrupted downloads
+The pipeline consists of two main stages:
+1. **Rule-based Filtering (Step 1)**: Filters out problematic samples using rule-based checks and benchmark-specific filtering rules
+2. **LLM-as-Judge Filtering (Step 2)**: Uses LLM evaluation to further refine the dataset quality
 
-## Prerequisites
+## Download Process
 
-1. **Python 3.6+** installed
-2. **huggingface_hub** library installed:
-   ```bash
-   pip install -U huggingface_hub
-   ```
-3. **Hugging Face Authentication** (optional, for gated datasets):
-   ```bash
-   huggingface-cli login
-   ```
-   *Note: All AgentHard datasets are public and don't require authentication*
+### 1. Download AgentHard Datasets
 
-## Usage
-
-### Basic Usage
-
-Download all six AgentHard evaluation datasets to the current directory:
+Run the download script to fetch all benchmark datasets:
 
 ```bash
 python3 download_agenthard.py
 ```
 
-### Download Specific Repositories
+This will download the following benchmarks to the `benchmark/` directory:
+- **ACEBench-evaluation**: Tool usage and function calling evaluation
+- **BFCL-evaluation**: Benchmark for function calling and language understanding
+- **DrafterBench-evaluation**: Code generation and editing tasks
+- **NexusBench-evaluation**: Multi-modal reasoning and tool usage
+- **ToolSandbox-evaluation**: Sandboxed tool execution environment
+- **complex-func-bench-evaluation**: Complex function composition tasks
+- **multi_challenge-evaluation**: Multi-turn conversation challenges
+- **tau-bench-evaluation**: Task understanding and execution
+- **tau2-bench-evaluation**: Enhanced task understanding tasks
 
-Download only specific datasets:
+### 2. Dataset Structure
 
-```bash
-python3 download_agenthard.py --repo AgentHard/NexusBench-evaluation --repo AgentHard/DrafterBench-evaluation
-```
+Each benchmark directory contains:
+- `.jsonl` files with evaluation data
+- Model responses and scoring information
+- Metadata for filtering and analysis
 
-### Filter Files by Type
+## Pipeline Usage
 
-Download only JSONL files from all datasets:
+### Step 1: Rule-based Filtering
 
-```bash
-python3 download_agenthard.py --patterns "*.jsonl"
-```
-
-Download only CSV files from scores directories:
-
-```bash
-python3 download_agenthard.py --patterns "scores/*.csv"
-```
-
-### Custom Output Directory
-
-Download to a specific directory:
+Run rule-based filtering to prune problematic samples:
 
 ```bash
-python3 download_agenthard.py --out ./datasets
+# Use comprehensive filtering (default)
+python3 main.py --target_benchmark [BENCHMARK_NAME]
+
+# Use benchmark-specific filtering rules
+python3 main.py --target_benchmark [BENCHMARK_NAME] --specific-step1
+
+# Skip rule-based filtering (go directly to step 2)
+python3 main.py --target_benchmark [BENCHMARK_NAME] --skip-rule-based
 ```
 
-### Combined Options
+**Output**: 
+- `filtered_datasets/unified_pruned_[filter_name].jsonl` - Unified pruned dataset
+- `filtered_datasets/[benchmark_name]_pruned_[filter_name].jsonl` - Benchmark-specific files
 
-Download specific repositories with file filtering to a custom directory:
+### Step 2: LLM-as-Judge Filtering
+
+Use LLM evaluation for further refinement:
 
 ```bash
-python3 download_agenthard.py --repo AgentHard/NexusBench-evaluation --patterns "*.jsonl" --out ./my_datasets
+python3 main.py --target_benchmark [BENCHMARK_NAME] --skip-rule-based --num-proc 32
 ```
 
-## Available Datasets
+## Benchmark-Specific Features
 
-The script downloads these six AgentHard evaluation datasets by default:
+### MultiChallenge
+- **Categories**: Instruction Retention, Inference Memory, Reliable Versioned Editing, Self-Coherence
+- **Filtering**: Memory failure detection, instruction violation checks, self-contradiction analysis
+- **Prompts**: Specialized filtering and scoring prompts for conversation quality
 
-1. **AgentHard/NexusBench-evaluation** - Multi-domain agent evaluation
-2. **AgentHard/DrafterBench-evaluation** - Code generation evaluation
-3. **AgentHard/complex-func-bench-evaluation** - Complex function calling evaluation
-4. **AgentHard/multi_challenge-evaluation** - Multi-challenge evaluation
-5. **AgentHard/BFCL-evaluation** - Benchmark for Function Calling Language
-6. **AgentHard/ToolSandbox-evaluation** - Tool usage evaluation
+### ACEBench
+- **Categories**: Normal, Special, Agent splits
+- **Filtering**: Parameter value validation, function call correctness, error handling
+- **Prompts**: Tool usage evaluation prompts with parameter accuracy focus
 
-## Output Structure
+### Other Benchmarks
+- **DrafterBench**: Code generation quality filtering
+- **BFCL**: Function calling and language understanding
+- **NexusBench**: Multi-modal reasoning tasks
+- **TauBench**: Task understanding and execution
 
-Each dataset is downloaded to a separate directory named after the repository suffix:
+## File Structure
 
 ```
-output_directory/
-├── NexusBench-evaluation/
-│   ├── *.jsonl files
-│   └── other files...
-├── DrafterBench-evaluation/
-│   ├── *.jsonl files
-│   └── other files...
-└── ...
+pipeline/
+├── benchmark/                    # Downloaded datasets
+├── filtered_datasets/           # Output from step 1
+├── src/
+│   ├── bench_loaders/          # Benchmark-specific data loaders
+│   ├── benchmark_specific_filters/  # Custom filtering rules
+│   ├── prompts/                # LLM-as-judge prompts
+│   └── utils/                  # Data types and utilities
+├── download_agenthard.py       # Download script
+├── main.py                     # Main pipeline script
+└── README.md                   # This file
 ```
 
-## Command Line Options
+## Requirements
 
-- `--repo REPO`: HF dataset repo_id (can be repeated for multiple repos)
-- `--patterns PATTERNS`: Glob patterns to filter files (e.g., "*.jsonl", "scores/*.csv")
-- `--out OUT`: Base output directory (default: current directory)
-- `-h, --help`: Show help message
+- Python 3.8+
+- Required packages: See `requirements.txt`
+- Sufficient disk space for datasets (~10GB+)
 
-## Examples
+## Notes
 
-### Download all datasets with only JSONL files
-```bash
-python3 download_agenthard.py --patterns "*.jsonl"
-```
-
-### Download specific datasets to a custom directory
-```bash
-python3 download_agenthard.py --repo AgentHard/NexusBench-evaluation --repo AgentHard/DrafterBench-evaluation --out ./agent_datasets
-```
-
-### Download all files from a single dataset
-```bash
-python3 download_agenthard.py --repo AgentHard/NexusBench-evaluation
-```
-
-## Troubleshooting
-
-### Authentication Issues
-If you encounter authentication errors for gated datasets:
-1. Run `huggingface-cli login`
-2. Enter your Hugging Face token
-3. Retry the download
-
-## Script Files
-
-- `download_agenthard.py`
+- The download process may take several minutes depending on network speed
+- Each benchmark has its own specialized filtering rules and prompts
+- The pipeline automatically handles both unified and benchmark-specific outputs
+- All filtered datasets are saved in JSONL format for easy processing
 

@@ -15,6 +15,7 @@ from typing import Dict, List, Tuple
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from src.comprehensive_rule_filtering import ComprehensiveRuleFilter
+from src.rule_filtering_orchestrator import RuleFilteringOrchestrator
 from src.llm_judge_filtering import LLMJudgeAssessor, LLMJudgeConfig, Step
 from src.data_loader import BenchmarkDataLoader
 from src.utils.types import Benchmark
@@ -36,6 +37,7 @@ class BenchmarkFilteringPipeline:
     def __init__(self, config: Dict = None):
         self.config = config or {}
         self.data_loader = BenchmarkDataLoader()
+        self.use_specific_filters = self.config.get('use_specific_filters', False)
         
     def run_pipeline(self, skip_llm_judge: bool = False, skip_rule_based: bool = False) -> Tuple[List[Dict], List[Dict]]:
         """Run the complete filtering pipeline."""
@@ -82,14 +84,30 @@ class BenchmarkFilteringPipeline:
         return step2_passed, step1_dropped + step2_dropped
     
     def _run_step1_rule_filtering(self) -> Tuple[List[Dict], List[Dict]]:
-        """Run Step 1: Comprehensive rule-based filtering."""
+        """Run Step 1: Rule-based filtering (general or benchmark-specific)."""
         logger.info("Loading benchmark data...")
-        all_samples = self.data_loader.load_benchmark_data("benchmark")
+        
+        # If using specific filters, only load the target benchmark
+        target_benchmark = None
+        if self.use_specific_filters:
+            target_benchmark = self.config.get('target_benchmark')
+            logger.info(f"Loading only target benchmark: {target_benchmark}")
+        
+        all_samples = self.data_loader.load_benchmark_data("benchmark", target_benchmark)
         logger.info(f"Loaded {len(all_samples):,} total samples")
         
-        logger.info("Applying comprehensive rule-based filtering...")
-        rule_filter = ComprehensiveRuleFilter()
-        passed_samples, dropped_samples = rule_filter.filter_samples(all_samples)
+        if self.use_specific_filters:
+            logger.info("Using benchmark-specific filtering...")
+            orchestrator = RuleFilteringOrchestrator()
+            passed_samples, dropped_samples = orchestrator.filter_samples(
+                all_samples, 
+                use_specific_filters=True,
+                target_benchmark=target_benchmark
+            )
+        else:
+            logger.info("Using general comprehensive filtering...")
+            rule_filter = ComprehensiveRuleFilter()
+            passed_samples, dropped_samples = rule_filter.filter_samples(all_samples)
         
         logger.info(f"Step 1 completed: {len(passed_samples):,} samples passed")
         return passed_samples, dropped_samples
@@ -286,6 +304,11 @@ def main():
         help="Skip Step 1 (rule-based filtering) and run LLM judge on questions independently"
     )
     parser.add_argument(
+        "--specific-step1", 
+        action="store_true", 
+        help="Use benchmark-specific filtering for Step 1 instead of general filtering"
+    )
+    parser.add_argument(
         "--llm-model", 
         default="openai/gpt-4.1",
         help="LLM model to use for Step 2 (default: gpt-4o-mini)"
@@ -339,7 +362,8 @@ def main():
         "llm_max_retries": args.llm_max_retries,
         "llm_retry_delay": args.llm_retry_delay,
         "num_proc": args.num_proc,
-        "target_benchmark": args.target_benchmark
+        "target_benchmark": args.target_benchmark,
+        "use_specific_filters": args.specific_step1
     }
     
     # Validate arguments
