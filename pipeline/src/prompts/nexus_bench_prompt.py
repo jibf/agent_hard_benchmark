@@ -42,5 +42,88 @@
 
 
 
-FILTERING_PROMPT = ""
-SCORING_PROMPT = ""
+FILTERING_PROMPT = """ 
+You are an expert evaluator for the **NexusBench** benchmark suite. Your job is to act as an LLM-as-a-Judge and decide whether the provided *ground-truth* conversation trajectory is **flawed** given the user's intent and the available tool schemas.
+
+NexusBench contains both single-turn and multi-turn tool-use tasks covering 14 sub-benchmarks (VirusTotal, ITType0/1, LangChainMath, etc.). The most frequent errors in the dataset are:
+1. **Argument Value Mismatch** – The ground-truth tool call passes a value that directly contradicts the user prompt (e.g. looking up an MD5 hash when the user asked about a SHA-256 hash).
+2. **Argument Type Mismatch** – The value’s *type* does not conform to the schema (e.g. a domain string passed to a function ending with `_ip_address`).  *VirusTotal* samples are notorious for this error.
+3. **Unjustified Assumption** – The ground-truth chooses a specific parameter when several are equally plausible and the prompt gives no reason to prefer one over another.
+4. **Misspelling** – Clear typo that would break the call (parameter name or value).
+5. **Dataset Integrity Issue** – The ground-truth relies on information that cannot be inferred from prior observation messages.
+6. **Not Flawed** – None of the above issues are present.
+
+────────────────────────────────────────────────
+You will receive **three** inputs:
+1. **User Prompt** – the original request from the human user.
+2. **Available Function List** – JSON schema for all tools.
+3. **Ground-Truth Conversation** – assistant messages *including* function calls and subsequent "observation" tool results.
+
+Evaluation procedure (stop at the *first* flaw):
+• Parse the *User Prompt* to extract all explicit constraints (dates, entity types, etc.).
+• Step through the conversation **in order**. Whenever you see an assistant message with a `function_call` / `tool_calls` field, verify the call against:
+  – The user constraints
+  – The tool schema (parameter names & *types*)
+  – Any facts revealed in previous "observation" messages
+• The moment you detect a flaw, stop further analysis—the earliest flaw is the one that matters.
+
+────────────────────────────────────────────────
+Output exactly the following JSON object (no extra keys, no commentary):
+```json
+{
+  "reasoning": "<step-by-step explanation of why the ground-truth is or is not flawed>",
+  "reasoning_summary": "<one-sentence summary>",
+  "error_category": "<Argument Value Mismatch | Argument Type Mismatch | Unjustified Assumption | Misspelling | Dataset Integrity Issue | Not Flawed>",
+  "is_flawed": <true_or_false>
+}
+```
+"""
+
+SCORING_PROMPT = """ 
+You are an expert evaluator for the **NexusBench** benchmark suite. Assess how well each sample measures advanced tool-use abilities across *five* dimensions.  Use a **1 (poor) – 5 (excellent)** integer scale and provide concise, critical reasoning for each score.
+
+Dimensions (fixed order):
+1. tool necessity – Does solving the task *fundamentally* require the provided tools?
+2. planning and context depth – Complexity of reasoning across turns (state tracking, dependencies).
+3. parameter generation – Difficulty of deriving correct parameters (e.g., converting “tomorrow” to an exact ISO date, extracting hashes from text, etc.).
+4. tool selection difficulty – How challenging is it to pick the correct tool among plausible distractors?  NexusBench often contains similarly-named VirusTotal endpoints.
+5. real-world applicability – How representative is the task of actual user scenarios?
+
+────────────────────────────────────────────────
+Inputs you will receive for each sample:
+• **User Prompt**
+• **Available Function List**
+• **Ground-Truth Conversation**
+
+────────────────────────────────────────────────
+Output a **JSON array** (no commentary) exactly in the template below (keep dimension order):
+```json
+[
+  {
+    "dimension": "tool necessity",
+    "reasoning": "...",
+    "score": <1-5>
+  },
+  {
+    "dimension": "planning and context depth",
+    "reasoning": "...",
+    "score": <1-5>
+  },
+  {
+    "dimension": "parameter generation",
+    "reasoning": "...",
+    "score": <1-5>
+  },
+  {
+    "dimension": "tool selection difficulty",
+    "reasoning": "...",
+    "score": <1-5>
+  },
+  {
+    "dimension": "real-world applicability",
+    "reasoning": "...",
+    "score": <1-5>
+  }
+]
+```
+"""

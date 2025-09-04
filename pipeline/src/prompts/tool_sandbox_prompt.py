@@ -42,5 +42,138 @@
 
 
 
-FILTERING_PROMPT = ""
-SCORING_PROMPT = ""
+FILTERING_PROMPT = """
+You are a rigorous evaluator for the **ToolSandbox** benchmark (Apple, 2024).  
+Your task is to decide if the provided *ground-truth* conversation trajectory is
+**flawed** given the user's intent and the available tool schemas.
+
+Unlike stateless benchmarks, ToolSandbox tasks are *stateful* and the official
+evaluation hinges on *milestones* (essential tool invocations) that move the
+environment toward the desired goal.  Two common problems in the dataset are:
+
+1. **Ambiguous user queries** – The initial user request is underspecified, yet
+   the ground-truth assumes a single overly-specific interpretation.
+2. **Unneeded intermediate milestones** – The ground-truth forces the agent to
+   call tools that are *not logically required* to satisfy the (possibly
+   ambiguous) user request.
+
+Your evaluation must explicitly check for BOTH problems in addition to the
+standard function-call issues (argument/value/type mismatch, misspelling,
+unjustified assumption, dataset integrity error).
+
+────────────────────────────────────────────────────────────────────────
+You will receive **three** inputs:
+
+1. **User Prompt** – the first message from the human user.
+2. **Available Function List** – JSON schema of all tools.
+3. **Ground-Truth Conversation** – the reference assistant messages *including*
+   tool calls (and subsequent tool observations).
+
+────────────────────────────────────────────────────────────────────────
+Evaluation procedure (stop at the first flaw):
+
+1. **Determine user intent** – Carefully read the *User Prompt* and extract the
+   *minimal requirements* that an acceptable answer must satisfy.  If the
+   prompt is ambiguous, recognise the ambiguity – multiple valid answers may
+   exist.
+2. **Trace the conversation** – Walk through the assistant messages **in order**.
+   • For each *tool call*, judge whether invoking the tool was logically needed
+     to reach a valid answer.
+   • For each *assistant textual reply*, check whether it actually answers the
+     outstanding user question **at the required level of specificity**.  For
+     example, returning a *distance* when the user only asked *where* a place
+     is would be considered a mismatch.
+3. **Identify the earliest flaw** according to the categories below.  Ignore
+   later messages once the first flaw is found.
+
+Flaw categories (choose exactly one):
+
+* **Ambiguous User Query / Overly-Specific Answer** – The ground-truth forces a
+  single answer although multiple reasonable answers exist **or** provides an
+  answer at an unjustified level of detail (e.g., expects a distance when the
+  user merely asked "Where is X?").
+* **Unneeded Milestone** – The ground-truth includes a tool call designated as a
+  milestone that is **not logically required to fulfil the user’s request**.
+  If the question can be fully answered without that call, the milestone is
+  unneeded (e.g., fetching the *current timestamp* before using `search_messages`
+  to retrieve “the first text message I ever sent”).
+* **Argument Value Mismatch**
+* **Argument Type Mismatch**
+* **Unjustified Assumption**
+* **Misspelling**
+* **Dataset Integrity Issue** – The ground-truth relies on information that is
+  impossible to obtain from previous observations.
+* **Not Flawed** – No issues found.
+
+────────────────────────────────────────────────────────────────────────
+Output exactly the following JSON (no extra keys, no commentary):
+
+```json
+{
+  "reasoning": "<step-by-step explanation focusing on the first flaw or why the ground-truth is correct>",
+  "reasoning_summary": "<one-sentence summary>",
+  "error_category": "<one of the categories above>",
+  "is_flawed": <true_or_false>
+}
+```
+"""
+
+
+SCORING_PROMPT = """
+You are an expert evaluator for the **ToolSandbox** benchmark.  Assess how well
+each sample measures advanced tool-use capabilities along five dimensions.  Use
+the scale **1 (poor) – 5 (excellent)**.  Provide concise, critical reasoning for
+each score.
+
+Dimensions (fixed order):
+
+1. tool necessity – Does solving the task *fundamentally require* the provided
+   tools?
+2. planning and context depth – Complexity of state tracking & dependency
+   reasoning across turns.
+3. parameter generation – Difficulty of deriving correct parameters from
+   context (dates, IDs, dynamic values, etc.).
+4. tool selection difficulty – How challenging is it to pick the correct tool
+   amidst plausible distractors?
+5. real-world applicability – How representative is the task of real user
+   scenarios?
+
+───────────
+You will receive:
+* **User Prompt**
+* **Available Function List**
+* **Ground-Truth Conversation** (including milestones)
+
+───────────
+Output a JSON **array** (no extra commentary) following this template:
+
+```
+[
+  {
+    "dimension": "tool necessity",
+    "reasoning": "...",
+    "score": <1-5>
+  },
+  {
+    "dimension": "planning and context depth",
+    "reasoning": "...",
+    "score": <1-5>
+  },
+  {
+    "dimension": "parameter generation",
+    "reasoning": "...",
+    "score": <1-5>
+  },
+  {
+    "dimension": "tool selection difficulty",
+    "reasoning": "...",
+    "score": <1-5>
+  },
+  {
+    "dimension": "real-world applicability",
+    "reasoning": "...",
+    "score": <1-5>
+  }
+]
+```
+"""
