@@ -100,48 +100,6 @@ def type_checker(
         "error_type": "type_error:simple",
     }
 
-    # Boolean Parameter Type Strictness & Type System Inconsistency 해결
-    # 우선적으로 타입 변환 시도
-    if expected_type_description == "boolean":
-        if isinstance(value, bool):
-            return result  # 이미 boolean이면 성공
-        elif isinstance(value, str):
-            # "true"/"false" 문자열을 boolean으로 변환
-            if value.lower() == "true":
-                value = True
-                return result
-            elif value.lower() == "false":  
-                value = False
-                return result
-        elif isinstance(value, (int, float)):
-            # 숫자를 boolean으로 변환
-            value = bool(value)
-            return result
-    
-    elif expected_type_description == "integer":
-        if isinstance(value, str) and value.isdigit():
-            value = int(value)  # "123" → 123
-            return result
-        elif isinstance(value, float) and value.is_integer():
-            value = int(value)  # 123.0 → 123
-            return result
-    
-    elif expected_type_description == "float":
-        if isinstance(value, str):
-            try:
-                value = float(value)  # "123.45" → 123.45
-                return result
-            except ValueError:
-                pass
-        elif isinstance(value, int):
-            value = float(value)  # 123 → 123.0
-            return result
-    
-    elif expected_type_description == "string":
-        if not isinstance(value, str):
-            value = str(value)  # 123 → "123"
-            return result
-
     is_variable = False
     # check for the case where a variable is used instead of a actual value.
     # use the type in possible_answer as the expected type
