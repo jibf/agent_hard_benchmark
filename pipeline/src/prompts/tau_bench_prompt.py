@@ -20,10 +20,10 @@ A sample is considered flawed if at least one of the ground-truth milestone func
 
 1. Incorrect Parameter Value
 
-This occurs when one or more parameter values in a ground-truth function call are not logically justified by the user's prompt or the results of previous API calls. The value might be:
+This occurs when one or more parameter values in a ground-truth function call are not logically justified by neither of the user's prompt, system policy, user context and relevant information, nor the results of previous API calls. The value might be:
 
-* Unjustified/Hallucinated: A value (e.g., a date, a coordinate) that appears without any grounding context. For example, searching for a hotel on a date that was not returned by a preceding flight search.
-* Contradictory: A value that directly contradicts a constraint in the user's prompt. 
+* Unjustified/Hallucinated: A value (e.g., a date, a coordinate) that appears without any grounding context. 
+* Contradictory: A value that directly contradicts a constraint in the user's prompt. However, it is NOT a flaw if there is any chance that the agent's action was a necessary alternative due to constraints like an insufficient budget or a lack of available seats.
 * Misspelled or Incorrectly Identified: A misspelled name or an ID/slug that points to the wrong entity (e.g., selecting the wrong airport ID).
 
 2. Redundant Function Call
@@ -47,7 +47,7 @@ The ground-truth trajectory only contains key milestone function calls. It inten
 Your task is to find undeniable flaws. Therefore, you MUST operate under the following assumption:
 
 * If a sequence of function calls can be justified by a plausible, un-shown conversation that does not contradict the User Scenario or System Policy, then it is NOT a flaw.
-* In other words, give the ground-truth the "benefit of the doubt." Only flag a sample as flawed if a function call is impossible to justify, even with a hypothetical conversation. Do NOT infer a flaw from missing conversational steps.
+* In other words, imagine a possible conversation history that would justify the ground truth milestone function call trajectory. When you contemplate of a plausible trajectory, note that the user can make a request that is not mentioned in the prompt, guided by the agent. Flag a sample as flawed ONLY if a function call is impossible to justify, even with a hypothetical conversation. Do NOT infer a flaw from missing conversational steps.
 
 
 -----

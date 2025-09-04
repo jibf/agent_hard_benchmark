@@ -424,7 +424,8 @@ class BenchmarkFilteringPipeline:
             all_results.extend(benchmark_results)
             
         # Save combined results as JSON
-        output_filename = "llm_judge_results.json"
+        benchmark_name = target_benchmark if target_benchmark else "all_benchmarks"
+        output_filename = f"llm_judge_results_{benchmark_name}.json"
         with open(output_filename, "w", encoding='utf-8') as f:
             json.dump(all_results, f, indent=2, ensure_ascii=False)
             

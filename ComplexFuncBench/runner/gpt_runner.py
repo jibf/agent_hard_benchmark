@@ -69,7 +69,11 @@ class GPTRunner(ModelRunner):
                     return self.return_result(messages, {"error_type": "func_hallucination", "content": "`self.golden_fcs == []`. Expected to stop. But Model continue to output function call."})
                 # Handle thinking content for thinking models (wrap with <thinking> tags)
                 content = f"<thinking>{llm_response.reasoning_content}</thinking>\n\n{llm_response.content}" if hasattr(llm_response, "reasoning_content") else llm_response.content
-                self.model.messages.append({"role": "assistant", "content": content, "tool_calls": llm_response.tool_calls})
+                if content is not None:
+                    self.model.messages.append({"role": "assistant", "content": content, "tool_calls": llm_response.tool_calls})
+                else:
+                    self.model.messages.append({"role": "assistant", "tool_calls": llm_response.tool_calls})
+
                 tool_calls = llm_response.tool_calls
 
                 function_calls = []

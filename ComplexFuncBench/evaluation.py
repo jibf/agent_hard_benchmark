@@ -17,58 +17,18 @@ from utils.logger import Logger
 from utils.utils import *
 
 from runner.gpt_runner import GPTRunner
-from runner.glm_runner import GLMRunner, GLMAPIRunner
-from runner.qwen_runner import QwenRunner
-from runner.llama_runner import LlamaRunner
-from runner.mistral_runner import MistralRunner
 from runner.response_runner import RespEvalRunner
 
 
 load_dotenv()
 
-MODEL_MAPPING = {
-    "openai/gpt-4.1": GPTRunner,
-    "openai/gpt-4o-mini": GPTRunner,
-    "openai/o4-mini-high": GPTRunner,
-    "openai/o3-high": GPTRunner,
-    "gpt-4o-2024-08-06": GPTRunner,
-    "gpt-4-turbo-2024-04-09": GPTRunner,
-    "anthropic/claude-4-sonnet-thinking-off": GPTRunner,
-    "anthropic/claude-4-sonnet-thinking-on-10k": GPTRunner,
-    "anthropic/claude-4-opus-thinking-off": GPTRunner,
-    "anthropic/claude-4-opus-thinking-on-10k": GPTRunner,
-    "glm-4-9b-chat": GPTRunner,
-    "glm-4-long": GPTRunner,
-    "Llama-3.1-70B": GPTRunner,
-    "Llama-3.1-8B": GPTRunner,
-    "Meta-Llama-3.1-405B-Instruct-FP8": GPTRunner,
-    "qwen2.5-7b-instruct": GPTRunner,
-    "qwen2.5-72b-instruct": GPTRunner,
-    "qwen2.5-7b-instruct": GPTRunner,
-    "togetherai/Qwen/Qwen3-235B-A22B-FP8": GPTRunner,
-    "togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8": GPTRunner,
-    "togetherai/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8": GPTRunner,
-    "deepseek-ai/DeepSeek-V3-0324": GPTRunner, 
-    "deepseek-ai/DeepSeek-V3.1-thinking-on": GPTRunner, 
-    "deepseek-ai/DeepSeek-V3.1-thinking-off": GPTRunner, 
-    "deepseek-ai/DeepSeek-R1-0528": GPTRunner,
-    "mistral-large-2407": GPTRunner,
-    "google/gemini-2.5-flash-thinking-off": GPTRunner,
-    "google/gemini-2.5-flash-thinking-on": GPTRunner,
-    "google/gemini-2.5-pro-thinking-off": GPTRunner,
-    "google/gemini-2.5-pro-thinking-on": GPTRunner,
-    "xai/grok-4": GPTRunner,
-    "togetherai/moonshotai/Kimi-K2-Instruct": GPTRunner,
-    "Qwen/Qwen3-8B": GPTRunner,
-    "Qwen/Qwen3-32B": GPTRunner
-}
 
 
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--log_dir", type=str, default="logs/test.log")
     parser.add_argument("--input_file", type=str, default="data/ComplexFuncBench.jsonl")
-    parser.add_argument("--model_name", type=str, required=True, choices=list(MODEL_MAPPING.keys()), help="The name of the model to be evaluated.")
+    parser.add_argument("--model_name", type=str, required=True, help="The name of the model to be evaluated.")
     parser.add_argument('--exp_name', type=str, default='full-1000')
     parser.add_argument("--vllm_url", type=str, default=os.environ['BASE_URL'])
     parser.add_argument("--proc_num", type=int, default=1)
@@ -89,7 +49,7 @@ def process_example(data, args):
     log_dir = f"{args.log_dir}/{data['id']}.log"
     logger = Logger(f"evaluation_logger_{data['id']}", log_dir, logging.DEBUG)
 
-    model = MODEL_MAPPING[args.model_name](args=args, logger=logger)
+    model = GPTRunner(args=args, logger=logger)
     resp_eval_model = RespEvalRunner(args=args, logger=logger)
 
     logger.info(f"Test Example {data['id']}")

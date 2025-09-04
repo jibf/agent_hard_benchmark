@@ -12,6 +12,12 @@ from src.utils.types import TauBenchQuestion, Benchmark
 class TauBenchLoader(BaseLoader):
     """Formatter for tau-bench dataset"""
     
+    FUNCTION_NAMES_MODIFYING_DATABASE = {
+        'retail': ['cancel_pending_order', "exchange_delivered_order_items", "modify_pending_order_address", "modify_pending_order_items", "modify_pending_order_payment", "modify_user_address", "return_delivered_order_items"],
+        'airline': ["book_reservation", "cancel_reservation", "send_certificate", "update_reservation_baggages", "update_reservation_flights", "update_reservation_passengers"] 
+    }
+        
+
     def __init__(self):
         # Add the project root to path for imports
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -32,12 +38,14 @@ class TauBenchLoader(BaseLoader):
     
     def load_tau_bench_tools(self, domain: str) -> List[Dict[str, Any]]:
         """Load tool schemas for tau-bench domain using get_info() methods"""
-        try:
-            return self._extract_tool_schemas_from_domain(domain)
-        except Exception as e:
-            print(f"Failed to extract schemas using get_info(), falling back to manual schemas: {e}")
-            manual_schemas = self._create_manual_tool_schemas()
-            return manual_schemas.get(domain, [])
+        all_schemas = self._extract_tool_schemas_from_domain(domain)
+        # Filter to only include database-modifying functions
+        db_modifying_functions = self.FUNCTION_NAMES_MODIFYING_DATABASE.get(domain, [])
+        filtered_schemas = [
+            schema for schema in all_schemas 
+            if schema.get('function', {}).get('name') in db_modifying_functions
+        ]
+        return filtered_schemas
     
     def format_sample(self, sample: Dict[str, Any], domain: str = None, env_data: Dict[str, Any] = None, sample_id: str = None) -> TauBenchQuestion:
         """Format tau-bench task to standard evaluation format"""
@@ -244,14 +252,24 @@ class TauBenchLoader(BaseLoader):
         # Create a mutable copy of env_data to track state changes
         current_env_data = json.loads(json.dumps(env_data)) if env_data else {}
         
+        # Get database-modifying functions for this domain
+        db_modifying_functions = self.FUNCTION_NAMES_MODIFYING_DATABASE.get(domain, [])
+        
         # Convert each action to assistant message with tool call + real observation
+        # Only include actions that modify the database
         for i, action in enumerate(actions):
+            action_name = action["name"]
+            
+            # Skip actions that don't modify the database
+            if action_name not in db_modifying_functions:
+                continue
+                
             # Assistant message with tool call
             conversations.append({
                 "role": "assistant", 
                 "function_call": [
                     {
-                        "name": action["name"],
+                        "name": action_name,
                         "arguments": action.get("arguments", {})
                     }
                 ]
@@ -259,11 +277,11 @@ class TauBenchLoader(BaseLoader):
             
             # Execute the actual tool to get real observation with updated env_data
             try:
-                result, updated_env_data = self._execute_tool_with_state(action["name"], action.get("arguments", {}), domain, current_env_data)
+                result, updated_env_data = self._execute_tool_with_state(action_name, action.get("arguments", {}), domain, current_env_data)
                 current_env_data = updated_env_data
                 observation_content = result
             except Exception as e:
-                observation_content = f"Error executing {action['name']}: {str(e)}"
+                observation_content = f"Error executing {action_name}: {str(e)}"
             
             conversations.append({
                 "role": "observation",
