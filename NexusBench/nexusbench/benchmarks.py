@@ -131,10 +131,31 @@ class BaseBenchmark(ABC):
         from datetime import datetime
         from huggingface_hub import list_collections, add_collection_item
 
-        context_history = [
-            prompter.get_prompt_completions_from_context(call["context"])
-            for call in correct_calls
-        ]
+        # Filter out calls that are not proper dict results (e.g. Exception instances)
+        valid_pairs = []  # (call_dict, prompt_completion_dict)
+        for call in correct_calls:
+            if not isinstance(call, dict):
+                continue
+            if "context" not in call:
+                continue
+            try:
+                prompt_ctx = prompter.get_prompt_completions_from_context(call["context"])
+            except Exception as e:  # pragma: no cover – defensive; skip bad contexts
+                print(f"Skipping result during upload due to context parsing error: {e}")
+                continue
+            valid_pairs.append((call, prompt_ctx))
+
+        if not valid_pairs:
+            print("No valid benchmark results to upload – skipping push to hub.")
+            return None
+
+        # Separate the two lists after validation
+        correct_calls_filtered, context_history = zip(*valid_pairs)
+
+        # Convert to mutable lists
+        correct_calls_filtered = list(correct_calls_filtered)
+        context_history = list(context_history)
+
         max_keys_dict = max(
             context_history, key=lambda d: len(d) if isinstance(d, dict) else 0
         )
@@ -147,9 +168,13 @@ class BaseBenchmark(ABC):
         context_history = [
             {
                 **d,
-                **{k: correct_calls[i][k] for k in correct_calls[i] if k != "context"},
+                **{
+                    k: call[k]
+                    for k in call
+                    if k != "context"
+                },
             }
-            for i, d in enumerate(context_history)
+            for d, call in zip(context_history, correct_calls_filtered)
         ]
 
         for item in context_history:
@@ -166,10 +191,25 @@ class BaseBenchmark(ABC):
             f"{benchmark_name}-{prompter.__class__.__name__.replace('Prompter', '')}"
         )
 
-        # Push to hub under the Nexusflow organization
-        dataset_url = dataset.push_to_hub(
-            f"{BenchmarkConfigs.OWNER}/{dataset_name}", private=True
-        )
+        repo_id = f"{BenchmarkConfigs.OWNER}/{dataset_name}"
+
+        # Push to hub under the Nexusflow organization with retry on rate-limit
+        import time
+        from huggingface_hub.errors import HfHubHTTPError
+
+        max_attempts = 5
+        delay = 5  # seconds, will be doubled each retry
+        for attempt in range(1, max_attempts + 1):
+            try:
+                dataset_url = dataset.push_to_hub(repo_id, private=True)
+                break  # success
+            except HfHubHTTPError as e:
+                if e.response is not None and e.response.status_code == 429 and attempt < max_attempts:
+                    print(f"Rate-limited when creating {repo_id}. Retrying in {delay}s (attempt {attempt}/{max_attempts})...")
+                    time.sleep(delay)
+                    delay *= 2
+                    continue
+                raise  # re-raise other errors or after final attempt
 
         print(f"Pushed dataset to {dataset_url}")
 

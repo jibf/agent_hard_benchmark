@@ -31,11 +31,36 @@ class FCAPIPrompter:
         if self.model is None:
             return "unknown-model"
 
-        # Replace any character that is not alphanumeric, dot, underscore, or hyphen
-        sanitized = sub(r"[^A-Za-z0-9._\-]", "-", self.model)
+        # Sanitize full model path first
+        raw_sanitized = sub(r"[^A-Za-z0-9._\-]", "-", self.model)
+        raw_sanitized = sub(r"-+", "-", raw_sanitized).strip("-")
 
-        # Collapse consecutive dashes that can appear after replacement
-        sanitized = sub(r"-+", "-", sanitized).strip("-")
+        # If the raw sanitized version is already short enough, return it as-is.
+        MAX_MODEL_ID_LEN = 40  # keep plenty of headroom for benchmark + timestamp
+        if len(raw_sanitized) <= MAX_MODEL_ID_LEN:
+            sanitized = raw_sanitized
+        else:
+            # ---------- 1st fallback: namespace compression --------------------
+            if "/" in self.model:
+                parts = [p for p in self.model.split("/") if p]
+                if len(parts) > 1:
+                    compressed_prefix = "-".join(p[0] for p in parts[:-1])
+                    compressed_model = f"{compressed_prefix}-{parts[-1]}"
+                else:
+                    compressed_model = parts[0]
+            else:
+                compressed_model = self.model
+
+            compressed_sanitized = sub(r"[^A-Za-z0-9._\-]", "-", compressed_model)
+            compressed_sanitized = sub(r"-+", "-", compressed_sanitized).strip("-")
+
+            if len(compressed_sanitized) <= MAX_MODEL_ID_LEN:
+                sanitized = compressed_sanitized
+            else:
+                # ---------- 2nd fallback: truncate + hash --------------------
+                import hashlib
+                hash_suffix = hashlib.md5(self.model.encode("utf-8")).hexdigest()[:6]
+                sanitized = f"{compressed_sanitized[:MAX_MODEL_ID_LEN-7]}-{hash_suffix}"
 
         # Ensure it starts with an alphanumeric char per HF rules
         if not sanitized or not sanitized[0].isalnum():
@@ -191,7 +216,9 @@ class FCAPIPrompter:
             "role": "tool",
             "tool_call_id": tool_calls.id,
             "name": tool_calls.function.name,
-            "content": json.dumps(result),
+            # Ensure the content is JSON-serializable; fall back to string
+            "content": json.dumps(result, default=str),
+
         }
 
     def create_prompt(
@@ -248,18 +275,12 @@ class FCAPIPrompter:
                 messages.append(
                     self._get_message_from_previous_response(item["previous_response"])
                 )
-                for idx, tool_calls in enumerate(
-                    self._get_tool_calls_from_previous_response(
-                        item["previous_response"]
-                    )
+                for tool_calls in self._get_tool_calls_from_previous_response(
+                    item["previous_response"]
                 ):
                     messages.append(
                         self._build_tool_message(tool_calls, item["previous_result"])
                     )
-                    # NB(peter): this chooses the first function call (if any),
-                    # and should have the same effect as setting
-                    # `parallel_tool_calls: false` in the FC API request.
-                    break
             if query != contextual_history[-1]["previous_query"]:
                 messages.append({"role": "user", "content": query})
         else:
