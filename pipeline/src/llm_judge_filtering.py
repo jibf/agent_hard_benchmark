@@ -45,6 +45,7 @@ class LLMJudgeConfig:
     batch_size: int = 10        # TODO: Implement batching
     num_proc: int = 32
     max_samples: Optional[int] = None  # Limit for testing
+    steps: List[Step] = None  # Which steps to run (default: both FILTER and SCORE)
 
 
 def _assess_question_worker(args):
@@ -99,20 +100,27 @@ class LLMJudgeAssessor:
     
     def __init__(self, benchmark: Benchmark, config: LLMJudgeConfig = None):
         self.config = config or LLMJudgeConfig()
+        if self.config.steps is None:
+            self.config.steps = [Step.FILTER, Step.SCORE]  # Default to both steps
         self.benchmark = benchmark
 
     def load_benchmark_and_get_results(self) -> List[Dict]:
-        """Load benchmark questions and run both FILTER and SCORE assessments."""
+        """Load benchmark questions and run configured assessments."""
         questions = self._load_benchmark_questions()
 
         if self.config.max_samples:
             questions = questions[:self.config.max_samples]
 
-        logger.info(f"Running FILTER assessment on {len(questions)} questions")
-        filter_results = self.assess_questions(questions, Step.FILTER)
+        filter_results = []
+        score_results = []
         
-        logger.info(f"Running SCORE assessment on {len(questions)} questions")  
-        score_results = self.assess_questions(questions, Step.SCORE)
+        if Step.FILTER in self.config.steps:
+            logger.info(f"Running FILTER assessment on {len(questions)} questions")
+            filter_results = self.assess_questions(questions, Step.FILTER)
+        
+        if Step.SCORE in self.config.steps:
+            logger.info(f"Running SCORE assessment on {len(questions)} questions")  
+            score_results = self.assess_questions(questions, Step.SCORE)
 
         # Combine results for each question
         combined_results = []
@@ -120,12 +128,14 @@ class LLMJudgeAssessor:
             combined_result = {
                 "benchmark": question.benchmark.value,
                 "question_id": question.question_id,
-                "user_prompt": question.instruction,
-                "available_function_list": question.available_function_list,
-                "conversations": question.gt_conv_traj,
-                "filter_assessment": filter_results[i].get("assessment", {}),
-                "score_assessment": score_results[i].get("assessment", {})
             }
+            
+            if Step.FILTER in self.config.steps:
+                combined_result["filter_assessment"] = filter_results[i].get("assessment", {})
+            
+            if Step.SCORE in self.config.steps:
+                combined_result["score_assessment"] = score_results[i].get("assessment", {})
+            
             combined_results.append(combined_result)
             
         return combined_results

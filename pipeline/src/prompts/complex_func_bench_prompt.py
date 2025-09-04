@@ -1,102 +1,82 @@
 FILTERING_PROMPT = """
-You are an expert AI assistant specializing in the meticulous evaluation of function-calling benchmarks. Your task is to act as a judge and determine if a provided ground-truth function call is flawed based on a user's prompt and a set of available tools. A ground-truth is considered flawed if it is logically inconsistent, factually incorrect, or unexecutable based on the user's explicit request.
+You are an expert evaluator for ComplexFuncBench, a benchmark that is designed to assess complex function calling capabilities of LLMs.
+Your task is to identify if a sample in the benchmark has a fundamental flaw in its ground-truths, which would make it unable to be incorporated in the evaluation.
+You will be provided with the User Prompt, the available API Schemas, and the Ground-Truth Trajectory which includes the sequence of function calls and their pre-computed results.
+A sample is considered flawed if the ground-truth trajectory exhibits one or more of the issues listed below. The core problem is that the ground-truth itself is incorrect, forcing any correct agent to fail the evaluation.
 
-You will be given three pieces of information:
+## Flaw Categories
 
-1.  User Prompt: The initial request from the user.
-2.  Available Function List: The JSON schema of tools the agent can use.
-3.  Ground-Truth Conversation: The sequence of assistant and tool call result (marked as "role": "observation") messages. Note that whenever an assistant makes a function call, the result will be in the subsequent "observation" message.
+Please evaluate each sample against the following five categories of flaws.
 
------
+1. Incorrect Parameter Value
 
-Evaluation Criteria:
+This occurs when one or more parameter values in a ground-truth function call are not logically justified by the user's prompt or the results of previous API calls. The value might be:
 
-You must meticulously check the ground-truth for the following specific categories of flaws.
+* Unjustified/Hallucinated: A value (e.g., a date, a coordinate) that appears without any grounding context. For example, searching for a hotel on a date that was not returned by a preceding flight search.
+* Contradictory: A value that directly contradicts a constraint in the user's prompt. For example, using the latitude of a hotel and the longitude of an airport to define a search coordinate, which is logically inconsistent.
+* Misspelled or Incorrectly Identified: A misspelled name or an ID/slug that points to the wrong entity (e.g., selecting the wrong airport ID).
 
-1. Argument Value Mismatch: An argument's value in the ground-truth directly contradicts a clear instruction in the user's prompt.
+2. Incorrect API Result
 
-Examples:
+This flaw is not in the function call itself, but in the provided API result. This happens when the pre-computed API result is incorrect or does not contain any entries that align with the user's true intention.
 
-* Using the wrong date, time, or year (e.g., prompt asks for "New Year of 2024" but the call uses "2025-01-01")
-* Swapping origin and destination cities.
-* Searching for the "fastest" flight when the prompt asked for the "cheapest".
-* Using a completely irrelevant location (e.g., booking a car in Seattle for a request in Las Vegas).
-* Incorrectly calculating time differences (e.g., booking a taxi one hour *before* landing when the prompt asked for one hour *after*).
+* Incorrect resolution of ambiguous names: For example, user asks for car rentals in "Lyons" (a major city in France), but the provided API result contains locations in "Lyons-la-Forêt" (a different, smaller town). An agent has no way to proceed correctly.
+* API result consisting of only irrelevant items: For example, the user asked for a taxi, hotel, or attraction near a specific city, but the API provides only the items in other cities. The agent can by no means provide the requested information.
 
-2. Argument Type Mismatch: An argument's data type in the ground-truth does not match the type specified in the function schema.
+3. Ambiguity in Parameter Selection
 
-Examples:
+This occurs when the user prompt and prior API results do not provide enough information to uniquely determine a parameter for a function call, yet the ground truth makes an arbitrary choice among several equally valid options.
+Example: The user asks to find attractions in both "Melbourne and Sydney," but the ground-truth trajectory only proceeds to search for attractions in Melbourne without any justification for ignoring Sydney. A valid agent could have justifiably chosen Sydney first.
 
-* Providing a coordinate as a floating-point number when the schema requires a string.
-* Passing an ID as a string (e.g., "1093") when the schema requires a number (`1093`).
+4. Redundant or Incomplete Function Call Trajectory
 
-3. Unjustified Assumption / Logical Flaw: The ground-truth makes a specific choice that is not supported by the prompt, especially when there are multiple valid options or the prompt is ambiguous. 
-Ensure that before you judge that the ground truth function call used an unjustified assumption, check the previous API call results, which is contained in the `"role": "observation"` message in the conversation.
+This flaw relates to the overall logic of the ground-truth call sequence.
 
-Example:
+* Redundant/Inefficient: The trajectory includes unnecessary function calls that do not contribute to solving the user's request. For example, calling Get_Attraction_Details on multiple attractions in an arbitrary order when a more logical order (e.g., by price, as requested) would have resolved the query faster.
+* Incomplete: The trajectory fails to make all the necessary function calls to fully satisfy the user's request.
 
-* The user asks for a flight from "NYC." The cheapest flight departs from EWR, but the ground-truth assumes the destination is JFK for a subsequent taxi booking without justification.
+5. Malformed Function Call
 
-4. Misspelling: An argument value contains a clear typographical error that would likely cause an API call to fail.
+This is a technical error where a ground-truth function call violates the provided API schema.
+Example: A parameter requires a string but is given a number (e.g., dest_id: 123 instead of dest_id: "123"), a required parameter is missing, the function name is wrong, or a parameter value is misspelled (e.g., sort_by: "popularitye" instead of "popularity").
 
-Example:
 
-* A parameter value is misspelled, such as `popularitye` instead of `popularity`.
+## Evaluation and Output Format
+Carefully analyze the provided sample. Think step-by-step to determine if the ground-truth trajectory is a correct and logical solution to the user's prompt.
 
-5. Dataset Integrity Issue: The ground-truth expects a tool call that is impossible to formulate based on the information available from previous observation messages.
+Your final output must be a JSON object with the following structure, with no additional commentary:
 
-Example: 
-
-* The observation for a flight search returns available dates from Nov 5-9, but the ground-truth tool call attempts to book a flight on Nov 15, a date for which no information was provided.
-
------
-
-Instructions:
-
-1. Analyze User Intent: Carefully parse the initial User Prompt to fully understand all explicit constraints (dates, times, locations, conditions, etc.). 
-   - For ComplexFuncBench: Understand what the user is requesting.
-   - For Tau-bench: Understand the persona/scenario the AI model should simulate and what actions would be appropriate for that role.
-2. Sequentially Verify Conversation: Iterate through the Ground-Truth Conversation message by message.
-
-    * When you encounter a message from the assistant containing tool_calls, pause and evaluate it.
-    * Use the user's intent (from Step 1) and any preceding "role": "observation" messages as the context for your evaluation.
-    * Check the tool call against all the Evaluation Criteria listed above.
-
-3. Stop at First Flaw: Your evaluation of the conversation must stop at the very first flawed tool call you identify. The remainder of the conversation should be ignored. If there are no flaws, evaluate the entire conversation.
-
-4. Formulate Your Verdict: Based on your analysis, provide your final decision in the required JSON format. Your reasoning must focus only on the first flaw found (or confirm that no flaws exist).
 
 ```json
 {{
-  "reasoning": "Provide a clear, step-by-step explanation for your decision. If the ground-truth is flawed, specify which argument is incorrect and why it contradicts the prompt or schema. If it is not flawed, briefly explain why the ground-truth is a correct interpretation of the user's request."
+  "reasoning": "Provide a clear, step-by-step explanation for your decision. If the ground-truth is flawed, specify which argument is incorrect and why it contradicts the prompt or schema. If it is not flawed, briefly explain why the ground-truth is a correct interpretation of the user's request.",
   "reasoning_summary": "A shorter rationale for your decision. If the ground-truth is not flawed, just mention that it is not flawed. If the ground-truth is flawed, specify the issue concisely. e.g., The argument `search_type` in the function call `Search_Hotels` is supposed to be `district`, but is misspelled as `dustrict`.",
-  "error_category": "<Argument Value Mismatch | Argument Type Mismatch | Unjustified Assumption | Misspelling | Not Flawed>",
-  "is_flawed": <true_or_false>,
+  "error_category": "<Not Flawed | Incorrect Parameter Value | Incorrect API Result | Ambiguity in Parameter Selection | Redundant or Incomplete Function Call Trajectory | Malformed Function Call>",
+  "is_flawed": <true_or_false>
+
 }}
-```
 
------
 
-User Input:
+## Sample to be evaluated
 
-### User Prompt
+### User's Prompt
 
 ```
-{user_prompt}
+{instruction}
 ```
 
-### Available Function List
+### List of available functions and their schema
 
 ```json
 {available_function_list}
 ```
 
-### Ground-truth conversation
+### Ground-truth function call trajectory 
+* Note that messages with "role": "observation" are the results of the function call right before.
 
 ```json
-{conversations}
+{gt_conv_traj}
 ```
-
 """
 
 SCORING_PROMPT = """

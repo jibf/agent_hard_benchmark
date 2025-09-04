@@ -35,7 +35,7 @@ class ComplexFuncBenchQuestion(FormattedQuestion):  # CFB requires no additional
 
 class TauBenchQuestion(FormattedQuestion):
     agent_system_prompt: str                # the system prompt used to initialize the agent. e.g., "You are a specialized retail agent. Your task is to..."
-
+    user_context: str                       # information of the user and order/reservation details
 
 
 class Tau2BenchQuestion(FormattedQuestion):

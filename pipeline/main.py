@@ -117,13 +117,16 @@ class BenchmarkFilteringPipeline:
         logger.info(f"Starting LLM-as-Judge filtering on {len(step1_passed):,} samples from Step 1")
         
         # Configure LLM-as-Judge
+        steps = [Step.FILTER] if self.config.get("llm_filter_only", False) else [Step.FILTER, Step.SCORE]
+        
         llm_config = LLMJudgeConfig(
             model=self.config.get("llm_model", "gpt-4o-mini"),
             max_samples=self.config.get("llm_max_samples", None),  # None = process all
             batch_size=self.config.get("llm_batch_size", 10),
             max_retries=self.config.get("llm_max_retries", 3),
             retry_delay=self.config.get("llm_retry_delay", 1.0),
-            num_proc=self.config.get("num_proc", 1)
+            num_proc=self.config.get("num_proc", 1),
+            steps=steps
         )
         
         llm_filter = LLMJudgeAssessor(llm_config)
@@ -263,13 +266,16 @@ class BenchmarkFilteringPipeline:
             benchmarks = [Benchmark.TAU_BENCH, Benchmark.COMPLEX_FUNC_BENCH]
             logger.info("Processing default benchmarks (tau_bench, complex_func_bench)")
 
+        steps = [Step.FILTER] if self.config.get("llm_filter_only", False) else [Step.FILTER, Step.SCORE]
+        
         llm_config = LLMJudgeConfig(
             model=self.config.get("llm_model", "gpt-4o-mini"),
             max_samples=self.config.get("llm_max_samples", None),
             batch_size=self.config.get("llm_batch_size", 10),
             max_retries=self.config.get("llm_max_retries", 3),
             retry_delay=self.config.get("llm_retry_delay", 1.0),
-            num_proc=self.config.get("num_proc", 1)
+            num_proc=self.config.get("num_proc", 1),
+            steps=steps
         )
 
         all_results = []
@@ -351,6 +357,11 @@ def main():
         ],
         help="Target benchmark to process (default: all available benchmarks)"
     )
+    parser.add_argument(
+        "--llm-filter-only", 
+        action="store_true", 
+        help="Run only LLM filtering step, skip scoring step"
+    )
     
     args = parser.parse_args()
     
@@ -363,7 +374,8 @@ def main():
         "llm_retry_delay": args.llm_retry_delay,
         "num_proc": args.num_proc,
         "target_benchmark": args.target_benchmark,
-        "use_specific_filters": args.specific_step1
+        "use_specific_filters": args.specific_step1,
+        "llm_filter_only": args.llm_filter_only
     }
     
     # Validate arguments

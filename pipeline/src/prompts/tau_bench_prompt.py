@@ -2,45 +2,102 @@
 # Make sure the output format is as follows. Beware the `reasoning` attribute needs to preceed the results (`is_flawed` or `score`) to encourage the model's chain-of-thought reasoning.
 
 
-# FILTERING: 
-# {{
-#   "reasoning": "Provide a clear, step-by-step explanation for your decision. If the ground-truth is flawed, specify which argument is incorrect and why it contradicts the prompt or schema. If it is not flawed, briefly explain why the ground-truth is a correct interpretation of the user's request."
-#   "reasoning_summary": "A shorter rationale for your decision. If the ground-truth is not flawed, just mention that it is not flawed. If the ground-truth is flawed, specify the issue concisely. e.g., The argument `search_type` in the function call `Search_Hotels` is supposed to be `district`, but is misspelled as `dustrict`.",
-#   "error_category": "<Argument Value Mismatch | Argument Type Mismatch | Unjustified Assumption | Misspelling | Not Flawed>",
-#   "is_flawed": <true_or_false>,
-# }}
+FILTERING_PROMPT = """
+You are an expert evaluator for Tau-Bench, a benchmark designed to assess an agent's ability to follow complex rules and interact with a simulated user.
+Your task is to identify if a sample in the benchmark has a fundamental flaw in its ground-truth, which would make it an unreliable sample for evaluation.
 
-# SCORING: 
-# [
-#     {{
-#     "dimension": "tool necessity",
-#     "reasoning": "The user's goal of booking a flight and a taxi involves interacting with external reservation systems. This is fundamentally impossible to achieve with only the model's internal knowledge. However, small sub-tasks such as identifying the closest airport from the user's location could be handled without external APIs.",
-#     "score": 3
-#     }},
-#     {{
-#     "dimension": "planning and context depth",
-#     "reasoning": "The task requires a sequence: 1. Search for a flight, 2. Use the flight's arrival airport to book a taxi. This is a **standard multi-step plan with a clear, linear dependency**. However, it does not require **complex, non-linear planning or adaptation to unexpected results**, which would be necessary for a score of 5.",
-#     "score": 4
-#     }},
-#     {{
-#     "dimension": "parameter generation",
-#     "reasoning": "Assuming the user prompt mentioned 'tomorrow', the agent needs to calculate the exact date. This is a **form of basic reasoning**, fitting the 3-point criteria. It does not require **deep semantic inference or the generation of a long, complex value** (like a full JSON object for filtering).",
-#     "score": 3
-#     }},
-#     {{
-#     "dimension": "tool selection difficulty",
-#     "reasoning": "The user's intent to 'search for a flight' and 'book a taxi' maps directly to tools like `search_flights` and `book_taxi`. There are **no plausible or confusing distractor tools** mentioned. The choice is obvious and straightforward.",
-#     "score": 2
-#     }},
-#     {{
-#     "dimension": "real-world applicability",
-#     "reasoning": "Booking a flight and then arranging for transportation from the airport is a very common and practical real-world scenario for travelers. However, some of the conditions that the user demands are a bit unrealistic.",
-#     "score": 3
-#     }}
-# ]
-#
+You will be provided with the following information:
+* User Scenario: the prompt given to the model that simulates user. 
+* System Policy: domain-specific rules that the agent model needs to obey.
+* Available Function List: a list of functions available for the agents and their schema
+* User Context and Relevant Information: a brief information of the user and relevant information.
+* Ground-Truth Milestone Function Calls: the provided ground-truth trajectory. Note that this is not a complete log of all function calls. Instead, it is a curated list containing only the key milestone function calls required to solve the task. Following each function call is its response, designated as `"role": "observation"`.
 
 
+A sample is considered flawed if at least one of the ground-truth milestone function calls have an issue listed below.
 
-FILTERING_PROMPT = ""
+## Flaw Categories
+
+1. Incorrect Parameter Value
+
+This occurs when one or more parameter values in a ground-truth function call are not logically justified by the user's prompt or the results of previous API calls. The value might be:
+
+* Unjustified/Hallucinated: A value (e.g., a date, a coordinate) that appears without any grounding context. For example, searching for a hotel on a date that was not returned by a preceding flight search.
+* Contradictory: A value that directly contradicts a constraint in the user's prompt. 
+* Misspelled or Incorrectly Identified: A misspelled name or an ID/slug that points to the wrong entity (e.g., selecting the wrong airport ID).
+
+2. Redundant Function Call
+
+The ground truth trajectory includes unnecessary function calls that do not contribute to solving the user's request. Note that a ground truth trajectory that does not include some function calls would not be problematic, as the provided ground truth is not the full trajectory of all function calls.
+
+3. Malformed Function Call
+
+This is a technical error where a ground-truth function call violates the provided API schema.
+Example: A parameter requires a string but is given a number (e.g., dest_id: 123 instead of dest_id: "123"), a required parameter is missing, or the function name is wrong.
+
+4. Policy Violation
+
+This occurs when the ground truth function call of the agent directly violates the provided system policy. 
+Example: The ground truth where the agent calls a specific function twice, although it is mentioned in the system policy that the function can only be called once.
+
+
+## Crucial Rule: Assume Plausible Conversation
+
+The ground-truth trajectory only contains key milestone function calls. It intentionally omits the natural language conversation between the user and the agent (e.g., user confirmations, clarifications, or follow-up questions).
+Your task is to find undeniable flaws. Therefore, you MUST operate under the following assumption:
+
+* If a sequence of function calls can be justified by a plausible, un-shown conversation that does not contradict the User Scenario or System Policy, then it is NOT a flaw.
+* In other words, give the ground-truth the "benefit of the doubt." Only flag a sample as flawed if a function call is impossible to justify, even with a hypothetical conversation. Do NOT infer a flaw from missing conversational steps.
+
+
+-----
+
+## Evaluation and Output Format
+
+Carefully analyze the provided sample. Think step-by-step to determine if the ground-truth actions are logical and if the user simulation is coherent.
+
+Your final output must be a JSON object with the following structure, with no additional commentary:
+
+```json
+{{
+  "reasoning": "Provide a clear, step-by-step explanation for your decision. If the sample is flawed, specify what is incorrect and why it contradicts the user's prompt, system policies, or the user's role. If it is not flawed, briefly explain why the sample is valid.",
+  "reasoning_summary": "A shorter rationale for your decision. If the sample is not flawed, just mention that it is not flawed. If it is flawed, specify the issue concisely. e.g., The ground truth books a connecting flight, but the user requested a direct flight.",
+  "error_category": "<Not Flawed | Incorrect Parameter Value | Redundant Function Call | Malformed Function Call | Policy Violation |>",
+  "is_flawed": <true or false>
+}}
+```
+
+
+## Target Sample
+
+### User Scenario
+
+```
+{instruction}
+```
+
+### System Policy
+
+{agent_system_prompt}
+
+
+### User context and relevant information
+{user_context}
+
+### List of available functions and their schema
+
+```json
+{available_function_list}
+```
+
+
+### Ground-Truth Milestone Function Calls 
+* Note that messages with "role": "observation" are the results of the function call right before.
+
+```json
+{gt_conv_traj}
+```
+"""
+
+
 SCORING_PROMPT = ""

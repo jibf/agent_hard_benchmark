@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import re
 from typing import Dict, Any, List
 from . import BaseLoader
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -47,27 +48,32 @@ class TauBenchLoader(BaseLoader):
             env_data = self.load_tau_bench_data(domain)
         
         # Extract task components
+        
         user_id = sample.get('user_id')
         instruction = sample.get('instruction', '')
         actions = sample.get('actions', [])
         outputs = sample.get('outputs', [])
         
         # Build user prompt with context
-        user_prompt = self._build_contextual_user_prompt(instruction, user_id, env_data, domain)
+        agent_system_prompt = self._get_agent_system_prompt(user_id, env_data, domain)
+        
+        # Generate user context
+        user_context = self._generate_user_context(user_id, env_data, domain, instruction)
         
         # Convert actions to conversation format with real tool execution
-        conversations = self._convert_actions_to_conversations(instruction, actions, domain, env_data)
+        conversations = self._convert_actions_to_conversations(actions, domain, env_data)
         
         # Get function schemas
         functions = self.load_tau_bench_tools(domain)
         
         return TauBenchQuestion(
             question_id=sample_id or f"{domain}-{user_id}",
-            instruction=user_prompt,
+            instruction=instruction,
             gt_conv_traj=conversations,
             available_function_list=functions,
             benchmark=Benchmark.TAU_BENCH,
-            agent_system_prompt=instruction,
+            agent_system_prompt=agent_system_prompt,
+            user_context=user_context,
             meta={
                 'tau_bench_context': {
                     'user_id': user_id,
@@ -93,69 +99,145 @@ class TauBenchLoader(BaseLoader):
         formatted_sample = self.format_sample(question_sample, domain=domain)
         return formatted_sample.meta['user_prompt'], formatted_sample.conversations, formatted_sample.available_function_list
 
-    def _build_contextual_user_prompt(self, instruction: str, user_id: str, env_data: Dict[str, Any], domain: str = None) -> str:
-        """Build a contextual user prompt that includes system rules and relevant background information"""
-        
-        context_parts = []
-        
-        # Add system prompt/rules for tau-bench
-        if domain:
-            # Add wiki.md content if it exists
-            try:
-                wiki_file = f"data/tau-bench-envs/{domain}/wiki.md"
-                if os.path.exists(wiki_file):
-                    with open(wiki_file, 'r', encoding='utf-8') as f:
-                        wiki_content = f.read().strip()
-                    if wiki_content:
-                        context_parts.append("[System Policy and Rules]")
-                        context_parts.append(wiki_content)
-                        context_parts.append("")
-            except Exception as e:
-                print(f"Could not load wiki for {domain}: {e}")
-            
-            # Add rules.py content if it exists (for backward compatibility)
-            try:
-                rules_file = f"data/tau-bench-envs/{domain}/rules.py"
-                if os.path.exists(rules_file):
-                    import importlib.util
-                    spec = importlib.util.spec_from_file_location(f"{domain}_rules", rules_file)
-                    rules_module = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(rules_module)
-                    
-                    if hasattr(rules_module, 'RULES'):
-                        context_parts.append("[System Rules for AI Model]")
-                        for rule in rules_module.RULES:
-                            context_parts.append(f"- {rule}")
-                        context_parts.append("")
-            except Exception as e:
-                print(f"Could not load rules for {domain}: {e}")
-        
-        # Add the scenario instruction
-        context_parts.append("[AI Model Instruction]")
-        context_parts.append(instruction)
-        
-        # Add user context if available
-        if user_id and 'users' in env_data:
-            user_data = env_data['users'].get(user_id, {})
-            if user_data:
-                context_parts.append(f"\n[User Context]")
-                name = user_data.get('name', {})
-                if name:
-                    context_parts.append(f"Name: {name.get('first_name', '')} {name.get('last_name', '')}")
-                
-                if 'membership' in user_data:
-                    context_parts.append(f"Membership Status: {user_data['membership']}")
-                
-                if 'reservations' in user_data and user_data['reservations']:
-                    context_parts.append(f"Existing Reservations: {', '.join(user_data['reservations'])}")
-                
-                if 'payment_methods' in user_data:
-                    payment_count = len(user_data['payment_methods'])
-                    context_parts.append(f"Available Payment Methods: {payment_count}")
-        
-        return '\n'.join(context_parts)
+    def _get_agent_system_prompt(self, user_id: str, env_data: Dict[str, Any], domain: str = None) -> str:
+        if domain not in ["retail", "airline"]:
+            raise ValueError(f"Domain {domain} is not supported in tau-bench")
+        wiki_file = f"data/tau-bench-envs/{domain}/wiki.md"
+        if os.path.exists(wiki_file):
+            with open(wiki_file, 'r', encoding='utf-8') as f:
+                wiki_content = f.read().strip()
+            if wiki_content:
+                return demote_markdown_headings(wiki_content, 3)
     
-    def _convert_actions_to_conversations(self, instruction: str, actions: List[Dict[str, Any]], domain: str = None, env_data: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    def _generate_user_context(self, user_id: str, env_data: Dict[str, Any], domain: str, instruction: str = "") -> str:
+        """Generate user context string based on user's orders/reservations and related products/flights."""
+        if domain == "retail":
+            return self._generate_retail_user_context(user_id, env_data, instruction)
+        elif domain == "airline":
+            return self._generate_airline_user_context(user_id, env_data, instruction)
+        else:
+            raise ValueError(f"Domain {domain} is not supported")
+    
+    def _generate_retail_user_context(self, user_id: str, env_data: Dict[str, Any], instruction: str = "") -> str:
+        context_parts = []
+
+        context_parts.append("\n#### User Information")
+        users = env_data.get('users', {})
+        orders = env_data.get('orders', {})
+        products = env_data.get('products', {})
+        
+        user_info = users.get(user_id)
+        if not user_info:
+            return f"* User ID: {user_id} (No additional user information found)"
+        
+        context_parts.append(f"* User ID: {user_id}")
+        
+        # Add user details
+        name_info = user_info.get('name', {})
+        if isinstance(name_info, dict):
+            first_name = name_info.get('first_name', '')
+            last_name = name_info.get('last_name', '')
+            user_name = f"{first_name} {last_name}".strip()
+        else:
+            user_name = str(name_info) if name_info else 'Unknown'
+        context_parts.append(f"* Name: {user_name}")
+        
+        if 'email' in user_info:
+            context_parts.append(f"* Email: {user_info['email']}")
+        if 'phone' in user_info:
+            context_parts.append(f"* Phone: {user_info['phone']}")
+        if 'address' in user_info:
+            address_info = user_info['address']
+            addr_parts = []
+            for key in ['address1', 'address2', 'city', 'state', 'zip', 'country']:
+                addr_parts.append(str(address_info[key]))
+            address_str = ', '.join(addr_parts)
+            context_parts.append(f"* Address: {address_str}")
+
+        if 'payment_methods' in user_info:
+            payment_methods = user_info['payment_methods']
+            context_parts.append(f"* Payment methods: \n```json\n{json.dumps(payment_methods, indent=2)}```")
+
+    
+        if 'orders' in user_info:
+            order_ids = user_info['orders']
+            context_parts.append(f"\n#### Relevant Order Details:")
+            for order_id in order_ids:
+                order_info = orders.get(order_id)
+                if order_info:
+                    context_parts.append(f"\nOrder {order_id}:")
+                    order_json = json.dumps(order_info, indent=2)
+                    context_parts.append(f"```json\n{order_json}\n```")
+                else:
+                    context_parts.append(f"\nOrder {order_id}: Not found in system")
+        return "\n".join(context_parts)
+    
+    
+    def _generate_airline_user_context(self, user_id: str, env_data: Dict[str, Any], instruction: str = "") -> str:
+        """Generate user context for airline domain using users, reservations, and flights."""
+        import json
+        context_parts = []
+
+        context_parts.append("\n#### User Information")
+        users = env_data.get('users', {})
+        reservations = env_data.get('reservations', {})
+        flights = env_data.get('flights', {})
+        
+        # Find user information - users is a dict with user_id as keys
+        user_info = users.get(user_id)
+        
+        if not user_info:
+            return f"* User ID: {user_id} (No additional user information found)"
+        
+        context_parts.append(f"* User ID: {user_id}")
+        
+        # Add user details
+        name_info = user_info.get('name', {})
+        if isinstance(name_info, dict):
+            first_name = name_info.get('first_name', '')
+            last_name = name_info.get('last_name', '')
+            user_name = f"{first_name} {last_name}".strip()
+        else:
+            user_name = str(name_info) if name_info else 'Unknown'
+        context_parts.append(f"* Name: {user_name}")
+        
+        if 'email' in user_info:
+            context_parts.append(f"* Email: {user_info['email']}")
+        if 'phone' in user_info:
+            context_parts.append(f"* Phone: {user_info['phone']}")
+        if 'loyalty_program' in user_info:
+            context_parts.append(f"* Loyalty Program: {user_info['loyalty_program']}")
+        if 'address' in user_info:
+            address_info = user_info['address']
+            if isinstance(address_info, dict):
+                addr_parts = []
+                for key in ['address1', 'address2', 'city', 'state', 'zip', 'country']:
+                    if key in address_info and address_info[key]:
+                        addr_parts.append(str(address_info[key]))
+                address_str = ', '.join(addr_parts)
+                context_parts.append(f"* Address: {address_str}")
+            else:
+                context_parts.append(f"* Address: {address_info}")
+
+        if 'payment_methods' in user_info:
+            payment_methods = user_info['payment_methods']
+            context_parts.append(f"* Payment methods: \n```json\n{json.dumps(payment_methods, indent=2)}```")
+        
+        if 'reservations' in user_info:
+            reservation_ids = user_info['reservations']
+            context_parts.append(f"\n#### Relevant Reservation Details:")
+            for reservation_id in reservation_ids:
+                reservation_info = reservations.get(reservation_id)
+                if reservation_info:
+                    context_parts.append(f"\nReservation {reservation_id}:")
+                    reservation_json = json.dumps(reservation_info, indent=2)
+                    context_parts.append(f"```json\n{reservation_json}\n```")
+                else:
+                    context_parts.append(f"\nReservation {reservation_id}: Not found in system")
+        
+        return "\n".join(context_parts)
+    
+    def _convert_actions_to_conversations(self, actions: List[Dict[str, Any]], domain: str = None, env_data: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """Convert tau-bench actions to conversation format with real tool execution results"""
         
         conversations = []
@@ -351,3 +433,20 @@ class TauBenchLoader(BaseLoader):
         all_questions.extend(self.process_tau_bench_tasks("airline"))
 
         return all_questions
+    
+
+def demote_markdown_headings(markdown_text: str, levels_to_demote: int = 3) -> str:
+    processed_lines = []
+    heading_pattern = re.compile(r"^\s*(#+)\s+(.*)")
+
+    for line in markdown_text.splitlines():
+        match = heading_pattern.match(line)
+        if match:
+            hashes = match.group(1)
+            title = match.group(2)
+            new_level = min(len(hashes) + levels_to_demote, 6)
+            processed_lines.append(f"{'#' * new_level} {title}")
+        else:
+            processed_lines.append(line)
+            
+    return "\n".join(processed_lines)
