@@ -61,6 +61,10 @@ class BenchmarkFilteringPipeline:
             step1_passed, step1_dropped = self._run_step1_rule_filtering()
             # Save Step 1 results
             self._save_results(step1_passed, step1_dropped, "step1_rule_based")
+            # Save benchmark-specific results
+            self._save_benchmark_specific_results(step1_passed, step1_dropped, "step1_rule_based")
+            # Save unified passed and pruned files
+            self._save_unified_step1_results(step1_passed, step1_dropped)
         
         if skip_llm_judge:
             logger.info("\n" + "=" * 40)
@@ -95,6 +99,9 @@ class BenchmarkFilteringPipeline:
         
         all_samples = self.data_loader.load_benchmark_data("benchmark", target_benchmark)
         logger.info(f"Loaded {len(all_samples):,} total samples")
+        
+        # Save unified dataset before filtering
+        unified_file = self._save_unified_dataset(all_samples)
         
         if self.use_specific_filters:
             logger.info("Using benchmark-specific filtering...")
@@ -165,6 +172,137 @@ class BenchmarkFilteringPipeline:
                 f.write(json.dumps(serializable_sample) + "\n")
         
         logger.info(f"Results saved to {passed_filename} and {dropped_filename}")
+    
+    def _save_benchmark_specific_results(self, passed_samples: List[Dict], dropped_samples: List[Dict], step_name: str):
+        """Save benchmark-specific passed and pruned files after step 1."""
+        logger.info(f"Saving benchmark-specific {step_name} results...")
+        
+        def make_json_serializable(obj):
+            """Make objects JSON serializable by converting enums and other non-serializable types."""
+            if isinstance(obj, dict):
+                return {key: make_json_serializable(value) for key, value in obj.items()}
+            elif isinstance(obj, list):
+                return [make_json_serializable(item) for item in obj]
+            elif hasattr(obj, 'value'):  # Handle enums like BenchmarkType
+                return obj.value
+            else:
+                return obj
+        
+        # Create output directory
+        output_dir = "pipeline_results"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Group samples by benchmark
+        benchmark_passed = {}
+        benchmark_dropped = {}
+        
+        for sample in passed_samples:
+            benchmark_name = sample.get('benchmark_name', 'unknown')
+            if benchmark_name not in benchmark_passed:
+                benchmark_passed[benchmark_name] = []
+            benchmark_passed[benchmark_name].append(sample)
+        
+        for sample in dropped_samples:
+            benchmark_name = sample.get('benchmark_name', 'unknown')
+            if benchmark_name not in benchmark_dropped:
+                benchmark_dropped[benchmark_name] = []
+            benchmark_dropped[benchmark_name].append(sample)
+        
+        # Save benchmark-specific passed files
+        for benchmark_name, samples in benchmark_passed.items():
+            if samples:  # Only save if there are samples
+                # Create benchmark-specific folder
+                benchmark_dir = os.path.join(output_dir, benchmark_name)
+                os.makedirs(benchmark_dir, exist_ok=True)
+                
+                # Save with benchmark name + passed
+                filename = os.path.join(benchmark_dir, f"{benchmark_name}_passed.jsonl")
+                with open(filename, "w") as f:
+                    for sample in samples:
+                        serializable_sample = make_json_serializable(sample)
+                        f.write(json.dumps(serializable_sample) + "\n")
+                logger.info(f"Saved {len(samples):,} passed samples for {benchmark_name} to {filename}")
+        
+        # Save benchmark-specific dropped files
+        for benchmark_name, samples in benchmark_dropped.items():
+            if samples:  # Only save if there are samples
+                # Create benchmark-specific folder
+                benchmark_dir = os.path.join(output_dir, benchmark_name)
+                os.makedirs(benchmark_dir, exist_ok=True)
+                
+                # Save with benchmark name + pruned
+                filename = os.path.join(benchmark_dir, f"{benchmark_name}_pruned.jsonl")
+                with open(filename, "w") as f:
+                    for sample in samples:
+                        serializable_sample = make_json_serializable(sample)
+                        f.write(json.dumps(serializable_sample) + "\n")
+                logger.info(f"Saved {len(samples):,} pruned samples for {benchmark_name} to {filename}")
+        
+        logger.info(f"Benchmark-specific results saved for {len(benchmark_passed)} benchmarks")
+    
+    def _save_unified_dataset(self, all_samples: List[Dict]):
+        """Save the unified dataset before any filtering."""
+        logger.info("Saving unified dataset before filtering...")
+        
+        def make_json_serializable(obj):
+            """Make objects JSON serializable by converting enums and other non-serializable types."""
+            if isinstance(obj, dict):
+                return {key: make_json_serializable(value) for key, value in obj.items()}
+            elif isinstance(obj, list):
+                return [make_json_serializable(item) for item in obj]
+            elif hasattr(obj, 'value'):  # Handle enums like BenchmarkType
+                return obj.value
+            else:
+                return obj
+        
+        # Create output directory
+        output_dir = "pipeline_results"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Save unified dataset
+        unified_filename = os.path.join(output_dir, "unified_dataset_all_samples.jsonl")
+        with open(unified_filename, "w") as f:
+            for sample in all_samples:
+                serializable_sample = make_json_serializable(sample)
+                f.write(json.dumps(serializable_sample) + "\n")
+        
+        logger.info(f"Unified dataset saved to {unified_filename} with {len(all_samples):,} samples")
+        return unified_filename
+    
+    def _save_unified_step1_results(self, passed_samples: List[Dict], dropped_samples: List[Dict]):
+        """Save unified passed and pruned files after step 1."""
+        logger.info("Saving unified Step 1 results...")
+        
+        def make_json_serializable(obj):
+            """Make objects JSON serializable by converting enums and other non-serializable types."""
+            if isinstance(obj, dict):
+                return {key: make_json_serializable(value) for key, value in obj.items()}
+            elif isinstance(obj, list):
+                return [make_json_serializable(item) for item in obj]
+            elif hasattr(obj, 'value'):  # Handle enums like BenchmarkType
+                return obj.value
+            else:
+                return obj
+        
+        # Create output directory
+        output_dir = "pipeline_results"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Save unified passed samples
+        unified_passed_filename = os.path.join(output_dir, "unified_step1_passed_samples.jsonl")
+        with open(unified_passed_filename, "w") as f:
+            for sample in passed_samples:
+                serializable_sample = make_json_serializable(sample)
+                f.write(json.dumps(serializable_sample) + "\n")
+        logger.info(f"Unified passed samples saved to {unified_passed_filename} with {len(passed_samples):,} samples")
+        
+        # Save unified dropped samples
+        unified_dropped_filename = os.path.join(output_dir, "unified_step1_dropped_samples.jsonl")
+        with open(unified_dropped_filename, "w") as f:
+            for sample in dropped_samples:
+                serializable_sample = make_json_serializable(sample)
+                f.write(json.dumps(serializable_sample) + "\n")
+        logger.info(f"Unified dropped samples saved to {unified_dropped_filename} with {len(dropped_samples):,} samples")
     
     def _print_final_summary(self, step1_passed: List[Dict], step2_passed: List[Dict]):
         """Print final pipeline summary."""
