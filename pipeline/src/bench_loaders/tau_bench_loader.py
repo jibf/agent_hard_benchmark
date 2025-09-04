@@ -54,16 +54,9 @@ class TauBenchLoader(BaseLoader):
         actions = sample.get('actions', [])
         outputs = sample.get('outputs', [])
         
-        # Build user prompt with context
         agent_system_prompt = self._get_agent_system_prompt(user_id, env_data, domain)
-        
-        # Generate user context
         user_context = self._generate_user_context(user_id, env_data, domain, instruction)
-        
-        # Convert actions to conversation format with real tool execution
         conversations = self._convert_actions_to_conversations(actions, domain, env_data)
-        
-        # Get function schemas
         functions = self.load_tau_bench_tools(domain)
         
         return TauBenchQuestion(
@@ -78,7 +71,7 @@ class TauBenchLoader(BaseLoader):
                 'tau_bench_context': {
                     'user_id': user_id,
                     'domain': domain,
-                    'expected_outputs': outputs,
+                    'gt_outputs': outputs,
                     'env_data': env_data
                 },
             }
@@ -153,7 +146,7 @@ class TauBenchLoader(BaseLoader):
                 addr_parts.append(str(address_info[key]))
             address_str = ', '.join(addr_parts)
             context_parts.append(f"* Address: {address_str}")
-
+        
         if 'payment_methods' in user_info:
             payment_methods = user_info['payment_methods']
             context_parts.append(f"* Payment methods: \n```json\n{json.dumps(payment_methods, indent=2)}```")
@@ -218,6 +211,13 @@ class TauBenchLoader(BaseLoader):
                 context_parts.append(f"* Address: {address_str}")
             else:
                 context_parts.append(f"* Address: {address_info}")
+
+
+        if 'membership' in user_info:
+            context_parts.append(f"* Membership: {user_info['membership']}")
+        
+        if 'saved_passengers' in user_info:
+            context_parts.append(f"* Saved passengers: \n{user_info['saved_passengers']}")
 
         if 'payment_methods' in user_info:
             payment_methods = user_info['payment_methods']
