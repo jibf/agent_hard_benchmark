@@ -30,23 +30,64 @@ class ClaudeHandler(BaseHandler):
 
     def decode_ast(self, result, language="Python"):
         if "FC" not in self.model_name:
-            func = result
-            if " " == func[0]:
-                func = func[1:]
-            if not func.startswith("["):
-                func = "[" + func
-            if not func.endswith("]"):
-                func = func + "]"
-            decode_output = ast_parse(func, language)
-            return decode_output
-
+            # Claude 특화 파싱으로 교체
+            return self._claude_smart_parse(result, language)
         else:
+            # FC 모드는 기존 유지
             decoded_output = []
             for invoked_function in result:
                 name = list(invoked_function.keys())[0]
                 params = json.loads(invoked_function[name])
                 decoded_output.append({name: params})
             return decoded_output
+    
+    def _claude_smart_parse(self, result: str, language: str):
+        """Claude 응답 특화 파싱 - Response Format Discrimination 해결"""
+        import re
+        
+        # Claude의 자연어 + [function()] 혼합 형식 처리
+        # 패턴: [function_name(param=value, param2=value2)]
+        pattern = re.compile(r'\[([a-zA-Z_]\w*\([^[\]]*\))\]', re.MULTILINE)
+        matches = pattern.findall(result)
+        
+        if matches:
+            # 추출된 함수들을 표준 리스트 형태로 구성
+            extracted_calls = '[' + ', '.join(matches) + ']'
+            try:
+                # 기존 ast_parse 활용
+                return ast_parse(extracted_calls, language)
+            except Exception as e:
+                # 파싱 실패시 개별 함수별로 재시도
+                return self._fallback_parse(matches, language)
+        else:
+            # 매칭 실패시 기존 로직으로 fallback
+            return self._legacy_parse(result, language)
+    
+    def _fallback_parse(self, matches, language):
+        """개별 함수 파싱 fallback"""
+        results = []
+        for match in matches:
+            try:
+                single_call = '[' + match + ']'
+                parsed = ast_parse(single_call, language)
+                results.extend(parsed)
+            except Exception:
+                continue
+        return results
+    
+    def _legacy_parse(self, result, language):
+        """기존 로직 유지 (안전장치)"""
+        func = result
+        if len(func) > 0 and func[0] == " ":
+            func = func[1:]
+        if not func.startswith("["):
+            func = "[" + func
+        if not func.endswith("]"):
+            func = func + "]"
+        try:
+            return ast_parse(func, language)
+        except Exception:
+            return []
 
     def decode_execute(self, result):
         if "FC" not in self.model_name:
