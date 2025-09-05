@@ -86,12 +86,33 @@ class AceBenchLoader(BaseLoader):
                 }
             }
             
+            # Convert complex data to JSON strings for string fields
+            acebench_result = sample.get('meta', {}).get('acebench_result', '')
+            if not isinstance(acebench_result, str):
+                acebench_result = json.dumps(acebench_result) if acebench_result else ''
+            
+            possible_answer = sample.get('meta', {}).get('possible_answer', '')
+            if not isinstance(possible_answer, str):
+                possible_answer = json.dumps(possible_answer) if possible_answer else ''
+            
             return AceBenchQuestion(
                 question_id=question_id,
                 instruction=instruction,
                 available_function_list=available_function_list,
                 gt_conv_traj=gt_conv_traj,
                 benchmark=Benchmark.ACE_BENCH,
+                task_name=task_name,
+                benchmark_name=benchmark_name,
+                model_path=sample.get('model_path', ''),
+                sampling_params=sample.get('sampling_params', {}),
+                eval_result=sample.get('eval_result', {}),
+                source_file=sample.get('meta', {}).get('source_file', ''),
+                acebench_result=acebench_result,
+                is_correct=sample.get('meta', {}).get('is_correct', False),
+                error_type=sample.get('meta', {}).get('error_type', ''),
+                possible_answer=possible_answer,
+                finish_reason=sample.get('meta', {}).get('finish_reason', ''),
+                turn_idx=sample.get('messages', [{}])[0].get('turn_idx', 0) if sample.get('messages') else 0,
                 meta=meta
             )
         except Exception as e:

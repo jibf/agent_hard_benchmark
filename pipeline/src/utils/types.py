@@ -43,7 +43,18 @@ class Tau2BenchQuestion(FormattedQuestion):
 
 
 class AceBenchQuestion(FormattedQuestion):
-    pass
+    task_name: str                              # The task name for ACEBench evaluation (e.g., "normal_weather", "special_math")
+    benchmark_name: str                         # The benchmark name (e.g., "acebench")
+    model_path: str                             # The model path used for evaluation
+    sampling_params: dict                       # Sampling parameters for the model
+    eval_result: dict                           # Evaluation result from ACEBench
+    source_file: str                            # Source file where the question originated
+    acebench_result: str                        # ACEBench specific result (can be complex data, stored as JSON string)
+    is_correct: bool                            # Whether the model response was correct
+    error_type: str                             # Type of error if any
+    possible_answer: str                        # Possible answer for the question (can be complex data, stored as JSON string)
+    finish_reason: str                          # Reason why the model finished
+    turn_idx: int                               # Turn index in the conversation
 
 
 class NexusBenchQuestion(FormattedQuestion):
