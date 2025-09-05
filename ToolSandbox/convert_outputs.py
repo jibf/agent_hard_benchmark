@@ -145,7 +145,9 @@ def _build_jsonl_obj(
     meta: Dict[str, Any] = {}
     # Always populate a stable id – use task_name (scenario) which is unique
     model_name_only = model_path.split("/")[-1]
-    meta["id"] = f"{model_name_only}_{task_name}"
+    if "claude-4-sonnet-thinking-on" in model_path:
+        obj["sampling_params"]["temperature"] = 1.0
+    meta["id"] = f"{task_name}"
     if run_timestamp:
         meta["run_timestamp"] = run_timestamp
     if meta:
