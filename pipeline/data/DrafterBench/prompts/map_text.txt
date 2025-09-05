@@ -1,0 +1,93 @@
+Task background:
+You're a worker using tools provided by the drafter to implement his instruction on technical drawing editing tasks.
+Now, the drafter wants to change the position of text on the target area boxed by rectangle markups. There are three operations that the drafter may want: translation, rotation, and scaling, the details defining the operation including operation type, direction and magnitude. The necessary information for such a task has four levels, which are file-level (providing the file path), page-level (providing page number), order-level (providing rectangle order on the page), and base-level(providing the details for at least one of the three operations) from high to low. What needs to be made more clear is that the parts of the details defining each type of operation that can be considered necessary information are pairs of information consisting of the type of operation and the direction, translation-direction, rotation-direction, and scale-factor or at least bigger or smaller than the original text, respectively. A lower level information can correspond to only one higher level information, while higher level information can correspond to multiple lower-level information. You need to find the necessary information corresponding to each task from an instruction that may contain multiple tasks. Don't assume the value of missing necessary information (only the magnitude of operation can be assumed), but identify tasks lacking necessary information, record the missing details, and execute the task with all essential information gathered. Don't repeat the operations related to the same higher-level information when dealing with lower-level operations. Avoid using loops.
+
+Task plan:
+The following is a standard process for completing a task:
+0.	Inexecutable task recording: If you think a level of necessary information(file-level, page-level, order-level, base-level) for a task is missing in the instruction, don't assume the value but skip all the operations of that task and create a recorder to record the incomplete instruction, then continue on next task. Otherwise, ignore this step if all four levels of necessary information of a task can be found.
+1.	Import libraries
+2.	Open the file.
+3.	Target position extraction: Crate an annotation extractor and extract the rectangles on the target page and order.
+4.	Argument collection: Prepare parameters for changing a text position by modifying the argument's value specified by the drafter's instructions into a dictionary.
+5.	Changing position: Create a text projector instance and change position.
+6.	Save the file.
+
+Available tools:
+Two constant defined by the user:
+"pagenumber": an int refers to the page number, pagenumber=0 indicates page one;
+"rectangleorder" an int refers to the order of rectangles within the page, rectangleorder=0 indicates the first rectangle;
+
+Argument collection:
+Extract the argument values from the instruction and store them as a dictionary for the text position-changing task. Here is an example dictionary including all possible attributes:
+{"clip": a rectangle boxes the text that need to be dealt with; "move": a list refers to translation details, general form: [move in its right direction (positive value if move right, negative value if move left), move in its upper direction (positive value if move up, negative value if move down), reference_point], "rotation": a list refers to the rotation details, general form: ['r', rotation degrees in the clockwise direction (positive value in clockwise direction, negative value in counterclockwise direction),reference_point], if the direction of rotation is not specified, clockwise is considered; "scal": a list refers to the scaling, general form: ['sc', [zoom factor X direction, zoom factor Y direction], reference_point]}
+
+Popular PDF editing library "PyMuPDF" and a user-tailored library "PDFbf" are provided. You can import the two libraries by:
+"import fitz
+import PDFbf"
+
+File open:
+You can open the file by calling the following function:
+"doc = fitz.open("filepath")" Open the file with the file path.
+
+Save the updated file:
+You can save the file with an updated name by calling the following function:
+"
+updated_file = filepath[:-4] + "_updated.pdf" # update file path
+doc.save(updated_file)
+"
+
+Target position extraction:
+An annotation extractor is instantiated by providing the essential arguments document(doc):
+"annoextractor = PDFbf.extractanno(doc=fitz.document)"
+Get a rectangle and its reference points:
+"rectangle, rfpoint = annoextractor.getclip_rfpoint(pagenumber=int,rectangleorder=int)"
+
+Changing position:
+A projector is instantiated by specifying the arguments (document(doc), page number(pagenumber), clip) and 1-3(at least one) optional arguments (translation (move), rotation(rotation) and scaling(scal)) on demand like this:
+"text_projector=PDFbf.Projector(doc=fitz.document,pagenumber=int,clip=rectangle,move=[move_in_right_direction, move_in_up_direction, reference_point],rotation=['r', rotation degrees in clockwise direction,reference_point],scal=['sc',[zoom factor in X direction, zoom factor in Y direction], reference_point])"
+You can get a doc with the text mapped by calling the following function:
+"doc = text_projector.project()"
+
+Incomplete instruction recording:
+A missing key attribute recorder can be instantiated to record the incomplete instruction by providing the essential arguments(missing_information):
+"recorder = PDFbf.recorder(missing_information=str)"
+Where "missing_information" a string indicating the highest-level of missing information, a standard format is '''file-level: value or missing, page-level: value or missing, order-level: value or missing, base-level: related part in the original instruction or missing(if no related part) or related part in the original instruction following with an "incomplete" in brackets (if there is some related description but some necessary information is missing) '''.
+The incomplete instruction can be recorded by calling the following function:
+"recorder.recording()"
+
+Here is an example. You should respond in the same way.
+
+User: Move the text in the second box on the tenth page. For the file "47_mapqweqping_text.pdf", move the text in the first box on page 5 20 units left,30 units up. rotate the text 45 degrees clockwise.
+Response:
+```python
+import fitz
+import PDFbf
+
+# Task 1
+# Recording the missing information for Task 1 (not enough details)
+missing_information0 = '''file-level:incomplete, page-level: 10, order-level: 2, base-level: Move the text in the second box on the tenth page.(incomplete)'''
+recorder0 = PDFbf.recorder(missing_information=missing_information0)
+recorder0.recording()
+
+
+
+# Task 2
+# file 2
+filepath1 = "47_mapqweqping_text.pdf"
+doc = fitz.open(filepath1)
+
+annoextractor1 = PDFbf.extractanno(doc=doc)
+
+# page 2
+pagenumber1 = 4
+
+# rectangle 2
+rectangleorder1 = 0
+rectangle1, rfpoint1 = annoextractor1.getclip_rfpoint(pagenumber=pagenumber1,rectangleorder=rectangleorder1)
+argument1 = dict(clip=rectangle1, move=[-20, 30, rfpoint1], rotation=['r', 45, rfpoint1])
+text_project1 = PDFbf.Projector(doc=doc, pagenumber=pagenumber1, clip=argument1.get("clip"), move=argument1.get("move"), rotation=argument1.get("rotation"))
+doc = text_project1.project()
+
+updatedfilepath = filepath1[:-4] + "_updated.pdf"
+doc.save(updatedfilepath)
+```

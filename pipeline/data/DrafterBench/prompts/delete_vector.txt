@@ -1,0 +1,148 @@
+Task background:
+You're a worker using tools provided by the drafter to implement his instruction on technical drawing editing tasks.
+Now, the drafter is trying to delete the vector graphics on the target area boxed by rectangle markups. The vector graphics have a parent class called "drawings" and three son classes, which are "rebar," "column," "line". There are two selection mode to select target class vectors, which are:  1. Window/Cover/Enclosure mode: the vector will be selected only if all vertices and boundaries of the graphic are covered within the rectangular checkbox, 2 Cross/Touch/Intersect mode: the vector will be selected if any of the vertices and a boundary of the vector are within the rectangular checkbox. Deleting vectors on a target position is seen as a task. The necessary information for such a task has four levels, which are file-level (providing the file path), page-level (providing page number), order-level (providing rectangle order on the page), and base-level(the class(es) to be deleted) from high to low. A lower level information can correspond to only one higher level information, while higher level information can correspond to multiple lower-level information. What needs to be made more clear is that, the details defining a target class that can be considered necessary information are: the class and the selection mode. You need to find the necessary information corresponding to each task from an instruction that may contain multiple tasks to complete the execution of the instruction. Don't assume the value of missing necessary information, but identify tasks lacking necessary information, record the missing details, and execute the task only once all essential information is gathered. Don't repeat the operations related to the same higher-level information when dealing with lower-level operations. Avoid using loops.
+
+Task plan:
+The following is a standard process for completing a task:
+0.	Inexecutable task recording: If you think a level of necessary information(file-level, page-level, order-level, base-level) for a task is missing in the instruction, don't assume the value but skip all the operations of that task and create a recorder to record the incomplete instruction, then continue on next task. Otherwise, ignore this step if all four levels of necessary information of a task can be found.
+1.	Import libraries
+2.	Open the file.
+3.	Target position extraction: Crate an annotation extractor and extract the rectangles on the target page and order.
+4.	Argument collection: Prepare parameters for deleting vectors on a target position by modifying the argument's value specified by the drafter's instructions into a dictionary.
+5.	Target class(es) selection: Create a drawing selector and select the specified vector graphics(drawings, lines, rebars, columns) with the specified selection mode by the selector.
+6.	Delete vectors: Create a drawing manipulator or cleaner instance and delete the target vectors.
+7.	Repair: Create a repairer instance if the repair action is asked for a target position, and repair vectors that should not be affected by the cleaner or manipulator; otherwise, skip this step.
+8.	Save the file.
+
+Available tools:
+Two constant defined by the user:
+"pagenumber": an int refers to the page number, pagenumber=0 indicates page one;
+"rectangleorder" an int refers to the order of rectangles within the page, rectangleorder=0 indicates the first rectangle;
+
+Argument collection:
+Extract the argument values from the instruction and store them as a dictionary for the vector deleting task. Here is an example dictionary including all possible attributes:
+{"clip": a rectangle boxes the drawings that needed to be dealt with}
+
+
+Popular PDF editing library "PyMuPDF" and a user-tailored library "PDFbf" are provided. You can import the two libraries by:
+"import fitz
+import PDFbf"
+You have to import the library befor you using the following tools provided.
+
+Target position extraction:
+An annotation extractor is instantiated by providing the essential arguments document(doc):
+"annoextractor = PDFbf.extractanno(doc=fitz.document)"
+Get a rectangle and its reference points:
+"rectangle, rfpoint = annoextractor.getclip_rfpoint(pagenumber=int,rectangleorder=int)"
+
+
+Target class(es) selection:
+A drawing selector can be instantiated by specifying the document(doc), page number(pagenumber), and clip like this:
+"selector = PDFbf.selector(doc=fitz.document, pagenumber=int, clip=rectangle)"
+The selector is to select a class with two optional selection modes. The class can be described by the type of vector graphics ("drawings", "lines", "rebars", or "columns"). There are two selection modes: 1. Window/Cover/Enclosure mode: the vector will be selected only if all vertices and boundaries of the graphic are covered within the rectangular checkbox, 2 Cross/Touch/Intersect mode: the vector will be selected if any of the vertices and a boundary of the vector are within the rectangular checkbox. If the selection mode is not mentioned, take selection mode 2 as default.
+Choose the selection specified or closest to the description of the subgroup.
+You can get a list of a subgroup with a specified selection mode by calling these functions:
+"covered_drawings = selector.mode1_drawings_Window_Cover_Enclosure()" select drawings with selection mode 1;
+"intersected_drawings = selector.mode2_drawings_Cross_Touch_Intersect()" select drawings with selection mode 2;
+"covered_lines = selector.mode1_lines_Window_Cover_Enclosure()" select lines with selection mode 1;
+"intersected_lines = selector.mode2_lines_Cross_Touch_Intersect()" select lines with selection mode 2;
+"covered_rebars= selector.mode1_rebars_Window_Cover_Enclosure()" select rebars with selection mode 1;
+"intersected_rebars = selector.mode2_rebars_Cross_Touch_Intersect()" select rebars with selection mode 2;
+"covered_columns = selector.mode1_columns_Window_Cover_Enclosure()" select columns with selection mode 1;
+"intersected_columns = selector.mode2_columns_Cross_Touch_Intersect()" select columns with selection mode 2;
+
+
+Delete vectors:
+1. Delete selected class:
+A drawing manipulator is instantiated by specfying the document(doc), page number(pagenumber), and list of drawings(listofcdraw) like this:
+"drawing_manipulator = PDFbf.draw_drawer(doc= fitz.document, pagenumber=int, listofcdraw=list)"
+You can get a doc with the list of drawings deleted by calling following functions:
+"doc = drawing_manipulator.delete_draw()"
+
+2. Delete indiscriminately:
+An indiscriminate cleaner is instantiated by specifying the document(doc), page number(pagenumber), and clip like this:
+"cleaner=PDFbf.delete(doc=fitz.document, pagenumber=int, clip=rectangle)"
+You can get a doc with everything in the clip covered by calling the following function:
+"doc = cleaner.applydelete()"
+
+Repair:
+A repairer is instantiated by specifying the document(doc), page number(pagenumber), clip, cdrawings(cdrawings) and optional specify selected drawing(drawings) like this:
+"repairer=PDFbf.repairer(doc= fitz.document,pagenumber=int,clip=rectangle, cdrawings=list, sel_drawings=list)"
+"cdrawings" can be obtained by calling the selector like this "selector.selected_lines", "sel_drawings" can be specified as None to repair the affect by an indiscriminate cleaner.
+You can get a lines repaired doc by calling this function:
+"doc = repairer.del_repair()"
+Selected drawings should be the total selected drawings.
+
+Incomplete instruction recording:
+A missing key attribute recorder can be instantiated to record the incomplete instruction by providing the essential arguments(missing_information):
+"recorder = PDFbf.recorder(missing_information=str)"
+Where "missing_information" is a string indicating the highest-level of missing information, a standard format is '''file-level: value or missing, page-level: value or missing, order-level: value or missing, base-level: related part in the original instruction or missing(if no realted part) or related part in the original instruction following with an "incompleted" in brack (if there is some related description but some necessary information is missing) '''.
+The incomplete instruction can be recorded by calling the following function:
+"recorder.recording()"
+
+Here is an example. You should respond in the same way.
+
+User: The file name is "sdh.pdf". For the first box on page three, delete the drawings covered by the box, delete the rebars intersected with the box, and delete the columns covered by the box. For the fourth box on page eleven, delete the lines intersecting with the box. For the eighth box on page one, delete the lines covered by the box and delete the rebars covered by the box. For the second box on page 18, delete. Repair all the drawings.
+
+Response:
+```python
+
+import fitz
+import PDFbf
+
+filepath = "sdh.pdf"
+doc = fitz.open(filepath)
+
+annoextractor = PDFbf.extractanno(doc=doc)
+
+
+# Mission 1
+pagenumber0 = 2
+rectangleorder0 = 0
+
+rectangle0, rfpoint0 = annoextractor.getclip_rfpoint(pagenumber=pagenumber0,rectangleorder=rectangleorder0)
+argument0 = dict(clip=rectangle0)
+selector0 = PDFbf.selector(doc=doc, pagenumber=pagenumber0, clip=argument0.get("clip"))
+covered_drawings0 = selector0.mode1_drawings_Window_Cover_Enclosure()
+intersected_rebars0 = selector0.mode2_rebars_Cross_Touch_Intersect()
+covered_columns0 = selector0.mode1_columns_Window_Cover_Enclosure()
+sel_drawings0 = covered_drawings0 + intersected_rebars0 + covered_columns0
+drawing_manipulator0 = PDFbf.draw_drawer(doc=doc, pagenumber=pagenumber0, listofcdraw=sel_drawings0)
+doc = drawing_manipulator0.delete_draw()
+repairer0 = PDFbf.repairer(doc=doc, pagenumber=pagenumber0, clip=argument0.get("clip"), cdrawings=selector0.selected_lines, sel_drawings=sel_drawings0)
+doc = repairer0.del_repair()
+
+# Mission 2
+pagenumber1 = 10
+rectangleorder1 = 3
+rectangle1, rfpoint1 = annoextractor.getclip_rfpoint(pagenumber=pagenumber1,rectangleorder=rectangleorder1)
+argument1 = dict(clip=rectangle1)
+selector1 = PDFbf.selector(doc=doc, pagenumber=pagenumber1, clip=argument1.get("clip"))
+intersected_lines1 = selector1.mode2_lines_Cross_Touch_Intersect()
+drawing_manipulator1 = PDFbf.draw_drawer(doc=doc, pagenumber=pagenumber1, listofcdraw=intersected_lines1)
+doc = drawing_manipulator1.delete_draw()
+repairer1 = PDFbf.repairer(doc=doc, pagenumber=pagenumber1, clip=argument1.get("clip"), cdrawings=selector1.selected_lines, sel_drawings=intersected_lines1)
+doc = repairer1.del_repair()
+
+# Mission 3
+pagenumber2=0
+rectangleorder2=7
+rectangle2, rfpoint2 = annoextractor.getclip_rfpoint(pagenumber=pagenumber0,rectangleorder=rectangleorder2)
+argument2 = dict(clip=rectangle2)
+selector2=PDFbf.selector(doc=doc,pagenumber=pagenumber2,clip=argument2.get("clip"))
+covered_lines2=selector2.mode1_lines_Window_Cover_Enclosure()
+covered_rebars2 = selector2.mode1_rebars_Window_Cover_Enclosure()
+sel_drawings2 = covered_lines2 + covered_rebars2
+drawing_manipulator2 = PDFbf.draw_drawer(doc=doc,pagenumber=pagenumber2,listofcdraw=sel_drawings2)
+doc = drawing_manipulator2.delete_draw()
+repairer2 = PDFbf.repairer(doc=doc, pagenumber=pagenumber2, clip=argument2.get("clip"), cdrawings=selector2.selected_lines, sel_drawings=sel_drawings2)
+doc = repairer2.del_repair()
+
+# Mission 4
+missing_information3='''file-level: sdh.pdf, page-level:18, order-level:2, base-level: delete(incomplete)'''
+recorder3 = PDFbf.recorder(missing_information=missing_information3)
+recorder3.recording()
+
+updatedfilepath = filepath[:-4] + "_updated.pdf"
+doc.save(updatedfilepath)
+```

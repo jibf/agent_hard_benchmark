@@ -1,0 +1,161 @@
+Task background:
+You're a worker using tools provided by the drafter to implement his instruction on technical drawing editing tasks.
+Now, the drafter is trying to edit the table content on the target area boxed by rectangle markups. Editing a table on a target position is seen as a task. There are three possible operations that must be selected from: deleting, clearing, and replacing. There are also format attributes that can be optionally specified on demand: the font, font size, alignment, and border width. The necessary information for such a task has four levels, which are file-level (providing the file path), page-level (providing page number), order-level (providing rectangle order on the page), and base-level(providing the necessary information of the operation) from high to low. The first three levels of information determine the target position, while the base level describes the operation. A lower level information can correspond to only one higher level information, while higher level information can correspond to multiple lower-level information. You need to find the four level information corresponding to each task from an instruction that may contain multiple tasks. Don't assume its value for necessary information if the command doesn't mention it or describe it vaguely. For all the tasks in commands, execute the tasks where all essential information is completely specified, while for tasks lacking necessary information, record the missing details. Don't repeat the operations related to the same higher-level information when dealing with lower-level operations. Avoid using loops.
+
+Task plan:
+The following is a standard process for completing a task:
+0.	Inexecutable task recording: If you think a level of necessary information (file-level, page-level, order-level, base-level) for a task is missing in the instruction, don't assume the value but skip all the operations of that task and create a recorder to record the incomplete instruction, then continue on next task. Otherwise, ignore this step if all four levels of necessary information of a task can be found.
+1.	Import libraries
+2.	Open the file.
+3.	Target position extraction: Crate an annotation extractor and extract the rectangles on the target page and order.
+4.	Argument collection: Prepare parameters for updating text content by modifying the argument's value specified by the drafter's instructions into a dictionary.
+5.	Extract original table: Create a table extractor instance and extract the original table.
+6.	Update table: Create a table manipulator instance, revise the table content, and add the new table.
+7.	Save the file.
+
+Available tools:
+Two constant defined by the user:
+"pagenumber": an int refers to the page number, pagenumber=0 indicates page one;
+"rectangleorder" an int refers to the order of rectangles within the page, rectangleorder=0 indicates the first rectangle;
+
+Argument collection:
+Extract the argument values from the instruction and store them as a dictionary for the table editing task. Here is an example dictionary including all possible attributes:
+{"clip": a rectangle boxes the table that needed to be revised; "font": a string refers to the font of the text in table; "fontsize":an int refers to the size of text in table; "borderwidth": an int refers to the width of the table border, "align": a string refers to the alignment of the text in table, which can be one of "center", "left", "right"}
+
+Popular PDF editing library "PyMuPDF" and a user-tailored library "PDFbf" are provided. You can import the two libraries by:
+"import fitz
+import PDFbf"
+
+File open:
+You can open the file by calling the following function:
+"doc = fitz.open("filepath")" Open the file with the file path.
+
+Save the updated file:
+You can save the file with an updated name by calling the following function:
+"
+updated_file = filepath[:-4] + "_updated.pdf" # update file path
+doc.save(updated_file)
+"
+
+
+Target position extraction:
+An annotation extractor is instantiated by providing the essential arguments document(doc):
+"annoextractor = PDFbf.extractanno(doc=fitz.document)"
+Get a rectangle and its reference points:
+"rectangle, rfpoint = annoextractor.getclip_rfpoint(pagenumber=int,rectangleorder=int)"
+
+
+Extract the original table:
+A table extractor can be instantiated by specifying the document(doc), page number(pagenumber), clip like this:
+"table_extractor = PDFbf.extract_table(doc=fitz.document, pagenumber=int, clip=rectangle)"
+You can get the date of the table by calling the following function:
+"table_data = table_extractor.data"
+
+Update table:
+A table manipulator can be instantiated by specifying the essential arguments (document(doc), page number(pagenumber), clip, data) and optional arguments (font, fontsize, borderwidth, align) on demand like this:
+"table_manipulator=PDFbf.manipulate_table(doc=fitz.document, pagenumber=int, clip=rectangle, data=list, font=string, fontsize=int, borderwidth=int, align=string)"
+
+Here are some arguments that should be specified when you want to delete specified contents from the original tables:
+"delcolumn": a list of columns that need to be deleted, [1] for the first column;
+"delrow": similar to "delcolumn", a list of rows that need to be deleted, [5] for the fifth row;
+
+You can get the revised table data by deleting the whole table or specified row or column from the original table data by specifying rows to delete(delrow), columns to delete(delcolumn) and calling the following function:
+"table_manipulator.data = table_manipulator.cuttable(delrow=list,delcolumn=list)"
+"table_manipulator.data = table_manipulator.cuttable()" delete the whole table if the delete table action is required with no target rows and columns specified.
+"table_manipulator.data = table_manipulator.cuttable(delrow=[3,4,5,6])" delete the 3rd to 6th rows from the original table.
+"table_manipulator.data = table_manipulator.cuttable(delrow=[3],delcolumn=[2,4])" Delete the 3rd row and delete the 2nd and 4th columns from the original table.
+
+Here are some arguments that should be specified when you want to clear or replace specified contents from the original tables:
+"startcell": a list refers to the position of the start cell to be cleared or replaced in the data list, general form: [row number, column number];
+"endcell": a list refers to the position of the end cell to be cleared or replaced in the data list, general form: [row number, column number];
+"repdata": a list of data to replace the specified content from original table, general form: [[row1 content],[row2 content],...,[ith row content]];
+
+You can get the revised table data by clearing the whole table or the data of specified cells of the original table by defining the start cell(startcell), end cell(endcell) and calling the following function:
+"table_manipulator.data = table_manipulator.emptytable(startcell=list,endcell=list)"
+"table_manipulator.data = table_manipulator.emptytable()" clear the whole table if the clear table action is required with no start cell(startcell) and end cell(endcell) specified.
+"table_manipulator.data = table_manipulator.emptytable(startcell=[2,3],endcell=[5,7])" clear the content of cells starting from the 2nd row and 3rd column, end at the 5th row and 7th column from the original table.
+“table_manipulator.data = table_manipulator.emptytable(startcell=[“all”,3])” clear the column 3.
+“table_manipulator.data = table_manipulator.emptytable(startcell=[7,“all”])” clear the row 7.
+"table_manipulator.data = table_manipulator.emptytable(startcell=[8,9])" clear the data of one cell at the 8th row and 9th column from the original table if clear table action is required with only one cell specified.
+
+You can get the revised table data by replacing the whole table or the data of specified cells from the original table by defining the data used to replace(repdata), start cell(startcell), end cell(endcell) and calling the following function:
+"table_manipulator.data = table_manipulator.modifytable(repdata=replace_data, startcell=list, endcell=list)"
+"table_manipulator.data = table_manipulator.modifytable(repdata=replace_data)" Replace the whole table with the "replace data" if no start cell(startcell) and end cell(endcell) are specified.
+"table_manipulator.data = table_manipulator.modifytable(repdata=replace_data, startcell=[7,9], endcell=[12,13])" Replace the data of cells starting from 7th row and 9th column, end at the 12th row and 13th column from the original table with the "replace data".
+“table_manipulator.data = table_manipulator.emptytable(repdata=replace_data, startcell=[“all”,3])” replace the column 3.
+“table_manipulator.data = table_manipulator.emptytable(repdata=replace_data, startcell=[7,“all”])” replace the row 7.
+"table_manipulator.data = table_manipulator.modifytable(repdata=replace_data, startcell=[2,3])" Replace the data of the cell at 2nd row and 3rd column from the original table with the "replace data" if replace table action is required with only one cell specified.
+
+You can get a doc with a revised table added by calling the following function:
+"doc = table_manipulator.addtable()"
+
+Incomplete instruction recording:
+A missing key attribute recorder can be instantiated to record the incomplete instruction by providing the essential arguments(missing_information):
+"recorder = PDFbf.recorder(missing_information=str)"
+Where "missing_information" is a string indicating the highest-level of missing information, a standard format is '''file-level: value or missing, page-level: value or missing, order-level: value or missing, base-level: related part in the original instruction or missing(if no related part) or related part in the original instruction following with an "incomplete" in brackets (if there is some related description but some necessary information is missing)'''.
+The incomplete instruction can be recorded by calling the following function:
+"recorder.recording()"
+
+
+Here is an example. You should respond in the same way.
+
+User: The file name is "De222lsfqweete_table.pdf".
+For the table in the first box of page 4, clear the cells from the second row and third column to the fourth row and fifth column. Replace the cells from the third row and first column to the fourth row and second column with the data "first row: A, B; second row: C, D". Then delete the first row and the second to fifth columns.
+For the table on page 7, delete the second column. Clear the table.
+For the seventh box on page eight, replace the table the data "first row: 10,11, second row: 25,26, third row: 31,32", clear the cell at 3rd row and 4th column, delete the 1-7th row and 10th columns.
+
+Response:
+```python
+
+import fitz
+import PDFbf
+
+
+#Task 1
+#File 1
+filepath = "De222lsfqweete_table.pdf"
+doc = fitz.open(filepath)
+annoextractor = PDFbf.extractanno(doc=doc)
+
+#Page 1
+pagenumber0 = 3
+#Rectangle 1
+rectangleorder0 = 0
+rectangle0, rfpoint0 = annoextractor.getclip_rfpoint(pagenumber=pagenumber0,rectangleorder=rectangleorder0)
+#Operation 1
+argument0 = dict(clip=rectangle0)
+table_extractor0 = PDFbf.extract_table(doc=doc, pagenumber=pagenumber0, clip=argument0.get("clip"))
+table_data0 = table_extractor0.data
+table_manipulator0 = PDFbf.manipulate_table(doc=doc, pagenumber=pagenumber0, clip=argument0.get("clip"), data=table_data0)
+table_manipulator0.data = table_manipulator0.emptytable(startcell=[2, 3], endcell=[4, 5])
+repdata0 = [["A", "B"], ["C", "D"]]
+table_manipulator0.data = table_manipulator0.modifytable(repdata=repdata0, startcell=[3, 1], endcell=[4, 2])
+table_manipulator0.data = table_manipulator0.cuttable(delrow=[1], delcolumn=[2,3,4,5])
+doc = table_manipulator0.addtable()
+
+#Task 2
+#Lacking necessary information
+missing_information1='''file-level: De222lsfqweete_table.pdf, page-level:7, order-level: missing, base-level: delete the second column. Clear the table.'''
+recorder1 = PDFbf.recorder(missing_information=missing_information1)
+recorder1.recording()
+
+
+#Task 3
+#Page 3
+pagenumber2=7
+#Rectangle 3
+rectangleorder2=6
+rectangle2, rfpoint2 = annoextractor.getclip_rfpoint(pagenumber=pagenumber2,rectangleorder=rectangleorder2)
+argument2 = dict(clip=rectangle2)
+table_extractor2 = PDFbf.extract_table(doc=doc,pagenumber=pagenumber2,clip=argument2.get("clip"))
+table_data2 = table_extractor2.data
+table_manipulator2 = PDFbf.manipulate_table(doc=doc, pagenumber=pagenumber2, clip=argument2.get("clip"), data=table_data2)
+repdata2 = [[10,11],[25,26],[31,32]]
+table_manipulator2.data=table_manipulator2.modifytable(repdata=repdata2)
+table_manipulator2.data = table_manipulator2.emptytable(startcell=[3,4])
+table_manipulator2.data = table_manipulator2.cuttable(delrow=[1,2,3,4,5,6,7],delcolumn=[10])
+doc = table_manipulator2.addtable()
+
+updatedfilepath = filepath[:-4] + "_updated.pdf"
+doc.save(updatedfilepath)
+```

@@ -488,7 +488,7 @@ def main():
         help="Number of processes for multiprocessing (default: 1)"
     )
     parser.add_argument(
-        "--target_benchmark",
+        "--target_benchmark", "--target-benchmark",
         choices=[
             "tau_bench", "tau2_bench", "ace_bench", "nexus_bench", 
             "tool_sandbox", "complex_func_bench", "drafter_bench", 
