@@ -1,5 +1,6 @@
 import argparse
 import os
+os.environ["OPENAI_API_KEY"]="sk-sgl-MH7bEVVJlBp3RT_P5cPQ6-KfC1qJElBRCfTDHy40Ue4"
 import time
 import sys
 from litellm import provider_list
@@ -51,7 +52,8 @@ def parse_args():
     parser.add_argument("--huggingface_user_name", type=str, default=None)
     parser.add_argument("--huggingface_private", type=bool, default=True)
     parser.add_argument("--vllm_url", type=str, default=None)
-    parser.add_argument("--results_path", type=str, default="")
+    parser.add_argument("--resume_from", type=str, default=None)
+    parser.add_argument("--auto_resume", type=bool, default=False)
     args = parser.parse_args()
 
     return args
