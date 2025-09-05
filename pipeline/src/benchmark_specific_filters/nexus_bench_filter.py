@@ -34,6 +34,10 @@ class NexusBenchFilter(BaseBenchmarkFilter):
         
         # For now, use general discriminativeness filtering
         # TODO: Implement benchmark-specific rules
+
+        # Remove examples that are missing ground truth
+        samples = [s for s in samples if s.get('ground_truth') is not None and s.get('ground_truth') != ""]
+        
         from ..comprehensive_rule_filtering import ComprehensiveRuleFilter
         general_filter = ComprehensiveRuleFilter()
         return general_filter.filter_samples(samples)
