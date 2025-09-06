@@ -353,9 +353,9 @@ def _generate_single_attempt(
             kwargs["tool_choice"] = tool_choice
     
     try:
-        print(litellm_messages)
-        print(tools)
-        print(kwargs)
+        # print(litellm_messages)
+        # print(tools)
+        # print(kwargs)
         response = completion(
             model=model,
             messages=litellm_messages,
