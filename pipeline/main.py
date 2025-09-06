@@ -456,7 +456,7 @@ def main():
     parser.add_argument(
         "--llm-model", 
         default="openai/gpt-4.1",
-        help="LLM model to use for Step 2 (default: gpt-4o-mini)"
+        help="LLM model to use for Step 2 (default: gpt-4.1)"
     )
     parser.add_argument(
         "--llm-max-samples", 

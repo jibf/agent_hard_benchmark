@@ -28,14 +28,7 @@ This flaw is not in the function call itself, but in the provided API result. Th
 This occurs when the user prompt and prior API results do not provide enough information to uniquely determine a parameter for a function call, yet the ground truth makes an arbitrary choice among several equally valid options.
 Example: The user asks to find attractions in both "Melbourne and Sydney," but the ground-truth trajectory only proceeds to search for attractions in Melbourne without any justification for ignoring Sydney. A valid agent could have justifiably chosen Sydney first.
 
-4. Redundant or Incomplete Function Call Trajectory
-
-This flaw relates to the overall logic of the ground-truth call sequence.
-
-* Redundant/Inefficient: The trajectory includes unnecessary function calls that do not contribute to solving the user's request. For example, calling Get_Attraction_Details on multiple attractions in an arbitrary order when a more logical order (e.g., by price, as requested) would have resolved the query faster.
-* Incomplete: The trajectory fails to make all the necessary function calls to fully satisfy the user's request.
-
-5. Malformed Function Call
+4. Malformed Function Call
 
 This is a technical error where a ground-truth function call violates the provided API schema.
 Example: A parameter requires a string but is given a number (e.g., dest_id: 123 instead of dest_id: "123"), a required parameter is missing, the function name is wrong, or a parameter value is misspelled (e.g., sort_by: "popularitye" instead of "popularity").
@@ -51,7 +44,7 @@ Your final output must be a JSON object with the following structure, with no ad
 {{
   "reasoning": "Provide a clear, step-by-step explanation for your decision. If the ground-truth is flawed, specify which argument is incorrect and why it contradicts the prompt or schema. If it is not flawed, briefly explain why the ground-truth is a correct interpretation of the user's request.",
   "reasoning_summary": "A shorter rationale for your decision. If the ground-truth is not flawed, just mention that it is not flawed. If the ground-truth is flawed, specify the issue concisely. e.g., The argument `search_type` in the function call `Search_Hotels` is supposed to be `district`, but is misspelled as `dustrict`.",
-  "error_category": "<Not Flawed | Incorrect Parameter Value | Incorrect API Result | Ambiguity in Parameter Selection | Redundant or Incomplete Function Call Trajectory | Malformed Function Call>",
+  "error_category": "<Not Flawed | Incorrect Parameter Value | Incorrect API Result | Ambiguity in Parameter Selection | Malformed Function Call>",
   "is_flawed": <true_or_false>
 
 }}
