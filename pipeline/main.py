@@ -9,7 +9,9 @@ import os
 import json
 import logging
 import argparse
-from typing import Dict, List, Tuple
+import numpy as np
+from math import comb
+from typing import Dict, List, Tuple, Optional
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -58,7 +60,23 @@ class BenchmarkFilteringPipeline:
             logger.info("\n" + "=" * 40)
             logger.info("STEP 1: COMPREHENSIVE RULE-BASED FILTERING")
             logger.info("=" * 40)
-            step1_passed, step1_dropped = self._run_step1_rule_filtering()
+
+            logger.info("Loading benchmark data...")
+            # If using specific filters, only load the target benchmark
+            target_benchmark = None
+            if self.use_specific_filters:
+                target_benchmark = self.config.get('target_benchmark')
+                logger.info(f"Loading only target benchmark: {target_benchmark}")
+            all_samples = self.data_loader.load_benchmark_data("benchmark", target_benchmark)
+            logger.info(f"Loaded {len(all_samples):,} total samples")
+
+            separability_dict = self._compute_separability(all_samples)
+            logger.info(f"Benchmark separability before filtering: {json.dumps(separability_dict, indent=2)}")
+
+            step1_passed, step1_dropped = self._run_step1_rule_filtering(all_samples, target_benchmark)
+            separability_dict = self._compute_separability(step1_passed)
+            logger.info(f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}")
+
             # Save Step 1 results
             self._save_results(step1_passed, step1_dropped, "step1_rule_based")
             # Save benchmark-specific results
@@ -78,6 +96,8 @@ class BenchmarkFilteringPipeline:
             logger.info("=" * 40)
             
             step2_passed, step2_dropped = self._run_llm_judge(step1_passed)
+            separability_dict = self._compute_separability(step1_passed)
+            logger.info(f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}")
             
             # Save Step 2 results
             self._save_results(step2_passed, step2_dropped, "step2_llm_judge")
@@ -86,19 +106,9 @@ class BenchmarkFilteringPipeline:
         self._print_final_summary(step1_passed, step2_passed)
         
         return step2_passed, step1_dropped + step2_dropped
-    
-    def _run_step1_rule_filtering(self) -> Tuple[List[Dict], List[Dict]]:
+
+    def _run_step1_rule_filtering(self, all_samples: List[Dict], target_benchmark: Optional[str]) -> Tuple[List[Dict], List[Dict]]:
         """Run Step 1: Rule-based filtering (general or benchmark-specific)."""
-        logger.info("Loading benchmark data...")
-        
-        # If using specific filters, only load the target benchmark
-        target_benchmark = None
-        if self.use_specific_filters:
-            target_benchmark = self.config.get('target_benchmark')
-            logger.info(f"Loading only target benchmark: {target_benchmark}")
-        
-        all_samples = self.data_loader.load_benchmark_data("benchmark", target_benchmark)
-        logger.info(f"Loaded {len(all_samples):,} total samples")
         
         # Save unified dataset before filtering
         unified_file = self._save_unified_dataset(all_samples)
@@ -141,7 +151,57 @@ class BenchmarkFilteringPipeline:
         
         logger.info(f"Step 2 completed: {len(passed_samples):,} samples passed")
         return passed_samples, dropped_samples
-    
+
+    def _compute_separability(self, samples: List[Dict], n_bootstrap: int=100, ci: float=0.95) -> float:
+
+        score_dict = {}
+        separability_dict = {}
+        for sample in samples:
+            model_name = sample["model_path"]
+            benchmark_name = sample["benchmark_name"]
+            score = sample["eval_result"]["score"]
+            if benchmark_name not in score_dict:
+                score_dict[benchmark_name] = {}
+            if model_name not in score_dict[benchmark_name]:
+                score_dict[benchmark_name][model_name] = []
+            score_dict[benchmark_name][model_name].append(score)
+        
+        for benchmark in score_dict:
+            score_matrix = np.array([score_dict[benchmark][model] for model in sorted(score_dict[benchmark].keys())])
+            num_models = score_matrix.shape[0]
+            intervals = []
+
+            for i in range(num_models):
+                i_ci = self._bootstrap_confidence_interval(score_matrix[i], n_bootstrap=n_bootstrap, ci=ci)
+                intervals.append(i_ci)
+            intervals.sort(key=lambda x: x[0])
+
+            overlapping_pairs = []
+            total_pairs = comb(num_models, 2)
+            for i in range(len(intervals)):
+                for j in range(i+1, len(intervals)):
+                    # If the start time of the second interval is less than the end time of the first, they overlap
+                    if intervals[j][0] < intervals[i][1]:
+                        # Check if the pair is already in the list
+                        if (intervals[i], intervals[j]) not in overlapping_pairs and (intervals[j], intervals[i]) not in overlapping_pairs:
+                            overlapping_pairs.append((intervals[i], intervals[j]))
+                    else:
+                        break
+            separability = 1 - len(overlapping_pairs) / total_pairs if total_pairs > 0 else 0
+            separability_dict[benchmark] = separability
+
+        return separability_dict
+
+    def _bootstrap_confidence_interval(self, scores: np.ndarray, n_bootstrap: int=100, ci: float=0.95):
+        n = len(scores)
+        means = []
+        for _ in range(n_bootstrap):
+            sample = np.random.choice(scores, size=n, replace=True)
+            means.append(np.mean(sample))
+        lower = np.percentile(means, (1 - ci) / 2 * 100)
+        upper = np.percentile(means, (1 + ci) / 2 * 100)
+        return lower, upper
+        
     def _save_results(self, passed_samples: List[Dict], dropped_samples: List[Dict], step_name: str):
         """Save results for a pipeline step."""
         logger.info(f"Saving {step_name} results...")
