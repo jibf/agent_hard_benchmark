@@ -353,37 +353,7 @@ class BenchmarkFilteringPipeline:
     
     def _count_unique_questions(self, samples: List[Dict]) -> int:
         """Count unique questions in samples."""
-        import hashlib
-        question_ids = set()
-        
-        for sample in samples:
-            messages = sample.get("messages", [])
-            user_prompt = ""
-            
-            for msg in messages:
-                if msg.get("role") == "user":
-                    content = msg.get("content", "")
-                    if content:
-                        if isinstance(content, list):
-                            text_parts = []
-                            for part in content:
-                                if isinstance(part, dict) and part.get("type") == "text":
-                                    text_parts.append(part.get("text", ""))
-                                elif isinstance(part, str):
-                                    text_parts.append(part)
-                            content = " ".join(text_parts)
-                        
-                        if isinstance(content, str):
-                            user_prompt = content
-                            break
-            
-            task_name = sample.get("task_name", "unknown")
-            benchmark_name = sample.get("benchmark_name", "unknown")
-            question_text = f"{benchmark_name}|||{task_name}|||{user_prompt}"
-            question_id = hashlib.md5(question_text.encode()).hexdigest()
-            question_ids.add(question_id)
-        
-        return len(question_ids)
+        return len(self._convert_response_list_to_qid_list(samples))
     
     def _get_responses_in_benchmark(self, responses: List[Dict], benchmark_name: str) -> List[Dict]:
         if benchmark_name not in list(benchmark.value for benchmark in Benchmark):
