@@ -14,13 +14,13 @@ class RuleFilteringOrchestrator:
     def __init__(self):
         self.comprehensive_filter = ComprehensiveRuleFilter()
         self.benchmark_filters = {
-            'drafter_bench': DrafterBenchFilter(),
+            'DrafterBench': DrafterBenchFilter(),
             'multi_challenge': MultiChallengeFilter(),
-            'ace_bench': ACEBenchFilter(),
-            'complex_func_bench': ComplexFuncBenchFilter(),
-            'bfcl': BFCLFilter(),
-            'nexus_bench': NexusBenchFilter(),
-            'tau_bench': TAUBenchFilter()
+            'ACEBench': ACEBenchFilter(),
+            'complex-func-bench': ComplexFuncBenchFilter(),
+            'BFCL': BFCLFilter(),
+            'NexusBench': NexusBenchFilter(),
+            'tau-bench': TAUBenchFilter()
         }
     
     def filter_samples(self, samples: List[Dict], use_specific_filters: bool = False, 

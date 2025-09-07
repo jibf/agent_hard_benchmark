@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional
 
 # Add the src directory to the path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from utils.types import AceBenchQuestion, Benchmark
+from src.utils.types import AceBenchQuestion, Benchmark
 from .base_loader import BaseLoader
 
 
