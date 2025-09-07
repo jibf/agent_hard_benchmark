@@ -40,78 +40,91 @@ class BenchmarkFilteringPipeline:
         self.config = config or {}
         self.data_loader = BenchmarkDataLoader()
         self.use_specific_filters = self.config.get('use_specific_filters', False)
+    
+    def _make_json_serializable(self, obj):
+        """Make objects JSON serializable by converting enums and other non-serializable types."""
+        if isinstance(obj, dict):
+            return {key: self._make_json_serializable(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._make_json_serializable(item) for item in obj]
+        elif hasattr(obj, 'value'):  # Handle enums like BenchmarkType
+            return obj.value
+        else:
+            return obj
+    
+    def _convert_response_list_to_qid_list(self, response_list: List[Dict]) -> List[Dict]:
+        """Convert response list to unique question ID list, removing duplicates."""
+        questions = set()
+        for response in response_list:
+            unique_key = (
+                response['benchmark_name'], 
+                response['task_name'], 
+                response['meta']['id']
+            )
+            questions.add(unique_key)
+        
+        return [{ "benchmark_name": key[0], "task_name": key[1], "question_id": key[2] } for key in questions ]
+        
         
     def run_pipeline(self, skip_llm_judge: bool = False, skip_rule_based: bool = False) -> Tuple[List[Dict], List[Dict]]:
         """Run the complete filtering pipeline."""
-        # TODO: Not tested yet
-        logger.info("=" * 60)
-        logger.info("STARTING BENCHMARK FILTERING PIPELINE")
-        logger.info("=" * 60)
+        logger.info("Starting benchmark filtering pipeline")
         
         if skip_rule_based:
-            # Skip rule-based filtering and run only LLM judge on questions
-            logger.info("\n" + "=" * 40)
-            logger.info("SKIPPING STEP 1: RULE-BASED FILTERING")
-            logger.info("RUNNING LLM-AS-JUDGE ON QUESTIONS INDEPENDENTLY")
-            logger.info("=" * 40)
-            
+            logger.info("Skipping Step 1: Rule-based filtering")
+            logger.info("Running LLM-as-Judge on questions independently")
             return self._run_llm_judge_independently()
-        else:  # Step 1: Rule-based filtering
-            logger.info("\n" + "=" * 40)
-            logger.info("STEP 1: COMPREHENSIVE RULE-BASED FILTERING")
-            logger.info("=" * 40)
-
-            logger.info("Loading benchmark data...")
-            # If using specific filters, only load the target benchmark
-            target_benchmark = None
-            if self.use_specific_filters:
-                target_benchmark = self.config.get('target_benchmark')
-                logger.info(f"Loading only target benchmark: {target_benchmark}")
-            all_samples = self.data_loader.load_benchmark_data("benchmark", target_benchmark)
-            logger.info(f"Loaded {len(all_samples):,} total samples")
-
-            separability_dict = self._compute_separability(all_samples)
-            logger.info(f"Benchmark separability before filtering: {json.dumps(separability_dict, indent=2)}")
-
-            step1_passed, step1_dropped = self._run_step1_rule_filtering(all_samples, target_benchmark)
-            separability_dict = self._compute_separability(step1_passed)
-            logger.info(f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}")
-
-            # Save Step 1 results
-            self._save_results(step1_passed, step1_dropped, "step1_rule_based")
-            # Save benchmark-specific results
-            self._save_benchmark_specific_results(step1_passed, step1_dropped, "step1_rule_based")
-            # Save unified passed and pruned files
-            self._save_unified_step1_results(step1_passed, step1_dropped)
+        
+        # Step 1: Rule-based filtering
+        logger.info("Step 1: Comprehensive rule-based filtering")
+        all_samples = self._load_benchmark_data()
+        separability_dict = self._compute_separability(all_samples)
+        logger.info(f"Benchmark separability before filtering: {json.dumps(separability_dict, indent=2)}")
+        
+        step1_passed, step1_dropped = self._run_step1_rule_filtering(all_samples)
+        separability_dict = self._compute_separability(step1_passed)
+        logger.info(f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}")
+        
+        self._save_step1_results(step1_passed, step1_dropped)
         
         if skip_llm_judge:
-            logger.info("\n" + "=" * 40)
-            logger.info("SKIPPING STEP 2: LLM-AS-JUDGE FILTERING")
-            logger.info("=" * 40)
+            logger.info("Skipping Step 2: LLM-as-Judge filtering")
             return step1_passed, step1_dropped
-        else:
-            # Step 2: LLM-as-Judge filtering
-            logger.info("\n" + "=" * 40)
-            logger.info("STEP 2: LLM-AS-JUDGE FILTERING")
-            logger.info("=" * 40)
-            
-            step2_passed, step2_dropped = self._run_llm_judge(step1_passed)
-            separability_dict = self._compute_separability(step1_passed)
-            logger.info(f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}")
-            
-            # Save Step 2 results
-            self._save_results(step2_passed, step2_dropped, "step2_llm_judge")
-            
-        # Final summary
-        self._print_final_summary(step1_passed, step2_passed)
         
+        # Step 2: LLM-as-Judge filtering
+        logger.info("Step 2: LLM-as-Judge filtering")
+        step2_passed, step2_dropped = self._run_llm_judge(step1_passed)
+        separability_dict = self._compute_separability(step2_passed)
+        logger.info(f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}")
+        
+        self._save_results(step2_passed, step2_dropped, "step2_llm_judge")
+        
+        # Final summary and results
+        self._print_final_summary(step1_passed, step2_passed)
         return step2_passed, step1_dropped + step2_dropped
 
-    def _run_step1_rule_filtering(self, all_samples: List[Dict], target_benchmark: Optional[str]) -> Tuple[List[Dict], List[Dict]]:
+    
+    def _load_benchmark_data(self) -> List[Dict]:
+        """Load benchmark data based on configuration."""
+        logger.info("Loading benchmark data...")
+        
+        target_benchmark = None
+        if self.use_specific_filters:
+            target_benchmark = self.config.get('target_benchmark')
+            logger.info(f"Loading only target benchmark: {target_benchmark}")
+        
+        all_samples = self.data_loader.load_benchmark_data("benchmark", target_benchmark)
+        logger.info(f"Loaded {len(all_samples):,} total samples")
+        
+        return all_samples
+    
+    
+    def _run_step1_rule_filtering(self, all_samples: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
         """Run Step 1: Rule-based filtering (general or benchmark-specific)."""
+        target_benchmark = self.config.get('target_benchmark') if self.use_specific_filters else None
         
         # Save unified dataset before filtering
-        unified_file = self._save_unified_dataset(all_samples)
+        self._save_unified_dataset(all_samples)
         
         if self.use_specific_filters:
             logger.info("Using benchmark-specific filtering...")
@@ -129,28 +142,12 @@ class BenchmarkFilteringPipeline:
         logger.info(f"Step 1 completed: {len(passed_samples):,} samples passed")
         return passed_samples, dropped_samples
     
-    def _run_llm_judge(self, step1_passed: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
-        """Run Step 2: LLM-as-Judge filtering."""
-        logger.info(f"Starting LLM-as-Judge filtering on {len(step1_passed):,} samples from Step 1")
-        
-        # Configure LLM-as-Judge
-        steps = [Step.FILTER] if self.config.get("llm_filter_only", False) else [Step.FILTER, Step.SCORE]
-        
-        llm_config = LLMJudgeConfig(
-            model=self.config.get("llm_model", "gpt-4o-mini"),
-            max_samples=self.config.get("llm_max_samples", None),  # None = process all
-            batch_size=self.config.get("llm_batch_size", 10),
-            max_retries=self.config.get("llm_max_retries", 3),
-            retry_delay=self.config.get("llm_retry_delay", 1.0),
-            num_proc=self.config.get("num_proc", 1),
-            steps=steps
-        )
-        
-        llm_filter = LLMJudgeAssessor(llm_config)
-        passed_samples, dropped_samples = llm_filter.filter_samples(step1_passed)
-        
-        logger.info(f"Step 2 completed: {len(passed_samples):,} samples passed")
-        return passed_samples, dropped_samples
+    def _save_step1_results(self, step1_passed: List[Dict], step1_dropped: List[Dict]):
+        """Save all Step 1 results in various formats."""
+        self._save_results(step1_passed, step1_dropped, "step1_rule_based")
+        self._save_benchmark_specific_results(step1_passed, step1_dropped, "step1_rule_based")
+        self._save_unified_step1_results(step1_passed, step1_dropped)
+    
 
     def _compute_separability(self, samples: List[Dict], n_bootstrap: int=100, ci: float=0.95) -> float:
 
@@ -206,29 +203,18 @@ class BenchmarkFilteringPipeline:
         """Save results for a pipeline step."""
         logger.info(f"Saving {step_name} results...")
         
-        def make_json_serializable(obj):
-            """Make objects JSON serializable by converting enums and other non-serializable types."""
-            if isinstance(obj, dict):
-                return {key: make_json_serializable(value) for key, value in obj.items()}
-            elif isinstance(obj, list):
-                return [make_json_serializable(item) for item in obj]
-            elif hasattr(obj, 'value'):  # Handle enums like BenchmarkType
-                return obj.value
-            else:
-                return obj
-        
         # Save passed samples
         passed_filename = f"{step_name}_passed_samples.jsonl"
         with open(passed_filename, "w") as f:
             for sample in passed_samples:
-                serializable_sample = make_json_serializable(sample)
+                serializable_sample = self._make_json_serializable(sample)
                 f.write(json.dumps(serializable_sample) + "\n")
         
         # Save dropped samples
         dropped_filename = f"{step_name}_dropped_samples.jsonl"
         with open(dropped_filename, "w") as f:
             for sample in dropped_samples:
-                serializable_sample = make_json_serializable(sample)
+                serializable_sample = self._make_json_serializable(sample)
                 f.write(json.dumps(serializable_sample) + "\n")
         
         logger.info(f"Results saved to {passed_filename} and {dropped_filename}")
@@ -236,17 +222,6 @@ class BenchmarkFilteringPipeline:
     def _save_benchmark_specific_results(self, passed_samples: List[Dict], dropped_samples: List[Dict], step_name: str):
         """Save benchmark-specific passed and pruned files after step 1."""
         logger.info(f"Saving benchmark-specific {step_name} results...")
-        
-        def make_json_serializable(obj):
-            """Make objects JSON serializable by converting enums and other non-serializable types."""
-            if isinstance(obj, dict):
-                return {key: make_json_serializable(value) for key, value in obj.items()}
-            elif isinstance(obj, list):
-                return [make_json_serializable(item) for item in obj]
-            elif hasattr(obj, 'value'):  # Handle enums like BenchmarkType
-                return obj.value
-            else:
-                return obj
         
         # Create output directory
         output_dir = "pipeline_results"
@@ -279,7 +254,7 @@ class BenchmarkFilteringPipeline:
                 filename = os.path.join(benchmark_dir, f"{benchmark_name}_passed.jsonl")
                 with open(filename, "w") as f:
                     for sample in samples:
-                        serializable_sample = make_json_serializable(sample)
+                        serializable_sample = self._make_json_serializable(sample)
                         f.write(json.dumps(serializable_sample) + "\n")
                 logger.info(f"Saved {len(samples):,} passed samples for {benchmark_name} to {filename}")
         
@@ -294,7 +269,7 @@ class BenchmarkFilteringPipeline:
                 filename = os.path.join(benchmark_dir, f"{benchmark_name}_pruned.jsonl")
                 with open(filename, "w") as f:
                     for sample in samples:
-                        serializable_sample = make_json_serializable(sample)
+                        serializable_sample = self._make_json_serializable(sample)
                         f.write(json.dumps(serializable_sample) + "\n")
                 logger.info(f"Saved {len(samples):,} pruned samples for {benchmark_name} to {filename}")
         
@@ -304,17 +279,6 @@ class BenchmarkFilteringPipeline:
         """Save the unified dataset before any filtering."""
         logger.info("Saving unified dataset before filtering...")
         
-        def make_json_serializable(obj):
-            """Make objects JSON serializable by converting enums and other non-serializable types."""
-            if isinstance(obj, dict):
-                return {key: make_json_serializable(value) for key, value in obj.items()}
-            elif isinstance(obj, list):
-                return [make_json_serializable(item) for item in obj]
-            elif hasattr(obj, 'value'):  # Handle enums like BenchmarkType
-                return obj.value
-            else:
-                return obj
-        
         # Create output directory
         output_dir = "pipeline_results"
         os.makedirs(output_dir, exist_ok=True)
@@ -323,7 +287,7 @@ class BenchmarkFilteringPipeline:
         unified_filename = os.path.join(output_dir, "unified_dataset_all_samples.jsonl")
         with open(unified_filename, "w") as f:
             for sample in all_samples:
-                serializable_sample = make_json_serializable(sample)
+                serializable_sample = self._make_json_serializable(sample)
                 f.write(json.dumps(serializable_sample) + "\n")
         
         logger.info(f"Unified dataset saved to {unified_filename} with {len(all_samples):,} samples")
@@ -333,17 +297,6 @@ class BenchmarkFilteringPipeline:
         """Save unified passed and pruned files after step 1."""
         logger.info("Saving unified Step 1 results...")
         
-        def make_json_serializable(obj):
-            """Make objects JSON serializable by converting enums and other non-serializable types."""
-            if isinstance(obj, dict):
-                return {key: make_json_serializable(value) for key, value in obj.items()}
-            elif isinstance(obj, list):
-                return [make_json_serializable(item) for item in obj]
-            elif hasattr(obj, 'value'):  # Handle enums like BenchmarkType
-                return obj.value
-            else:
-                return obj
-        
         # Create output directory
         output_dir = "pipeline_results"
         os.makedirs(output_dir, exist_ok=True)
@@ -352,7 +305,7 @@ class BenchmarkFilteringPipeline:
         unified_passed_filename = os.path.join(output_dir, "unified_step1_passed_samples.jsonl")
         with open(unified_passed_filename, "w") as f:
             for sample in passed_samples:
-                serializable_sample = make_json_serializable(sample)
+                serializable_sample = self._make_json_serializable(sample)
                 f.write(json.dumps(serializable_sample) + "\n")
         logger.info(f"Unified passed samples saved to {unified_passed_filename} with {len(passed_samples):,} samples")
         
@@ -360,15 +313,13 @@ class BenchmarkFilteringPipeline:
         unified_dropped_filename = os.path.join(output_dir, "unified_step1_dropped_samples.jsonl")
         with open(unified_dropped_filename, "w") as f:
             for sample in dropped_samples:
-                serializable_sample = make_json_serializable(sample)
+                serializable_sample = self._make_json_serializable(sample)
                 f.write(json.dumps(serializable_sample) + "\n")
         logger.info(f"Unified dropped samples saved to {unified_dropped_filename} with {len(dropped_samples):,} samples")
     
     def _print_final_summary(self, step1_passed: List[Dict], step2_passed: List[Dict]):
         """Print final pipeline summary."""
-        logger.info("\n" + "=" * 60)
-        logger.info("PIPELINE COMPLETED - FINAL SUMMARY")
-        logger.info("=" * 60)
+        logger.info("Pipeline completed - Final summary")
         
         # Count samples per benchmark
         step1_benchmarks = {}
