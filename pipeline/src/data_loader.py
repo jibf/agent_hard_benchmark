@@ -35,10 +35,7 @@ class BenchmarkDataLoader:
         
         if target_benchmark:
             # Load only the target benchmark
-            if target_benchmark in ["tau_bench", "tau2_bench", "complex_func_bench"]:
-                target_dir = benchmarks_path / f"{target_benchmark.replace('_', '-')}-evaluation"
-            else:
-                target_dir = benchmarks_path / f"{target_benchmark}-evaluation"
+            target_dir = benchmarks_path / f"{target_benchmark}-evaluation"
             if target_dir.exists() and target_dir.is_dir():
                 logger.info(f"Loading only target benchmark: {target_benchmark}")
                 benchmark_samples = self._load_benchmark_directory(target_dir, target_benchmark)

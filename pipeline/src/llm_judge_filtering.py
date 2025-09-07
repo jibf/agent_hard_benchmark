@@ -18,9 +18,9 @@ from tqdm import tqdm
 from functools import wraps
 from src.bench_loaders import (
     TauBenchLoader, Tau2BenchLoader, ComplexFuncBenchLoader, NexusBenchLoader, DrafterBenchLoader,
-    AceBenchLoader, BfclV2Loader, BfclV3Loader, MultiChallengeLoader, ToolSandBoxLoader
+    AceBenchLoader, BfclLoader, MultiChallengeLoader, ToolSandBoxLoader
 )
-from src.utils.types import Benchmark, FormattedQuestion
+from src.utils.types import Benchmark, FormattedQuestion, LLMJudgeOutput
 from src.utils.format_judge_prompt import format_judge_prompt
 
 load_dotenv()
@@ -57,7 +57,7 @@ def _assess_question_worker(args):
     
     # Construct prompt using format_judge_prompt
     eval_type = 'filtration' if step == Step.FILTER else 'scoring'
-    evaluation_prompt, _ = format_judge_prompt(question, eval_type)
+    evaluation_prompt = format_judge_prompt(question, eval_type)
     
     # Retry logic
     for attempt in range(max_retries):
@@ -95,7 +95,7 @@ def _assess_question_worker(args):
             time.sleep(retry_delay)
 
 
-class LLMJudgeAssessor:
+class LLMJudge:
     """LLM-as-Judge filtering for benchmark quality assessment."""
     
     def __init__(self, benchmark: Benchmark, config: LLMJudgeConfig = None):
@@ -104,7 +104,7 @@ class LLMJudgeAssessor:
             self.config.steps = [Step.FILTER, Step.SCORE]  # Default to both steps
         self.benchmark = benchmark
 
-    def load_benchmark_and_get_results(self) -> List[Dict]:
+    def get_results(self) -> List[LLMJudgeOutput]:
         """Load benchmark questions and run configured assessments."""
         questions = self._load_benchmark_questions()
 
@@ -122,23 +122,25 @@ class LLMJudgeAssessor:
             logger.info(f"Running SCORE assessment on {len(questions)} questions")  
             score_results = self.assess_questions(questions, Step.SCORE)
 
-        # Combine results for each question
-        combined_results = []
+        judgement_results: Optional[LLMJudgeOutput] = []
         for i, question in enumerate(questions):
-            combined_result = {
-                "benchmark": question.benchmark.value,
-                "question_id": question.question_id,
-            }
-            
-            if Step.FILTER in self.config.steps:
-                combined_result["filter_assessment"] = filter_results[i].get("assessment", {})
+            filter_result = filter_results[i].get("assessment", {})
+            result = LLMJudgeOutput(
+                benchmark=question.benchmark,
+                question_id=question.question_id,
+                is_flawed=filter_result['is_flawed'],
+                error_category=filter_result['error_category'],
+                reasoning=filter_result['reasoning'],
+                reasoning_summary=filter_result['reasoning_summary']
+            )
             
             if Step.SCORE in self.config.steps:
-                combined_result["score_assessment"] = score_results[i].get("assessment", {})
+                score_result = score_results[i].get("assessment", {})
+                result.scores = score_result
             
-            combined_results.append(combined_result)
+            judgement_results.append(result)
             
-        return combined_results
+        return judgement_results
 
     def load_benchmark_and_get_step_results(self, step: Step = Step.FILTER) -> List[Dict]:
         """Run the LLM-as-Judge assessment."""
@@ -160,8 +162,7 @@ class LLMJudgeAssessor:
             Benchmark.NEXUS_BENCH: NexusBenchLoader,
             Benchmark.DRAFTER_BENCH: DrafterBenchLoader,
             Benchmark.ACE_BENCH: AceBenchLoader,
-            Benchmark.BFCLV2: BfclV2Loader,
-            Benchmark.BFCLV3: BfclV3Loader,
+            Benchmark.BFCL: BfclLoader,
             Benchmark.MULTI_CHALLENGE: MultiChallengeLoader,
             Benchmark.TOOL_SANDBOX: ToolSandBoxLoader
         }
@@ -175,7 +176,7 @@ class LLMJudgeAssessor:
 
     def _construct_judge_prompt(self, question: FormattedQuestion, step: Step) -> str:
         eval_type = 'filtration' if step == Step.FILTER else 'scoring'
-        prompt, _ = format_judge_prompt(question, eval_type)
+        prompt = format_judge_prompt(question, eval_type)
         return prompt
 
     def _assess_question(self, question: FormattedQuestion, step: Step) -> Dict:

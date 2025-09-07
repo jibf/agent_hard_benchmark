@@ -6,6 +6,5 @@ from .nexus_bench_loader import NexusBenchLoader
 from .tool_sandbox_loader import ToolSandBoxLoader
 from .complex_func_bench_loader import ComplexFuncBenchLoader
 from .drafter_bench_loader import DrafterBenchLoader
-from .bfcl_v2_loader import BfclV2Loader
-from .bfcl_v3_loader import BfclV3Loader
+from .bfcl_loader import BfclLoader
 from .multi_challenge_loader import MultiChallengeLoader

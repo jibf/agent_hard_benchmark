@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from src.comprehensive_rule_filtering import ComprehensiveRuleFilter
 from src.rule_filtering_orchestrator import RuleFilteringOrchestrator
-from src.llm_judge_filtering import LLMJudgeAssessor, LLMJudgeConfig, Step
+from src.llm_judge_filtering import LLMJudge, LLMJudgeConfig, Step
 from src.data_loader import BenchmarkDataLoader
 from src.utils.types import Benchmark
 
@@ -70,21 +70,21 @@ class BenchmarkFilteringPipeline:
         """Run the complete filtering pipeline."""
         logger.info("Starting benchmark filtering pipeline")
         
-        if skip_rule_based:
-            logger.info("Skipping Step 1: Rule-based filtering")
-            logger.info("Running LLM-as-Judge on questions independently")
-            return self._run_llm_judge_independently()
-        
         # Step 1: Rule-based filtering
-        logger.info("Step 1: Comprehensive rule-based filtering")
         all_samples = self._load_benchmark_data()
         separability_dict = self._compute_separability(all_samples)
         logger.info(f"Benchmark separability before filtering: {json.dumps(separability_dict, indent=2)}")
+
+        if skip_rule_based:
+            logger.info("Skipping Step 1: Rule-based filtering")
+            logger.info("Running LLM-as-Judge on questions independently")
+            return self._run_llm_judge(all_samples)
         
+        
+        logger.info("Step 1: Comprehensive rule-based filtering")
         step1_passed, step1_dropped = self._run_step1_rule_filtering(all_samples)
         separability_dict = self._compute_separability(step1_passed)
         logger.info(f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}")
-        
         self._save_step1_results(step1_passed, step1_dropped)
         
         if skip_llm_judge:
@@ -385,39 +385,28 @@ class BenchmarkFilteringPipeline:
         
         return len(question_ids)
     
-    def _run_llm_judge_independently(self) -> Tuple[List[Dict], List[Dict]]:
+    def _get_responses_in_benchmark(self, responses: List[Dict], benchmark_name: str) -> List[Dict]:
+        if benchmark_name not in list(benchmark.value for benchmark in Benchmark):
+            raise ValueError(f"Invalid benchmark name {benchmark_name}")
+        
+        def normalize_name(name: str) -> str:
+            return name.lower().replace('-', '').replace('_', '')
+        
+        result = []
+        for response in responses:
+            if normalize_name(response['benchmark_name']) == normalize_name(benchmark_name):
+                result.append(response)
+        return result
+
+
+    def _run_llm_judge(self, responses: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
         """Run LLM judge independently on questions from benchmark datasets."""
         # Determine which benchmarks to process based on target_benchmark config
-        target_benchmark = self.config.get("target_benchmark")
-        
-        if target_benchmark:
-            # Map string names to Benchmark enum values (only implemented loaders)
-            benchmark_map = {
-                "tau-bench": Benchmark.TAU_BENCH,
-                "tau2-bench": Benchmark.TAU2_BENCH,
-                "ACEBench": Benchmark.ACE_BENCH,
-                "NexusBench": Benchmark.NEXUS_BENCH,
-                "ToolSandbox": Benchmark.TOOL_SANDBOX,
-                "complex-func-bench": Benchmark.COMPLEX_FUNC_BENCH,
-                "DrafterBench": Benchmark.DRAFTER_BENCH,
-                "BFCL": Benchmark.BFCLV3,
-                "multi_challenge": Benchmark.MULTI_CHALLENGE
-            }
-            
-            if target_benchmark in benchmark_map:
-                benchmarks = [benchmark_map[target_benchmark]]
-                logger.info(f"Processing {target_benchmark}")
-            else:
-                logger.warning(f"Unknown target benchmark: {target_benchmark}. Processing all available benchmarks.")
-                benchmarks = list(benchmark_map.values())
-        else:
-            benchmarks = [Benchmark.TAU_BENCH, Benchmark.COMPLEX_FUNC_BENCH]
-            logger.info("Processing default benchmarks (tau_bench, complex_func_bench)")
+        passed_responses, filtered_responses = [], []
 
         steps = [Step.FILTER] if self.config.get("llm_filter_only", False) else [Step.FILTER, Step.SCORE]
-        
         llm_config = LLMJudgeConfig(
-            model=self.config.get("llm_model", "gpt-4o-mini"),
+            model=self.config.get("llm_model", "openai/gpt-4.1"),
             max_samples=self.config.get("llm_max_samples", None),
             batch_size=self.config.get("llm_batch_size", 10),
             max_retries=self.config.get("llm_max_retries", 3),
@@ -426,24 +415,33 @@ class BenchmarkFilteringPipeline:
             steps=steps
         )
 
-        all_results = []
-        for benchmark in benchmarks:
-            logger.info(f"Processing {benchmark.value} benchmark...")
-            assessor = LLMJudgeAssessor(benchmark, llm_config)
-            benchmark_results = assessor.load_benchmark_and_get_results()
-            all_results.extend(benchmark_results)
+        for benchmark in Benchmark:
+            benchmark_responses = self._get_responses_in_benchmark(responses, benchmark.value)
+            if len(benchmark_responses) == 0:
+                continue
+            logger.info(f"Processing {benchmark.value} benchmark: {len(benchmark_responses)} responses")
+            judge = LLMJudge(benchmark, llm_config)
             
-        # Save combined results as JSON
-        benchmark_name = target_benchmark if target_benchmark else "all_benchmarks"
-        output_filename = f"llm_judge_results_{benchmark_name}.json"
-        with open(output_filename, "w", encoding='utf-8') as f:
-            json.dump(all_results, f, indent=2, ensure_ascii=False)
+            benchmark_results = judge.get_results()
+            passed_question_ids = [] 
+            for benchmark_result in benchmark_results:
+                if not benchmark_result.is_flawed:
+                    passed_question_ids.append(benchmark_result.question_id)
             
-        logger.info(f"Results saved to {output_filename}")
-        logger.info(f"Total questions processed: {len(all_results)}")
+            assert len(passed_question_ids) > 0, f"{benchmark.value} No question passes filtering; Check question ID format"
         
-        # For compatibility, return empty lists since we're saving to JSON
-        return [], []
+            for response in benchmark_responses:
+                possible_question_ids = [response['meta']['id'], f"{response['task_name']}_{response['meta']['id']}",  f"{response['task_name']}-{response['meta']['id']}"]
+                passed = False
+                for possible_question_id in possible_question_ids:
+                    if possible_question_id in passed_question_ids:
+                        passed = True
+                if passed:
+                    passed_responses.append(response)
+                else:
+                    filtered_responses.append(response)
+            
+        return passed_responses, filtered_responses
     
 def main():
     """Main entry point."""
@@ -499,16 +497,13 @@ def main():
     )
     parser.add_argument(
         "--target_benchmark", "--target-benchmark",
-        choices=[
-            "tau-bench", "tau2-bench", "ACEBench", "NexusBench",
-            "ToolSandbox", "complex-func-bench", "DrafterBench",
-            "BFCL", "multi_challenge"
-        ],
+        choices=list(benchmark.value for benchmark in Benchmark),
         help="Target benchmark to process (default: all available benchmarks)"
     )
     parser.add_argument(
         "--llm-filter-only", 
         action="store_true", 
+        default=True,
         help="Run only LLM filtering step, skip scoring step"
     )
     

@@ -5,44 +5,41 @@ import re
 from typing import Tuple
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from src.utils.types import FormattedQuestion
+from src.utils.types import FormattedQuestion, Benchmark
 from src.prompts import (
     tau_bench_prompt, tau2_bench_prompt, ace_bench_prompt,
     nexus_bench_prompt, tool_sandbox_prompt, complex_func_bench_prompt,
-    drafter_bench_prompt, bfcl_v2_prompt, bfcl_v3_prompt, multi_challenge_prompt
+    drafter_bench_prompt, bfcl_prompt, multi_challenge_prompt
 )
 
 
 PROMPT_MODULES = {
-    'tau_bench': tau_bench_prompt,
-    'tau2_bench': tau2_bench_prompt,
-    'ace_bench': ace_bench_prompt,
-    'nexus_bench': nexus_bench_prompt,
-    'tool_sandbox': tool_sandbox_prompt,
-    'complex_func_bench': complex_func_bench_prompt,
-    'drafter_bench': drafter_bench_prompt,
-    'bfcl_v2': bfcl_v2_prompt,
-    'bfcl_v3': bfcl_v3_prompt,
-    'multi_challenge': multi_challenge_prompt
+    Benchmark.TAU_BENCH: tau_bench_prompt,
+    Benchmark.TAU2_BENCH: tau2_bench_prompt,
+    Benchmark.ACE_BENCH: ace_bench_prompt,
+    Benchmark.NEXUS_BENCH: nexus_bench_prompt,
+    Benchmark.TOOL_SANDBOX: tool_sandbox_prompt,
+    Benchmark.COMPLEX_FUNC_BENCH: complex_func_bench_prompt,
+    Benchmark.DRAFTER_BENCH: drafter_bench_prompt,
+    Benchmark.BFCL: bfcl_prompt,
+    Benchmark.MULTI_CHALLENGE: multi_challenge_prompt
 }
 
 
 def format_judge_prompt(question: FormattedQuestion, eval_type: str) -> Tuple[str, str]:
-    benchmark_name = question.benchmark.value
-    
-    prompt_module = PROMPT_MODULES.get(benchmark_name)
+    prompt_module = PROMPT_MODULES.get(question.benchmark)
     if not prompt_module:
-        raise ValueError(f"Unknown benchmark: {benchmark_name}")
+        raise ValueError(f"Unknown benchmark: {question.benchmark.value}")
     
-    prompt_template = _get_prompt_template(prompt_module, eval_type, benchmark_name)
-    format_data = _extract_format_data(question, benchmark_name)
-    format_args = _build_format_args(prompt_template, format_data, benchmark_name)
+    prompt_template = _get_prompt_template(prompt_module, eval_type)
+    format_data = _extract_format_data(question, question.benchmark)
+    format_args = _build_format_args(prompt_template, format_data)
     
     formatted_prompt = prompt_template.format(**format_args)
-    return formatted_prompt, benchmark_name
+    return formatted_prompt
 
 
-def _get_prompt_template(prompt_module, eval_type: str, benchmark_name: str) -> str:
+def _get_prompt_template(prompt_module, eval_type: str) -> str:
     if eval_type == 'filtration':
         template = getattr(prompt_module, 'FILTERING_PROMPT', None)
     elif eval_type == 'scoring':
@@ -51,12 +48,12 @@ def _get_prompt_template(prompt_module, eval_type: str, benchmark_name: str) -> 
         raise ValueError(f"Unknown eval_type: {eval_type}. Must be 'filtration' or 'scoring'")
     
     if template is None:
-        raise AttributeError(f"No {eval_type.upper()}_PROMPT found in {benchmark_name}_prompt module")
+        raise AttributeError(f"No {eval_type.upper()}_PROMPT found in {prompt_module}")
     
     return template
 
 
-def _build_format_args(prompt_template: str, format_data: dict, benchmark_name: str) -> dict:
+def _build_format_args(prompt_template: str, format_data: dict) -> dict:
     format_fields = re.findall(r'(?<!\{)\{([^{}]+)\}(?!\})', prompt_template)
     format_args = {}
     
@@ -64,14 +61,14 @@ def _build_format_args(prompt_template: str, format_data: dict, benchmark_name: 
         if field in format_data:
             format_args[field] = format_data[field]
         else:
-            raise ValueError(f"Required field '{field}' not available in question data for {benchmark_name}")
+            raise ValueError(f"Required field '{field}' not available in question data")
     
     return format_args
 
 
-def _extract_format_data(question: FormattedQuestion, benchmark_name: str) -> dict:
+def _extract_format_data(question: FormattedQuestion, benchmark: Benchmark) -> dict:
     format_data = {
-        'benchmark': benchmark_name,
+        'benchmark': benchmark.value,
         'user_prompt': question.instruction,
         'available_function_list': json.dumps(question.available_function_list, indent=2),
         'conversations': json.dumps(question.gt_conv_traj, indent=2),

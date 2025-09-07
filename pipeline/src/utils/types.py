@@ -1,17 +1,16 @@
 from enum import Enum
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, List
 
 class Benchmark(Enum):
-    TAU_BENCH = "tau_bench"
-    TAU2_BENCH = "tau2_bench"
-    ACE_BENCH = "ace_bench"
-    NEXUS_BENCH = "nexus_bench"
-    TOOL_SANDBOX = "tool_sandbox"
-    COMPLEX_FUNC_BENCH = "complex_func_bench"
-    DRAFTER_BENCH = "drafter_bench"
-    BFCLV2 = "bfcl_v2"
-    BFCLV3 = "bfcl_v3"
+    TAU_BENCH = "tau-bench"
+    TAU2_BENCH = "tau2-bench"
+    ACE_BENCH = "ACEBench"
+    NEXUS_BENCH = "NexusBench"
+    TOOL_SANDBOX = "ToolSandbox"
+    COMPLEX_FUNC_BENCH = "complex-func-bench"
+    DRAFTER_BENCH = "DrafterBench"
+    BFCL = "BFCL"
     MULTI_CHALLENGE = "multi_challenge"
 
 
@@ -82,3 +81,19 @@ class BfclV3Question(FormattedQuestion):
 
 class MultiChallengeQuestion(FormattedQuestion):
     pass
+
+
+###
+
+class LLMJudgeOutput(BaseModel):
+    benchmark: Benchmark
+    question_id: str
+    # filtering
+    is_flawed: bool
+    error_category: Optional[str]
+    reasoning: Optional[str]
+    reasoning_summary: Optional[str]
+    # scoring
+    scores: Optional[Dict] = None
+    # meta
+    meta: Optional[Dict] = None
