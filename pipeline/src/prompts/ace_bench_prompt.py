@@ -1,81 +1,95 @@
-# ACEBench-specific prompts for LLM-as-a-judge assessment
-# Based on the detailed analysis of 4 main issue categories:
-# 1. Parameter Value Error - Wrong, non-canonical, inconsistent values
-# 2. Incorrect Parameter Value - Contradicts context or gold labels
-# 3. Addition of Unnecessary Parameter - Hallucinated extra parameters
-# 4. Value Error - Semantically correct but formatted incorrectly
 
-# FILTERING: 
-# {{
-#   "reasoning": "Provide a clear, step-by-step explanation for your decision. If the sample is flawed, specify which issue category it belongs to and why. If it is not flawed, briefly explain why the sample is valid for evaluation.",
-#   "reasoning_summary": "A shorter rationale for your decision. If the sample is not flawed, just mention that it is not flawed. If the sample is flawed, specify the issue category concisely.",
-#   "error_category": "<Parameter Value Error | Incorrect Parameter Value | Addition of Unnecessary Parameter | Value Error | Not Flawed>",
-#   "is_flawed": <true_or_false>,
-# }}
+FILTERING_PROMPT = """You are an expert evaluator for ACEBench, a benchmark designed to assess an agent's ability to perform tool usage (function calling) across scenarios of increasing complexity and realism.
 
-# SCORING: 
-# [
-#     {{
-#     "dimension": "parameter accuracy",
-#     "reasoning": "Evaluate how accurately the model generates parameter values. Consider whether values are semantically correct, properly formatted, and consistent with the expected schema.",
-#     "score": <1-5>
-#     }},
-#     {{
-#     "dimension": "function call correctness",
-#     "reasoning": "Assess whether the model makes the correct function calls with appropriate parameters. Consider tool selection, parameter completeness, and adherence to API specifications.",
-#     "score": <1-5>
-#     }},
-#     {{
-#     "dimension": "error handling",
-#     "reasoning": "Evaluate how well the model handles imperfect instructions, missing parameters, or invalid requests. Consider robustness and appropriate error responses.",
-#     "score": <1-5>
-#     }},
-#     {{
-#     "dimension": "multi-turn reasoning",
-#     "reasoning": "For multi-turn tasks, assess the model's ability to maintain context, track state changes, and make coherent sequences of function calls.",
-#     "score": <1-5>
-#     }},
-#     {{
-#     "dimension": "real-world applicability",
-#     "reasoning": "Evaluate how realistic and practical the model's responses are for real-world tool usage scenarios.",
-#     "score": <1-5>
-#     }}
-# ]
+Your task is to identify if a sample in the benchmark has a fundamental flaw in its ground-truth, which would make it an unreliable sample for evaluation.
 
-FILTERING_PROMPT = """You are an expert evaluator for ACEBench, a benchmark for evaluating LLMs' ability to perform tool usage (function calling) across scenarios of increasing complexity and realism.
+You will be provided with the following information:
+* User Scenario: the prompt given to the model that simulates user interactions.
+* Available Function List: a list of functions available for the agents and their schema
+* Ground-Truth Function Calls: the provided ground-truth trajectory containing the sequence of function calls and their responses.
 
-Your task is to identify samples that have fundamental flaws that would make them unsuitable for evaluation. ACEBench has identified 4 main issue categories:
+A sample is considered flawed if at least one of the ground-truth function calls has an issue listed below.
 
-1. **Parameter Value Error**: Wrong, non-canonical, or inconsistent values (e.g., "$2000monthly" instead of "$2000 monthly", "24months" instead of "24 months")
-2. **Incorrect Parameter Value**: Values that contradict context or gold labels (e.g., wrong dates, species names, or IDs that cannot be normalized)
-3. **Addition of Unnecessary Parameter**: Hallucinated extra parameters outside the schema (e.g., adding "provide_indoor_options=true" when not requested)
-4. **Value Error**: Semantically correct but formatted incorrectly (e.g., concatenated tokens, malformed ranges, inconsistent casing)
+## Flaw Categories
 
-**Instructions**: Analyze the given sample and determine if it has any of these fundamental flaws. Focus on task-level issues that would make the sample unreliable for evaluation, not on individual model response quality.
+1. Format Mismatch - Non-canonical Parameter Values
 
-**Sample Information**:
-- Task: {task_name}
-- Instruction: {instruction}
-- Available Functions: {available_function_list}
-- Ground Truth: {gt_conv_traj}
-- Metadata: {meta}
+This occurs when one or more parameter values in a ground-truth function call use non-canonical formats that would cause API errors, even though the semantic meaning is correct. The value might be:
 
-**Evaluation Criteria**:
-- **Not Flawed**: Sample has clear, unambiguous instructions, proper function schemas, and valid evaluation criteria
-- **Parameter Value Error**: Sample contains malformed parameter values that cannot be reasonably normalized
-- **Incorrect Parameter Value**: Sample has values that contradict the given context or are semantically wrong
-- **Addition of Unnecessary Parameter**: Sample evaluation depends on dropping extra parameters that are semantically neutral
-- **Value Error**: Sample relies on formatting rather than semantic correctness for evaluation
+* Concatenated Tokens: Values that should be separated are joined together (e.g., "$2000monthly" instead of "$2000 monthly", "24months" instead of "24 months").
+* Malformed Ranges: Incorrectly formatted range specifications (e.g., "1-5" instead of "1 to 5" when the API expects the latter).
+* Inconsistent Casing: Values that don't match the expected case format (e.g., "JSON" instead of "json" when the API is case-sensitive).
 
-**Output Format**: Provide your analysis in the following JSON format:
+2. Ambiguous Ground Truth - Incorrect Parameter Value
+
+This occurs when one or more parameter values in a ground-truth function call are not logically justified by the user's prompt, system policy, user context, or the results of previous API calls. The value might be:
+
+* Unjustified/Hallucinated: A value (e.g., a date, a coordinate, an ID) that appears without any grounding context.
+* Contradictory: A value that directly contradicts a constraint in the user's prompt or context.
+* Misspelled or Incorrectly Identified: A misspelled name or an ID/slug that points to the wrong entity.
+
+3. Format Mismatch - Value Format Mismatch
+
+This occurs when parameter values are semantically correct but formatted incorrectly according to the API schema requirements. The issue might be:
+
+* Type Mismatch: A parameter requires a string but is given a number (e.g., dest_id: 123 instead of dest_id: "123").
+* Missing Required Parameters: Required parameters are omitted from the function call.
+* Wrong Function Name: The function name is misspelled or incorrect.
+
+4. Optional - Too-easy Single-turn Tasks
+
+This occurs when the task is too simple and can be completed with a single, straightforward function call without requiring complex reasoning or multi-step planning. However, this should only be flagged if the task provides no meaningful evaluation value.
+
+## Crucial Rule: Assume Plausible Context
+
+The ground-truth trajectory represents a realistic tool usage scenario. Your task is to find undeniable flaws in the function calls, not in the overall task design.
+
+* If a parameter value can be reasonably justified by the user's prompt, context, or previous API results, then it is NOT a flaw.
+* Flag a sample as flawed ONLY if the function call is impossible to justify or would cause a clear API error.
+
+-----
+
+## Evaluation and Output Format
+
+Carefully analyze the provided sample. Think step-by-step to determine if the ground-truth function calls are logical and if the parameter values are properly justified.
+
+Your final output must be a JSON object with the following structure, with no additional commentary:
+
+```json
 {{
-  "reasoning": "Provide a clear, step-by-step explanation for your decision. If the sample is flawed, specify which issue category it belongs to and why. If it is not flawed, briefly explain why the sample is valid for evaluation.",
-  "reasoning_summary": "A shorter rationale for your decision. If the sample is not flawed, just mention that it is not flawed. If the sample is flawed, specify the issue category concisely.",
-  "error_category": "<Parameter Value Error | Incorrect Parameter Value | Addition of Unnecessary Parameter | Value Error | Not Flawed>",
+  "reasoning": "Provide a clear, step-by-step explanation for your decision. If the sample is flawed, specify what is incorrect and why it contradicts the user's prompt, API schema, or context. If it is not flawed, briefly explain why the sample is valid.",
+  "reasoning_summary": "A shorter rationale for your decision. If the sample is not flawed, just mention that it is not flawed. If it is flawed, specify the issue concisely. e.g., The parameter 'dest_id' requires a string but is given a number.",
+  "error_category": "<Not Flawed | Format Mismatch - Non-canonical Parameter Values | Ambiguous Ground Truth - Incorrect Parameter Value | Format Mismatch - Value Format Mismatch | Optional - Too-easy Single-turn Tasks>",
   "is_flawed": <true_or_false>
-}}
 
-Remember: Only flag samples with fundamental design flaws that would make evaluation unreliable. Minor formatting issues or model response variations should not be considered flaws."""
+}}
+```
+
+## Sample to be evaluated
+
+### User's Prompt
+
+```
+{instruction}
+```
+
+### List of available functions and their schema
+
+```json
+{available_function_list}
+```
+
+### Ground-truth function call trajectory
+
+```json
+{gt_conv_traj}
+```
+
+### Metadata
+
+```json
+{meta}
+```"""
 
 SCORING_PROMPT = """You are an expert evaluator for ACEBench, a benchmark for evaluating LLMs' ability to perform tool usage (function calling) across scenarios of increasing complexity and realism.
 

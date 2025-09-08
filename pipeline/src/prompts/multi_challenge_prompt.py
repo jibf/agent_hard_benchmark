@@ -1,80 +1,99 @@
-# MultiChallenge-specific prompts for LLM-as-a-judge assessment
-# Based on the detailed analysis of 4 main issue categories:
-# 1. Memory Failure - Missing facts, broken turn structure
-# 2. Instruction Violation - Vague, subjective, conflicting instructions
-# 3. Self-Contradiction - Imprecise coherence, embedded conflicts
-# 4. Version Confusion - Missing authoritative state, unclear edits
 
-# FILTERING: 
-# {{
-#   "reasoning": "Provide a clear, step-by-step explanation for your decision. If the sample is flawed, specify which issue category it belongs to and why. If it is not flawed, briefly explain why the sample is valid for evaluation.",
-#   "reasoning_summary": "A shorter rationale for your decision. If the sample is not flawed, just mention that it is not flawed. If the sample is flawed, specify the issue category concisely.",
-#   "error_category": "<Memory Failure | Instruction Violation | Self-Contradiction | Version Confusion | Not Flawed>",
-#   "is_flawed": <true_or_false>,
-# }}
+FILTERING_PROMPT = """You are an expert evaluator for MultiChallenge, a benchmark designed to assess an agent's ability to maintain context and coherence across multi-turn conversations.
 
-# SCORING: 
-# [
-#     {{
-#     "dimension": "instruction retention",
-#     "reasoning": "Evaluate how well the model maintains first-turn constraints (e.g., format, scope, safety) across the multi-turn dialogue.",
-#     "score": <1-5>
-#     }},
-#     {{
-#     "dimension": "inference memory",
-#     "reasoning": "Assess the model's ability to recall and use user details scattered earlier when only implicitly required later.",
-#     "score": <1-5>
-#     }},
-#     {{
-#     "dimension": "reliable versioned editing",
-#     "reasoning": "Evaluate how accurately the model applies iterative edits to the correct prior version without hallucinations.",
-#     "score": <1-5>
-#     }},
-#     {{
-#     "dimension": "self-coherence",
-#     "reasoning": "Assess the model's consistency with its own earlier outputs, avoiding reversals or contradictions.",
-#     "score": <1-5>
-#     }},
-#     {{
-#     "dimension": "conversation quality",
-#     "reasoning": "Evaluate the overall naturalness, coherence, and effectiveness of the multi-turn conversation.",
-#     "score": <1-5>
-#     }}
-# ]
+Your task is to identify if a sample in the benchmark has a fundamental flaw in its ground-truth, which would make it an unreliable sample for evaluation.
 
-FILTERING_PROMPT = """You are an expert evaluator for MultiChallenge, a benchmark for evaluating LLMs on realistic multi-turn conversations (up to 10 turns) that test four fundamental capability clusters: Instruction Retention (IR), Inference Memory (IM), Reliable Versioned Editing (RVE), and Self-Coherence (SC).
+You will be provided with the following information:
+* User Scenario: the prompt given to the model that simulates user interactions.
+* Available Function List: a list of functions available for the agents and their schema
+* Ground-Truth Conversation: the provided ground-truth trajectory containing the multi-turn conversation flow.
 
-Your task is to identify samples that have fundamental flaws that would make them unsuitable for evaluation. MultiChallenge has identified 4 main issue categories:
+A sample is considered flawed if at least one of the following issues is present in the ground-truth conversation.
 
-1. **Memory Failure**: Missing facts, broken turn structure, vague thresholds without numeric data, abrupt context shifts that make it impossible for models to maintain context
-2. **Instruction Violation**: Vague, subjective, or conflicting instructions (e.g., "no bold anywhere" without clear definition, unclear scope/priorities)
-3. **Self-Contradiction**: Imprecise coherence criteria, embedded conflicts, contradictory facts, competing requirements that pressure models into contradictions
-4. **Version Confusion**: Missing authoritative state, unclear change specifications, competing final versions, underspecified edit intent
+## Flaw Categories
 
-**Instructions**: Analyze the given sample and determine if it has any of these fundamental flaws. Focus on task-level issues that would make the sample unreliable for evaluation, not on individual model response quality.
+1. Ambiguous Ground Truth - Memory Failure
 
-**Sample Information**:
-- Instruction: {instruction}
-- Available Functions: {available_function_list}
-- Ground Truth: {gt_conv_traj}
-- Metadata: {meta}
+This occurs when the ground-truth conversation has missing facts, broken turn structure, or vague thresholds without numeric data that make it impossible for models to maintain proper context. The issue might be:
 
-**Evaluation Criteria**:
-- **Not Flawed**: Sample has clear, unambiguous instructions, complete factual information, coherent turn structure, and valid evaluation criteria
-- **Memory Failure**: Sample is missing essential facts, has broken turn structure, or contains vague thresholds that make context maintenance impossible
-- **Instruction Violation**: Sample has vague, subjective, or conflicting instructions that cannot be objectively evaluated
-- **Self-Contradiction**: Sample has embedded conflicts, contradictory facts, or competing requirements that force models into contradictions
-- **Version Confusion**: Sample lacks clear authoritative state or has unclear change specifications that make evaluation ambiguous
+* Missing Essential Facts: Critical information needed for context maintenance is absent from the conversation flow.
+* Broken Turn Structure: The conversation flow has abrupt context shifts or disconnected turns that break logical progression.
+* Vague Thresholds: Instructions contain subjective criteria without clear, measurable standards (e.g., "make it better" without specific improvement criteria).
 
-**Output Format**: Provide your analysis in the following JSON format:
+2. Bad Evaluation - Instruction Issues
+
+This occurs when the ground-truth contains vague, subjective, or conflicting instructions that cannot be objectively evaluated. The issue might be:
+
+* Vague Instructions: Unclear scope, priorities, or definitions that allow for multiple valid interpretations.
+* Subjective Criteria: Evaluation depends on personal preferences or opinions rather than objective measures.
+* Conflicting Requirements: Instructions that contradict each other or create impossible constraints.
+
+3. Bad Evaluation - Self-Contradiction
+
+This occurs when the ground-truth contains embedded conflicts, contradictory facts, or competing requirements that pressure models into contradictions. The issue might be:
+
+* Embedded Conflicts: The conversation contains inherent contradictions that cannot be resolved.
+* Competing Requirements: Multiple valid but mutually exclusive approaches are presented without clear prioritization.
+* Factual Contradictions: The ground-truth contains demonstrably false or contradictory information.
+
+4. Ambiguous Ground Truth - Ungrounded Versions
+
+This occurs when the ground-truth lacks clear authoritative state or has unclear change specifications that make evaluation ambiguous. The issue might be:
+
+* Missing Authoritative State: No clear baseline or reference point for evaluating changes.
+* Unclear Change Specifications: Edit instructions are ambiguous about what should be modified.
+* Competing Final Versions: Multiple valid end states without clear criteria for selection.
+
+## Crucial Rule: Assume Plausible Conversation
+
+The ground-truth conversation represents a realistic multi-turn interaction. Your task is to find undeniable flaws in the conversation design, not in individual model responses.
+
+* If a conversation flow can be justified by realistic user behavior and natural dialogue progression, then it is NOT a flaw.
+* Flag a sample as flawed ONLY if the conversation structure itself is fundamentally broken or the evaluation criteria are impossible to apply objectively.
+
+-----
+
+## Evaluation and Output Format
+
+Carefully analyze the provided sample. Think step-by-step to determine if the ground-truth conversation is well-designed and if the evaluation criteria are clear and objective.
+
+Your final output must be a JSON object with the following structure, with no additional commentary:
+
+```json
 {{
-  "reasoning": "Provide a clear, step-by-step explanation for your decision. If the sample is flawed, specify which issue category it belongs to and why. If it is not flawed, briefly explain why the sample is valid for evaluation.",
-  "reasoning_summary": "A shorter rationale for your decision. If the sample is not flawed, just mention that it is not flawed. If the sample is flawed, specify the issue category concisely.",
-  "error_category": "<Memory Failure | Instruction Violation | Self-Contradiction | Version Confusion | Not Flawed>",
+  "reasoning": "Provide a clear, step-by-step explanation for your decision. If the sample is flawed, specify what is incorrect and why it makes evaluation unreliable. If it is not flawed, briefly explain why the sample is valid.",
+  "reasoning_summary": "A shorter rationale for your decision. If the sample is not flawed, just mention that it is not flawed. If it is flawed, specify the issue concisely. e.g., The conversation contains conflicting requirements that cannot be resolved simultaneously.",
+  "error_category": "<Not Flawed | Ambiguous Ground Truth - Memory Failure | Bad Evaluation - Instruction Issues | Bad Evaluation - Self-Contradiction | Ambiguous Ground Truth - Ungrounded Versions>",
   "is_flawed": <true_or_false>
-}}
 
-Remember: Only flag samples with fundamental design flaws that would make evaluation unreliable. Minor formatting issues or model response variations should not be considered flaws."""
+}}
+```
+
+## Target Sample
+
+### User Scenario
+
+```
+{instruction}
+```
+
+### Available Functions
+
+```json
+{available_function_list}
+```
+
+### Ground-Truth Conversation
+
+```json
+{gt_conv_traj}
+```
+
+### Metadata
+
+```json
+{meta}
+```"""
 
 SCORING_PROMPT = """You are an expert evaluator for MultiChallenge, a benchmark for evaluating LLMs on realistic multi-turn conversations (up to 10 turns) that test four fundamental capability clusters: Instruction Retention (IR), Inference Memory (IM), Reliable Versioned Editing (RVE), and Self-Coherence (SC).
 
