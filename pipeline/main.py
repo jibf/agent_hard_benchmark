@@ -40,6 +40,18 @@ class BenchmarkFilteringPipeline:
         self.config = config or {}
         self.data_loader = BenchmarkDataLoader()
         self.use_specific_filters = self.config.get('use_specific_filters', False)
+        
+        # Initialize LLM config
+        steps = [Step.FILTER] if self.config.get("llm_filter_only", False) else [Step.FILTER, Step.SCORE]
+        self.llm_config = LLMJudgeConfig(
+            model=self.config.get("llm_model", "openai/gpt-4.1"),
+            max_samples=self.config.get("llm_max_samples", None),
+            batch_size=self.config.get("llm_batch_size", 10),
+            max_retries=self.config.get("llm_max_retries", 3),
+            retry_delay=self.config.get("llm_retry_delay", 1.0),
+            num_proc=self.config.get("num_proc", 1),
+            steps=steps
+        )
     
     def _make_json_serializable(self, obj):
         """Make objects JSON serializable by converting enums and other non-serializable types."""
@@ -278,8 +290,6 @@ class BenchmarkFilteringPipeline:
     def _save_unified_dataset(self, all_samples: List[Dict]):
         """Save the unified dataset before any filtering."""
         logger.info("Saving unified dataset before filtering...")
-        
-        # Create output directory
         output_dir = "pipeline_results"
         os.makedirs(output_dir, exist_ok=True)
         
@@ -355,7 +365,7 @@ class BenchmarkFilteringPipeline:
         """Count unique questions in samples."""
         return len(self._convert_response_list_to_qid_list(samples))
     
-    def _get_responses_in_benchmark(self, responses: List[Dict], benchmark_name: str) -> List[Dict]:
+    def _filter_responses_by_benchmark(self, responses: List[Dict], benchmark_name: str) -> List[Dict]:
         if benchmark_name not in list(benchmark.value for benchmark in Benchmark):
             raise ValueError(f"Invalid benchmark name {benchmark_name}")
         
@@ -374,32 +384,21 @@ class BenchmarkFilteringPipeline:
         # Determine which benchmarks to process based on target_benchmark config
         passed_responses, filtered_responses = [], []
 
-        steps = [Step.FILTER] if self.config.get("llm_filter_only", False) else [Step.FILTER, Step.SCORE]
-        llm_config = LLMJudgeConfig(
-            model=self.config.get("llm_model", "openai/gpt-4.1"),
-            max_samples=self.config.get("llm_max_samples", None),
-            batch_size=self.config.get("llm_batch_size", 10),
-            max_retries=self.config.get("llm_max_retries", 3),
-            retry_delay=self.config.get("llm_retry_delay", 1.0),
-            num_proc=self.config.get("num_proc", 1),
-            steps=steps
-        )
-
         for benchmark in Benchmark:
-            benchmark_responses = self._get_responses_in_benchmark(responses, benchmark.value)
+            benchmark_responses = self._filter_responses_by_benchmark(responses, benchmark.value)
             if len(benchmark_responses) == 0:
                 continue
+
             logger.info(f"Processing {benchmark.value} benchmark: {len(benchmark_responses)} responses")
-            judge = LLMJudge(benchmark, llm_config)
-            
+            judge = LLMJudge(benchmark, self.llm_config)
             benchmark_results = judge.get_results()
+
             passed_question_ids = [] 
             for benchmark_result in benchmark_results:
                 if not benchmark_result.is_flawed:
                     passed_question_ids.append(benchmark_result.question_id)
             
             assert len(passed_question_ids) > 0, f"{benchmark.value} No question passes filtering; Check question ID format"
-        
             for response in benchmark_responses:
                 possible_question_ids = [response['meta']['id'], f"{response['task_name']}_{response['meta']['id']}",  f"{response['task_name']}-{response['meta']['id']}"]
                 passed = False
