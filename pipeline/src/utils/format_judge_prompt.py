@@ -4,7 +4,7 @@ import json
 import re
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from src.utils.types import FormattedQuestion, Benchmark
+from src.utils.types import FormattedQuestion, Benchmark, LLMJudgeStep
 from src.prompts import (
     tau_bench_prompt, tau2_bench_prompt, ace_bench_prompt,
     nexus_bench_prompt, tool_sandbox_prompt, complex_func_bench_prompt,
@@ -25,12 +25,12 @@ PROMPT_MODULES = {
 }
 
 
-def format_judge_prompt(question: FormattedQuestion, eval_type: str) -> str:
+def format_judge_prompt(question: FormattedQuestion, step: LLMJudgeStep) -> str:
     prompt_module = PROMPT_MODULES.get(question.benchmark)
     if not prompt_module:
         raise ValueError(f"Unknown benchmark: {question.benchmark.value}")
     
-    prompt_template = _get_prompt_template(prompt_module, eval_type)
+    prompt_template = _get_prompt_template(prompt_module, step)
     required_fields = _extract_format_fields(prompt_template)
     format_args = _build_format_args(question, required_fields)
     
@@ -38,14 +38,14 @@ def format_judge_prompt(question: FormattedQuestion, eval_type: str) -> str:
     return formatted_prompt
 
 
-def _get_prompt_template(prompt_module, eval_type: str) -> str:
+def _get_prompt_template(prompt_module, step: LLMJudgeStep) -> str:
     try:
-        if eval_type == 'filtration':
+        if step == LLMJudgeStep.FILTER:
             template = prompt_module.FILTERING_PROMPT
-        elif eval_type == 'scoring':
+        elif step == LLMJudgeStep.SCORE:
             template = prompt_module.SCORING_PROMPT
     except:
-        raise AttributeError(f"No {eval_type.upper()}_PROMPT found in {prompt_module}")
+        raise AttributeError(f"No {step.value.upper()}_PROMPT found in {prompt_module}")
     return template
 
 

@@ -9,18 +9,13 @@ import logging
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 from openai import OpenAI
-from enum import Enum
 import time
 import os
 from multiprocessing import Pool
 from dotenv import load_dotenv
 from tqdm import tqdm
-from functools import wraps
-from src.bench_loaders import (
-    TauBenchLoader, Tau2BenchLoader, ComplexFuncBenchLoader, NexusBenchLoader, DrafterBenchLoader,
-    AceBenchLoader, BfclLoader, MultiChallengeLoader, ToolSandBoxLoader
-)
-from src.utils.types import Benchmark, FormattedQuestion, LLMJudgeOutput
+from src.bench_loaders import get_bench_loader
+from src.utils.types import Benchmark, FormattedQuestion, LLMJudgeOutput, LLMJudgeStep
 from src.utils.format_judge_prompt import format_judge_prompt
 
 load_dotenv()
@@ -31,39 +26,28 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("openai._base_client").setLevel(logging.WARNING)
 
 
-class Step(Enum):
-    FILTER = "filter"
-    SCORE = "score"
-
 
 @dataclass
 class LLMJudgeConfig:
-    """Configuration for LLM-as-Judge filtering."""
-    model: str = "openai/gpt-4.1"  # Default model
-    max_retries: int = 3        # TODO: Implement retry logic
+    model: str = "openai/gpt-4.1"       # Default model
+    max_retries: int = 3
     retry_delay: float = 1.0
-    batch_size: int = 10        # TODO: Implement batching
+    batch_size: int = 10                # TODO: Implement batching
     num_proc: int = 32
-    max_samples: Optional[int] = None  # Limit for testing
-    steps: List[Step] = None  # Which steps to run (default: both FILTER and SCORE)
+    max_samples: Optional[int] = None   # Limit for testing
+    steps: List[LLMJudgeStep] = None            # Which steps to run (default: both FILTER and SCORE)
 
 
 def _assess_question_worker(args):
     """Worker function for multiprocessing question assessment."""
     question, step, model, api_key, base_url, max_retries, retry_delay = args
     
-    # Create OpenAI client for this process
     client = OpenAI(api_key=api_key, base_url=base_url)
+    evaluation_prompt = format_judge_prompt(question, step)
     
-    # Construct prompt using format_judge_prompt
-    eval_type = 'filtration' if step == Step.FILTER else 'scoring'
-    evaluation_prompt = format_judge_prompt(question, eval_type)
-    
-    # Retry logic
     for attempt in range(max_retries):
         try:
-            # Make API call
-            response_format = {"type": "json_object"} if step == Step.FILTER else None
+            response_format = {"type": "json_object"} if step == LLMJudgeStep.FILTER else None
             response = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": evaluation_prompt}],
@@ -74,10 +58,9 @@ def _assess_question_worker(args):
             response_content = response.choices[0].message.content
             if not response_content or response_content.strip() == "":
                 raise ValueError("Empty response from API")
-                
             result = json.loads(response_content)
             
-            if step == Step.FILTER:
+            if step == LLMJudgeStep.FILTER:
                 try:
                     result = {
                         "is_flawed": result["is_flawed"],
@@ -101,26 +84,24 @@ class LLMJudge:
     def __init__(self, benchmark: Benchmark, config: LLMJudgeConfig = None):
         self.config = config or LLMJudgeConfig()
         if self.config.steps is None:
-            self.config.steps = [Step.FILTER, Step.SCORE]  # Default to both steps
+            self.config.steps = [LLMJudgeStep.FILTER, LLMJudgeStep.SCORE]  # Default to both steps
         self.benchmark = benchmark
 
     def get_results(self) -> List[LLMJudgeOutput]:
         """Load benchmark questions and run configured assessments."""
         questions = self._load_benchmark_questions()
-
         if self.config.max_samples:
             questions = questions[:self.config.max_samples]
 
-        filter_results = []
-        score_results = []
+        filter_results, score_results = [], []
         
-        if Step.FILTER in self.config.steps:
+        if LLMJudgeStep.FILTER in self.config.steps:
             logger.info(f"Running FILTER assessment on {len(questions)} questions")
-            filter_results = self.assess_questions(questions, Step.FILTER)
+            filter_results = self.assess_questions(questions, LLMJudgeStep.FILTER)
         
-        if Step.SCORE in self.config.steps:
+        if LLMJudgeStep.SCORE in self.config.steps:
             logger.info(f"Running SCORE assessment on {len(questions)} questions")  
-            score_results = self.assess_questions(questions, Step.SCORE)
+            score_results = self.assess_questions(questions, LLMJudgeStep.SCORE)
 
         judgement_results: Optional[LLMJudgeOutput] = []
         for i, question in enumerate(questions):
@@ -134,7 +115,7 @@ class LLMJudge:
                 reasoning_summary=filter_result['reasoning_summary']
             )
             
-            if Step.SCORE in self.config.steps:
+            if LLMJudgeStep.SCORE in self.config.steps:
                 score_result = score_results[i].get("assessment", {})
                 result.scores = score_result
             
@@ -142,7 +123,7 @@ class LLMJudge:
             
         return judgement_results
 
-    def load_benchmark_and_get_step_results(self, step: Step = Step.FILTER) -> List[Dict]:
+    def load_benchmark_and_get_step_results(self, step: LLMJudgeStep = LLMJudgeStep.FILTER) -> List[Dict]:
         """Run the LLM-as-Judge assessment."""
         questions = self._load_benchmark_questions()
         
@@ -155,40 +136,22 @@ class LLMJudge:
         return results
 
     def _load_benchmark_questions(self) -> List[FormattedQuestion]:
-        loader_class_map = {
-            Benchmark.TAU_BENCH: TauBenchLoader,
-            Benchmark.TAU2_BENCH: Tau2BenchLoader,
-            Benchmark.COMPLEX_FUNC_BENCH: ComplexFuncBenchLoader,
-            Benchmark.NEXUS_BENCH: NexusBenchLoader,
-            Benchmark.DRAFTER_BENCH: DrafterBenchLoader,
-            Benchmark.ACE_BENCH: AceBenchLoader,
-            Benchmark.BFCL: BfclLoader,
-            Benchmark.MULTI_CHALLENGE: MultiChallengeLoader,
-            Benchmark.TOOL_SANDBOX: ToolSandBoxLoader
-        }
-        
-        loader_class = loader_class_map.get(self.benchmark)
+        loader_class = get_bench_loader(self.benchmark)
         loader = loader_class()
-        if not loader:
-            raise ValueError(f"Unsupported benchmark type: {self.benchmark}")
-        
         return loader.load_questions()
 
-    def _construct_judge_prompt(self, question: FormattedQuestion, step: Step) -> str:
-        eval_type = 'filtration' if step == Step.FILTER else 'scoring'
-        prompt = format_judge_prompt(question, eval_type)
+    def _construct_judge_prompt(self, question: FormattedQuestion, step: LLMJudgeStep) -> str:
+        prompt = format_judge_prompt(question, step)
         return prompt
 
-    def _assess_question(self, question: FormattedQuestion, step: Step) -> Dict:
+    def _assess_question(self, question: FormattedQuestion, step: LLMJudgeStep) -> Dict:
         client = OpenAI(
             api_key=os.getenv("API_KEY"),
             base_url=os.getenv("BASE_URL")
         )
-        response_format = {"type": "json_object"} if step == Step.FILTER else None
         evaluation_prompt = self._construct_judge_prompt(question, step)
 
-        # Retry logic
-        for attempt in range(self.config.max_retries):
+        for attempt in range(self.config.max_retries):  # Retry logic
             try:
                 response = client.chat.completions.create(
                     model=self.config.model,
@@ -196,70 +159,48 @@ class LLMJudge:
                        {"role": "user", "content": evaluation_prompt}
                     ],
                     temperature=0.0,
-                    response_format=response_format
+                    response_format={"type": "json_object"} if (step == LLMJudgeStep.FILTER) else None
                 )
-                        
+
                 response_content = response.choices[0].message.content
                 if not response_content or response_content.strip() == "":
                     raise ValueError("Empty response from API")
                     
                 result = json.loads(response_content)
                 print(result)
-
-                if step == Step.FILTER:
-                    try:
-                        result = {
-                            "is_flawed": result["is_flawed"],
-                            "reasoning_summary": result["reasoning_summary"],
-                            **{k: v for k, v in result.items() if k not in ["is_flawed", "reasoning_summary"]}
-                        }
-                    except KeyError as ke:
-                        raise ValueError(f"Missing key in response: {ke}")
                 return result
             except Exception as e:
                 if attempt == self.config.max_retries - 1:  # Last attempt
                     return {"error": str(e)}
                 time.sleep(self.config.retry_delay)
     
-    def assess_questions(self, questions: List[FormattedQuestion], step: Step) -> List[Dict]:
+    def assess_questions(self, questions: List[FormattedQuestion], step: LLMJudgeStep) -> List[Dict]:
         """Assess questions using multiprocessing."""
-        if self.config.num_proc == 1:
-            # Single process mode with tqdm progress bar
+        if self.config.num_proc == 1:   # Single process
             results = []
             for question in tqdm(questions, desc="Processing questions"):
                 try:
                     assessment = self._assess_question(question, step)
-                    results.append({
-                        "benchmark": question.benchmark.value,
-                        "question_id": question.question_id,
-                        "assessment": assessment
-                    })
                 except Exception as e:
-                    logger.error(f"Error assessing question: {e}")
-                    results.append({
-                        "benchmark": question.benchmark.value,
-                        "question_id": question.question_id,
-                        "assessment": {"error": str(e)}
-                    })
+                    logger.error(f"Error assessing question {question.question_id} in {question.benchmark.value} {e}")
+                    assessment = {"error": str(e)}
+
+                results.append({
+                    "benchmark": question.benchmark.value,
+                    "question_id": question.question_id,
+                    "assessment": assessment
+                })
             return results
-        else:
-            # Multiprocessing mode with tqdm progress bar
+        else:   # Multiprocessing
             logger.info(f"Using multiprocessing with {self.config.num_proc} processes")
             
-            # Prepare arguments for multiprocessing
             args_list = []
             for question in questions:
                 args_list.append((
-                    question,
-                    step,
-                    self.config.model,
-                    os.getenv("API_KEY"),
-                    os.getenv("BASE_URL"),
-                    self.config.max_retries,
-                    self.config.retry_delay
+                    question, step, self.config.model, os.getenv("API_KEY"), os.getenv("BASE_URL"), 
+                    self.config.max_retries, self.config.retry_delay
                 ))
             
-            # Use multiprocessing with progress bar
             with Pool(processes=self.config.num_proc) as pool:
                 results = []
                 with tqdm(total=len(args_list), desc="Processing questions (multiprocessing)") as pbar:

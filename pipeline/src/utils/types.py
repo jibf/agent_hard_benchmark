@@ -97,3 +97,7 @@ class LLMJudgeOutput(BaseModel):
     scores: Optional[Dict] = None
     # meta
     meta: Optional[Dict] = None
+
+class LLMJudgeStep(Enum):
+    FILTER = "filter"
+    SCORE = "score"

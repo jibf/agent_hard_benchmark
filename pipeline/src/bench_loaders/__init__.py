@@ -8,3 +8,24 @@ from .complex_func_bench_loader import ComplexFuncBenchLoader
 from .drafter_bench_loader import DrafterBenchLoader
 from .bfcl_loader import BfclLoader
 from .multi_challenge_loader import MultiChallengeLoader
+
+from ..utils.types import Benchmark
+
+def get_bench_loader(benchmark: Benchmark):
+    """Get the appropriate loader class for the given benchmark."""
+    loader_map = {
+        Benchmark.TAU_BENCH: TauBenchLoader,
+        Benchmark.TAU2_BENCH: Tau2BenchLoader,
+        Benchmark.COMPLEX_FUNC_BENCH: ComplexFuncBenchLoader,
+        Benchmark.NEXUS_BENCH: NexusBenchLoader,
+        Benchmark.DRAFTER_BENCH: DrafterBenchLoader,
+        Benchmark.ACE_BENCH: AceBenchLoader,
+        Benchmark.BFCL: BfclLoader,
+        Benchmark.MULTI_CHALLENGE: MultiChallengeLoader,
+        Benchmark.TOOL_SANDBOX: ToolSandBoxLoader
+    }
+    
+    if benchmark not in loader_map:
+        raise ValueError(f"Unsupported benchmark: {benchmark}")
+    
+    return loader_map[benchmark]

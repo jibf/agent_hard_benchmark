@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from src.comprehensive_rule_filtering import ComprehensiveRuleFilter
 from src.rule_filtering_orchestrator import RuleFilteringOrchestrator
-from src.llm_judge_filtering import LLMJudge, LLMJudgeConfig, Step
+from src.llm_judge_filtering import LLMJudge, LLMJudgeConfig, LLMJudgeStep
 from src.data_loader import BenchmarkDataLoader
 from src.utils.types import Benchmark
 
@@ -41,8 +41,6 @@ class BenchmarkFilteringPipeline:
         self.data_loader = BenchmarkDataLoader()
         self.use_specific_filters = self.config.get('use_specific_filters', False)
         
-        # Initialize LLM config
-        steps = [Step.FILTER] if self.config.get("llm_filter_only", False) else [Step.FILTER, Step.SCORE]
         self.llm_config = LLMJudgeConfig(
             model=self.config.get("llm_model", "openai/gpt-4.1"),
             max_samples=self.config.get("llm_max_samples", None),
@@ -50,7 +48,7 @@ class BenchmarkFilteringPipeline:
             max_retries=self.config.get("llm_max_retries", 3),
             retry_delay=self.config.get("llm_retry_delay", 1.0),
             num_proc=self.config.get("num_proc", 1),
-            steps=steps
+            steps=[LLMJudgeStep.FILTER] if self.config.get("llm_filter_only", False) else [LLMJudgeStep.FILTER, LLMJudgeStep.SCORE]
         )
     
     def _make_json_serializable(self, obj):
