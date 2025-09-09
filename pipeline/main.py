@@ -168,7 +168,7 @@ class BenchmarkFilteringPipeline:
             # Create baseline sample set by randomly sampling N tasks from all_samples
             baseline_samples_all = self._create_task_wise_baseline_sample_set(all_responses, step2_unique_tasks)
             baseline_separability = self._compute_separability(baseline_samples_all)
-            print(f"Benchmark separability for baseline (from all_samples, sampe size same as post-step2): {json.dumps(baseline_separability)}")
+            print(f"Benchmark separability for baseline (from all_samples, sample size same as post-step2): {json.dumps(baseline_separability)}")
             
             separability_dict = self._compute_separability(step2_passed_responses)
             print(f"Benchmark separability after Step 2: {json.dumps(separability_dict)}")
@@ -176,6 +176,34 @@ class BenchmarkFilteringPipeline:
             # Visualize Step 2 filtered performance
             if not self.config.get('skip_visualization', False):
                 self._visualize_model_performance(step2_passed_responses, "After Step 2 (LLM-as-Judge Filtering)", "step2_filtered_performance", model_ranking=model_ranking)
+            
+            # Step 3: Top-K selection based on scores
+            if LLMJudgeStep.SCORE in self.llm_config.steps:
+                logger.info("Step 3: Selecting top 50 samples based on total scores")
+                step3_passed_responses = self._run_step3_top_k_selection(step2_result, responses_by_question, 50)
+                
+                # Count unique tasks in step3_passed
+                step3_unique_tasks = self._count_unique_tasks(step3_passed_responses)
+                logger.info(f"Step 3 passed: {len(step3_passed_responses)} samples from {step3_unique_tasks} unique tasks")
+                
+                # Create baseline sample sets for step3 comparison
+                baseline_samples_step2 = self._create_task_wise_baseline_sample_set(step2_passed_responses, step3_unique_tasks)
+                baseline_separability_step2 = self._compute_separability(baseline_samples_step2)
+                print(f"Benchmark separability for baseline (from step2_passed, sample size same as post-step3): {json.dumps(baseline_separability_step2)}")
+                
+                baseline_samples_all_step3 = self._create_task_wise_baseline_sample_set(all_responses, step3_unique_tasks)
+                baseline_separability_all_step3 = self._compute_separability(baseline_samples_all_step3)
+                print(f"Benchmark separability for baseline (from all_samples, sample size same as post-step3): {json.dumps(baseline_separability_all_step3)}")
+                
+                # Compute separability for step3 results
+                separability_dict_step3 = self._compute_separability(step3_passed_responses)
+                print(f"Benchmark separability after Step 3: {json.dumps(separability_dict_step3)}")
+                
+                # Visualize Step 3 filtered performance
+                if not self.config.get('skip_visualization', False):
+                    self._visualize_model_performance(step3_passed_responses, "After Step 3 (Top-K Selection)", "step3_filtered_performance", model_ranking=model_ranking)
+            else:
+                logger.info("Skipping Step 3: Scoring not enabled")
         else:
             logger.info("Skipping Step 2: LLM-as-Judge filtering")
         
@@ -229,7 +257,7 @@ class BenchmarkFilteringPipeline:
         self._save_unified_step1_results(step1_passed, step1_dropped)
     
 
-    def _compute_separability(self, samples: List[Dict], n_bootstrap: int=1000, ci: float=0.95) -> float:
+    def _compute_separability(self, samples: List[Dict], n_bootstrap: int=10000, ci: float=0.95) -> float:
 
         score_dict = {}
         separability_dict = {}
@@ -650,6 +678,37 @@ class BenchmarkFilteringPipeline:
             if question.benchmark == benchmark:
                 result.append(question)
         return result
+    
+    def _run_step3_top_k_selection(self, step2_result: Dict[UniqueQuestionID, LLMJudgeOutput], 
+                                  responses_by_question: Dict[UniqueQuestionID, List[Dict]], 
+                                  top_k: int) -> List[Dict]:
+        """Select top-K samples based on total scores from LLM judge results."""
+        
+        # Create list of (question_id, total_score) pairs
+        scored_questions = []
+        for question_id, llm_output in step2_result.items():
+            if llm_output.scores and 'total_score' in llm_output.scores:
+                total_score = llm_output.scores['total_score']
+                scored_questions.append((question_id, total_score))
+            else:
+                logger.warning(f"No total_score found for question {question_id}")
+        
+        # Sort by total_score in descending order and select top-K
+        scored_questions.sort(key=lambda x: x[1], reverse=True)
+        top_k_questions = [q[0] for q in scored_questions[:top_k]]
+        
+        logger.info(f"Selected top {len(top_k_questions)} questions out of {len(scored_questions)} scored questions")
+        if scored_questions:
+            logger.info(f"Score range: {scored_questions[0][1]:.3f} (highest) to {scored_questions[-1][1]:.3f} (lowest)")
+            if top_k_questions:
+                logger.info(f"Top-K score range: {scored_questions[0][1]:.3f} to {scored_questions[top_k-1][1]:.3f}")
+        
+        # Collect responses for selected questions
+        step3_responses = []
+        for question_id in top_k_questions:
+            step3_responses.extend(responses_by_question.get(question_id, []))
+        
+        return step3_responses
 
 
 

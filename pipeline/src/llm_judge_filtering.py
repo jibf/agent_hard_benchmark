@@ -47,28 +47,17 @@ def _assess_question_worker(args):
     
     for attempt in range(max_retries):
         try:
-            response_format = {"type": "json_object"} if step == LLMJudgeStep.FILTER else None
             response = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": evaluation_prompt}],
                 temperature=0.0,
-                response_format=response_format
+                response_format={"type": "json_object"}
             )
             
             response_content = response.choices[0].message.content
             if not response_content or response_content.strip() == "":
                 raise ValueError("Empty response from API")
             result = json.loads(response_content)
-            
-            if step == LLMJudgeStep.FILTER:
-                try:
-                    result = {
-                        "is_flawed": result["is_flawed"],
-                        "reasoning_summary": result["reasoning_summary"],
-                        **{k: v for k, v in result.items() if k not in ["is_flawed", "reasoning_summary"]}
-                    }
-                except KeyError as ke:
-                    raise ValueError(f"Missing key in response: {ke}")
             
             return {"question": question, "assessment": result}
             
@@ -125,6 +114,12 @@ class LLMJudge:
 
             if LLMJudgeStep.SCORE in self.config.steps:
                 score_result = score_results[i].get("assessment", {})
+                # Calculate total score
+                total_score = 0
+                for dimension, dimensional_score in score_result["scores"].items():
+                    total_score += dimensional_score 
+                score_result['total_score'] = total_score
+                
                 result.scores = score_result
 
             results[unique_question_id] = result
@@ -167,7 +162,7 @@ class LLMJudge:
                        {"role": "user", "content": evaluation_prompt}
                     ],
                     temperature=0.0,
-                    response_format={"type": "json_object"} if (step == LLMJudgeStep.FILTER) else None
+                    response_format={"type": "json_object"}
                 )
 
                 response_content = response.choices[0].message.content
