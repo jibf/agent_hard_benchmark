@@ -55,6 +55,12 @@ class ComprehensiveRuleFilter:
         logger.info(f"Discriminative questions: {len(discriminative_questions)}")
         logger.info(f"Non-discriminative questions: {len(non_discriminative_questions)}")
         
+        # Print detailed statistics for each category
+        self._print_question_statistics(too_easy_questions, question_groups, "TOO EASY")
+        self._print_question_statistics(too_hard_questions, question_groups, "TOO HARD")
+        # self._print_question_statistics(discriminative_questions, question_groups, "DISCRIMINATIVE")
+        self._print_question_statistics(non_discriminative_questions, question_groups, "NON-DISCRIMINATIVE")
+        
         # Step 3: Apply filtering logic
         # - Keep ALL samples for discriminative questions
         # - Keep ALL samples for too_hard questions (no filtering)
@@ -74,7 +80,8 @@ class ComprehensiveRuleFilter:
                 passed_samples.append(sample)
             elif question_id in too_hard_questions:
                 # Keep all too_hard questions (no filtering)
-                passed_samples.append(sample)
+                # passed_samples.append(sample)
+                dropped_samples.append(sample)
             elif question_id in too_easy_questions:
                 # Keep only 10% of too_easy questions per task type
                 task_type = self._extract_task_type(sample)
@@ -168,7 +175,8 @@ class ComprehensiveRuleFilter:
         
         # Question is discriminative if there's sufficient variance in scores
         # This means different models perform differently on this question
-        return variance > 0.01  # Threshold for meaningful variation
+        # return variance > 0.01  # Threshold for meaningful variation
+        return variance > 0.1
     
     def _classify_question_difficulty(self, question_samples: List[Dict]) -> str:
         """
@@ -217,9 +225,11 @@ class ComprehensiveRuleFilter:
         # - Too hard: Low mean score (<0.2) with low variance (<0.01)
         # - Normal: Everything else (including high variance cases)
         
-        if mean_score > 0.8 and variance < 0.01:
+        # if mean_score > 0.8 and variance < 0.01:
+        if mean_score > 0.9:
             return 'too_easy'
-        elif mean_score < 0.2 and variance < 0.01:
+        # elif mean_score < 0.2 and variance < 0.01:
+        elif mean_score < 0.1:
             return 'too_hard'
         else:
             return 'normal'
@@ -280,6 +290,7 @@ class ComprehensiveRuleFilter:
         
         # Keep 10% of questions per task type
         keep_ratio = 0.1
+        keep_ratio = 0.0
         keep_count = max(1, int(len(questions_in_task) * keep_ratio))
         
         # Sort questions deterministically and select the first keep_count
@@ -287,3 +298,59 @@ class ComprehensiveRuleFilter:
         questions_to_keep = sorted_questions[:keep_count]
         
         return question_id in questions_to_keep
+    
+    def _print_question_statistics(self, question_ids: set, question_groups: Dict[str, List[Dict]], category: str):
+        """Print detailed statistics for questions in a specific category."""
+        if not question_ids:
+            logger.info(f"\n{category} QUESTIONS: None found")
+            return
+            
+        logger.info(f"\n{category} QUESTIONS ({len(question_ids)} total):")
+        logger.info("=" * 80)
+        
+        for question_id in sorted(question_ids):
+            question_samples = question_groups[question_id]
+            scores = self._extract_scores_from_samples(question_samples)
+            
+            if scores:
+                mean_score = np.mean(scores)
+                variance = np.var(scores)
+                std_dev = np.std(scores)
+                min_score = np.min(scores)
+                max_score = np.max(scores)
+                
+                logger.info(f"QID: {question_id[:60]}{'...' if len(question_id) > 60 else ''}")
+                logger.info(f"  Mean: {mean_score:.4f}, Variance: {variance:.4f}, StdDev: {std_dev:.4f}")
+                logger.info(f"  Range: [{min_score:.4f}, {max_score:.4f}], Samples: {len(scores)}")
+                logger.info("")
+            else:
+                logger.info(f"QID: {question_id[:60]}{'...' if len(question_id) > 60 else ''}")
+                logger.info(f"  No valid scores found, Samples: {len(question_samples)}")
+                logger.info("")
+    
+    def _extract_scores_from_samples(self, question_samples: List[Dict]) -> List[float]:
+        """Extract numeric scores from question samples."""
+        scores = []
+        for sample in question_samples:
+            # Try different possible score locations
+            if 'eval_result' in sample and 'score' in sample['eval_result']:
+                scores.append(sample['eval_result']['score'])
+            elif 'eval_result' in sample and 'scores' in sample['eval_result']:
+                scores.extend(sample['eval_result']['scores'])
+            elif 'score' in sample:
+                scores.append(sample['score'])
+            elif 'scores' in sample:
+                scores.extend(sample['scores'])
+        
+        # Convert to numeric scores
+        numeric_scores = []
+        for score in scores:
+            if isinstance(score, (int, float)):
+                numeric_scores.append(float(score))
+            elif isinstance(score, dict) and 'score' in score:
+                try:
+                    numeric_scores.append(float(score['score']))
+                except (ValueError, TypeError):
+                    continue
+        
+        return numeric_scores

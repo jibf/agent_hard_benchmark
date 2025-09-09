@@ -37,7 +37,7 @@ class TAUBenchFilter(BaseBenchmarkFilter):
         
         # STEP 1: Filter questions solvable by a trivial agent, but keep those with success rate <= 0.5
         DO_NOTHING_SUCCESS_RATE_THRESHOLD = 0.5
-        qids_to_filter = self._get_qids_solvable_by_do_nothing()
+        qids_to_filter = self._get_ids_of_tasks_solvable_by_trivial()
         question_groups = self._group_samples_by_question(samples)
         
         surviving_samples = []
@@ -46,14 +46,17 @@ class TAUBenchFilter(BaseBenchmarkFilter):
             mean_score = self._calculate_mean_score(question_groups[qid])
             if qid not in qids_to_filter or mean_score <= DO_NOTHING_SUCCESS_RATE_THRESHOLD:
                 surviving_samples.append(sample)
-        
+        # print("not do nothing", len(surviving_samples))
+        # print("do nothing", qids_to_filter, len(qids_to_filter))
+
+        surviving_samples = samples
         # STEP 2: Apply comprehensive rules
         from ..comprehensive_rule_filtering import ComprehensiveRuleFilter
         general_filter = ComprehensiveRuleFilter()
         return general_filter.filter_samples(surviving_samples)
 
 
-    def _get_qids_solvable_by_do_nothing(self) -> Tuple[List[Dict], List[Dict]]:
+    def _get_ids_of_tasks_solvable_by_trivial(self) -> Tuple[List[Dict], List[Dict]]:
         function_names_modifying_database = {
             'retail': ['cancel_pending_order', "exchange_delivered_order_items", "modify_pending_order_address", "modify_pending_order_items", "modify_pending_order_payment", "modify_user_address", "return_delivered_order_items"],
             'airline': ["book_reservation", "cancel_reservation", "send_certificate", "update_reservation_baggages", "update_reservation_flights", "update_reservation_passengers"] 
@@ -63,7 +66,6 @@ class TAUBenchFilter(BaseBenchmarkFilter):
         questions = TauBenchLoader().load_questions() # only the questions, not responses
         for question in questions:
             qid = question.question_id
-            
             domain, _ = get_domain_and_id(qid)
 
             is_modifying_database = False

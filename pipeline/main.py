@@ -10,6 +10,9 @@ import json
 import logging
 import argparse
 import numpy as np
+import random
+import matplotlib.pyplot as plt
+import seaborn as sns
 from math import comb
 from typing import Dict, List, Tuple, Optional
 from collections import Counter
@@ -88,7 +91,13 @@ class BenchmarkFilteringPipeline:
         pipeline_outputs = {k: PipelineOutput() for k in responses_by_question.keys()}
 
         separability_dict = self._compute_separability(all_responses)
-        logger.info(f"Benchmark separability before filtering: {json.dumps(separability_dict, indent=2)}")
+        print(f"Benchmark separability before filtering: {json.dumps(separability_dict)}")
+
+        # Calculate model ranking from original dataset for consistent ordering
+        model_ranking = None
+        if not self.config.get('skip_visualization', False):
+            model_ranking = self._calculate_model_ranking(all_responses)
+            self._visualize_model_performance(all_responses, "Original Dataset", "original_performance", model_ranking=model_ranking)
 
         # Step 1: Rule-based filtering
         current_responses = all_responses
@@ -103,8 +112,35 @@ class BenchmarkFilteringPipeline:
                 passed = question_id in step1_passed_questions
                 pipeline_outputs[question_id].rule_based_output = RuleBasedOutput(passed=passed, reason=None)
             
+            # Count unique tasks in step1_passed
+            step1_unique_tasks = self._count_unique_tasks(step1_passed)
+            logger.info(f"Step 1 passed: {len(step1_passed)} samples from {step1_unique_tasks} unique tasks")
+            
+            # Visualize Step 1 filtered performance
+            if not self.config.get('skip_visualization', False):
+                self._visualize_model_performance(step1_passed, "After Step 1 (Rule-based Filtering)", "step1_filtered_performance", model_ranking=model_ranking)
+            
+            # Create baseline sample set by randomly sampling N tasks from original samples
+            baseline_samples = self._create_task_wise_baseline_sample_set(all_responses, step1_unique_tasks)
+            logger.info(f"Created task-wise baseline sample set with {len(baseline_samples)} samples from {step1_unique_tasks} tasks")
+            
+            # Compute separability for baseline for comparison
+            baseline_separability = self._compute_separability(baseline_samples)
+            print(f"Benchmark separability for baseline (sample size same as post-step1): {json.dumps(baseline_separability)}")
+            
+            # Visualize baseline performance
+            if not self.config.get('skip_visualization', False):
+                self._visualize_model_performance(baseline_samples, "Baseline (Random Sampling)", "baseline_performance", model_ranking=model_ranking)
+            
+            # baseline_samples = self._create_task_wise_baseline_sample_set(all_responses, 80)
+            # logger.info(f"Created task-wise baseline sample set with {len(baseline_samples)} samples from 80 tasks")
+            
+            # # Compute separability for baseline for comparison
+            # baseline_separability = self._compute_separability(baseline_samples)
+            # logger.info(f"Benchmark separability for baseline: {json.dumps(baseline_separability)}")
+            
             separability_dict = self._compute_separability(step1_passed)
-            logger.info(f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}")
+            print(f"Benchmark separability after Step 1: {json.dumps(separability_dict)}")
         else:
             logger.info("Skipping Step 1: Rule-based filtering")
 
@@ -119,8 +155,27 @@ class BenchmarkFilteringPipeline:
                 pipeline_outputs[question_id].llm_judge_output = llm_output
             
             step2_passed_responses = [response for qid in step2_result.keys() for response in responses_by_question.get(qid, [])]
+            
+            # Count unique tasks in step2_passed
+            step2_unique_tasks = self._count_unique_tasks(step2_passed_responses)
+            logger.info(f"Step 2 passed: {len(step2_passed_responses)} samples from {step2_unique_tasks} unique tasks")
+            
+            # Create baseline sample set by randomly sampling N tasks from step1_passed
+            baseline_samples_step1 = self._create_task_wise_baseline_sample_set(current_responses, step2_unique_tasks)
+            baseline_separability = self._compute_separability(baseline_samples_step1)
+            print(f"Benchmark separability for baseline (from step1_passed, sample size same as post-step2): {json.dumps(baseline_separability)}")
+
+            # Create baseline sample set by randomly sampling N tasks from all_samples
+            baseline_samples_all = self._create_task_wise_baseline_sample_set(all_responses, step2_unique_tasks)
+            baseline_separability = self._compute_separability(baseline_samples_all)
+            print(f"Benchmark separability for baseline (from all_samples, sampe size same as post-step2): {json.dumps(baseline_separability)}")
+            
             separability_dict = self._compute_separability(step2_passed_responses)
-            logger.info(f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}")
+            print(f"Benchmark separability after Step 2: {json.dumps(separability_dict)}")
+            
+            # Visualize Step 2 filtered performance
+            if not self.config.get('skip_visualization', False):
+                self._visualize_model_performance(step2_passed_responses, "After Step 2 (LLM-as-Judge Filtering)", "step2_filtered_performance", model_ranking=model_ranking)
         else:
             logger.info("Skipping Step 2: LLM-as-Judge filtering")
         
@@ -174,7 +229,7 @@ class BenchmarkFilteringPipeline:
         self._save_unified_step1_results(step1_passed, step1_dropped)
     
 
-    def _compute_separability(self, samples: List[Dict], n_bootstrap: int=100, ci: float=0.95) -> float:
+    def _compute_separability(self, samples: List[Dict], n_bootstrap: int=1000, ci: float=0.95) -> float:
 
         score_dict = {}
         separability_dict = {}
@@ -223,6 +278,213 @@ class BenchmarkFilteringPipeline:
         lower = np.percentile(means, (1 - ci) / 2 * 100)
         upper = np.percentile(means, (1 + ci) / 2 * 100)
         return lower, upper
+
+    def _calculate_model_ranking(self, samples: List[Dict]) -> Dict[str, List[str]]:
+        """Calculate model ranking based on performance for consistent ordering across visualizations."""
+        benchmark_data = {}
+        for sample in samples:
+            benchmark_name = sample["benchmark_name"]
+            model_name = sample["model_path"]
+            score = sample["eval_result"]["score"]
+            
+            if benchmark_name not in benchmark_data:
+                benchmark_data[benchmark_name] = {}
+            if model_name not in benchmark_data[benchmark_name]:
+                benchmark_data[benchmark_name][model_name] = []
+            benchmark_data[benchmark_name][model_name].append(score)
+        
+        # Calculate ranking for each benchmark
+        model_ranking = {}
+        for benchmark_name, model_scores in benchmark_data.items():
+            model_means = {}
+            for model_name, scores in model_scores.items():
+                model_means[model_name] = np.mean(scores)
+            # Sort by performance (descending)
+            model_ranking[benchmark_name] = sorted(model_means.keys(), key=lambda x: model_means[x], reverse=True)
+        
+        return model_ranking
+
+    def _visualize_model_performance(self, samples: List[Dict], title: str, filename: str, n_bootstrap: int=100, ci: float=0.95, model_ranking: Dict[str, List[str]] = None):
+        """Create bar graph visualization of model-wise performance with confidence intervals."""
+        logger.info(f"Creating visualization: {title}")
+        
+        # Create output directory for plots
+        plots_dir = "pipeline_results/plots"
+        os.makedirs(plots_dir, exist_ok=True)
+        
+        # Group samples by benchmark
+        benchmark_data = {}
+        for sample in samples:
+            benchmark_name = sample["benchmark_name"]
+            model_name = sample["model_path"]
+            score = sample["eval_result"]["score"]
+            
+            if benchmark_name not in benchmark_data:
+                benchmark_data[benchmark_name] = {}
+            if model_name not in benchmark_data[benchmark_name]:
+                benchmark_data[benchmark_name][model_name] = []
+            benchmark_data[benchmark_name][model_name].append(score)
+        
+        # Create separate plots for each benchmark
+        for benchmark_name, model_scores in benchmark_data.items():
+            # Determine model ordering
+            if model_ranking and benchmark_name in model_ranking:
+                # Use provided ranking, but only include models that exist in current data
+                available_models = set(model_scores.keys())
+                ordered_models = [model for model in model_ranking[benchmark_name] if model in available_models]
+                # Add any models not in ranking at the end
+                remaining_models = sorted(available_models - set(ordered_models))
+                model_order = ordered_models + remaining_models
+            else:
+                # Calculate ranking based on current data (for original dataset)
+                model_means = {}
+                for model_name, scores in model_scores.items():
+                    model_means[model_name] = np.mean(scores)
+                model_order = sorted(model_means.keys(), key=lambda x: model_means[x], reverse=True)
+            
+            # Calculate means and confidence intervals for each model in the determined order
+            model_names = []
+            means = []
+            ci_lowers = []
+            ci_uppers = []
+            
+            for model_name in model_order:
+                scores = np.array(model_scores[model_name])
+                mean_score = np.mean(scores)
+                ci_lower, ci_upper = self._bootstrap_confidence_interval(scores, n_bootstrap, ci)
+                
+                model_names.append(model_name)
+                means.append(mean_score)
+                ci_lowers.append(ci_lower)
+                ci_uppers.append(ci_upper)
+            
+            # Create the plot with smaller figure size
+            plt.figure(figsize=(10, 6))
+            x_pos = np.arange(len(model_names))
+            
+            # Create bars with error bars
+            bars = plt.bar(x_pos, means, yerr=[np.array(means) - np.array(ci_lowers), 
+                                              np.array(ci_uppers) - np.array(means)], 
+                          capsize=3, alpha=0.7, color='skyblue', edgecolor='navy', linewidth=0.8)
+            
+            # Customize the plot
+            plt.xlabel('Model', fontsize=10, fontweight='bold')
+            plt.ylabel('Performance Score', fontsize=10, fontweight='bold')
+            plt.title(f'{title} - {benchmark_name}\nModel Performance with {int(ci*100)}% Confidence Intervals', 
+                     fontsize=12, fontweight='bold', pad=15)
+            
+            # Set x-axis labels
+            plt.xticks(x_pos, model_names, rotation=45, ha='right', fontsize=9)
+            
+            # Add value labels on top of bars (smaller font)
+            for bar, mean, ci_low, ci_high in zip(bars, means, ci_lowers, ci_uppers):
+                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + (ci_high - mean) + 0.005,
+                        f'{mean:.3f}\n[{ci_low:.3f}, {ci_high:.3f}]',
+                        ha='center', va='bottom', fontsize=7, fontweight='bold')
+            
+            # Add grid for better readability
+            plt.grid(True, alpha=0.3, axis='y')
+            
+            # Adjust layout to prevent label cutoff
+            plt.tight_layout()
+            
+            # Save the plot with reduced DPI
+            safe_benchmark_name = benchmark_name.replace('/', '_').replace(' ', '_')
+            plot_filename = os.path.join(plots_dir, f"{filename}_{safe_benchmark_name}.png")
+            plt.savefig(plot_filename, dpi=150, bbox_inches='tight', 
+                       facecolor='white', edgecolor='none', 
+                       format='png')
+            plt.close()
+            
+            logger.info(f"Saved plot: {plot_filename}")
+            
+            # Print summary statistics
+            logger.info(f"\n{benchmark_name} - Model Performance Summary:")
+            logger.info("=" * 60)
+            for model_name, mean, ci_low, ci_high in zip(model_names, means, ci_lowers, ci_uppers):
+                logger.info(f"{model_name:30} | Mean: {mean:.4f} | CI: [{ci_low:.4f}, {ci_high:.4f}]")
+
+    def _count_unique_tasks(self, samples: List[Dict]) -> int:
+        """Count unique tasks in samples."""
+        task_ids = set()
+        for sample in samples:
+            task_id = self._extract_task_id(sample)
+            task_ids.add(task_id)
+        return len(task_ids)
+    
+    def _extract_task_id(self, sample: Dict) -> str:
+        """Extract a unique task identifier from a sample."""
+        # Use the same logic as in comprehensive_rule_filtering.py
+        if 'task_name' in sample and 'meta' in sample and 'id' in sample['meta']:
+            return sample['task_name'] + "_" + sample['meta']['id']
+        elif 'task_name' in sample:
+            return sample['task_name']
+        elif 'question' in sample:
+            return sample['question']
+        elif 'prompt' in sample:
+            return sample['prompt']
+        elif 'messages' in sample and sample['messages']:
+            # Use first message content as task identifier
+            first_msg = sample['messages'][0]
+            if isinstance(first_msg, dict) and 'content' in first_msg:
+                return first_msg['content'][:100]  # First 100 chars
+        elif 'conversation' in sample and sample['conversation']:
+            # Use first turn as task identifier
+            first_turn = sample['conversation'][0]
+            if isinstance(first_turn, dict) and 'content' in first_turn:
+                return first_turn['content'][:100]
+        
+        # Fallback: use a hash of the entire sample
+        import hashlib
+        return hashlib.md5(json.dumps(sample, sort_keys=True).encode()).hexdigest()
+    
+    def _create_task_wise_baseline_sample_set(self, all_samples: List[Dict], target_task_count: int) -> List[Dict]:
+        """Create a baseline sample set by randomly sampling N tasks from original samples."""
+        logger.info(f"Creating task-wise baseline: sampling {target_task_count} tasks from {len(all_samples)} total samples")
+        
+        # Group samples by task
+        task_groups = {}
+        for sample in all_samples:
+            task_id = self._extract_task_id(sample)
+            if task_id not in task_groups:
+                task_groups[task_id] = []
+            task_groups[task_id].append(sample)
+        
+        total_tasks = len(task_groups)
+        logger.info(f"Found {total_tasks} unique tasks in dataset")
+        
+        if target_task_count >= total_tasks:
+            logger.info("Target task count >= total tasks, returning all samples")
+            return all_samples.copy()
+        
+        # Use random sampling with a fixed seed for reproducibility
+        random.seed(42)
+        selected_task_ids = random.sample(list(task_groups.keys()), target_task_count)
+        random.seed()  # Reset seed
+        
+        # Collect all samples for selected tasks
+        baseline_samples = []
+        for task_id in selected_task_ids:
+            baseline_samples.extend(task_groups[task_id])
+        
+        logger.info(f"Task-wise baseline created: {len(baseline_samples)} samples from {len(selected_task_ids)} tasks")
+        return baseline_samples
+    
+    def _create_baseline_sample_set(self, all_samples: List[Dict], target_count: int) -> List[Dict]:
+        """Create a baseline sample set by randomly sampling N samples from original samples."""
+        logger.info(f"Creating sample-wise baseline: sampling {target_count} samples from {len(all_samples)} total samples")
+        
+        if target_count >= len(all_samples):
+            logger.info("Target count >= total samples, returning all samples")
+            return all_samples.copy()
+        
+        # Use random sampling with a fixed seed for reproducibility
+        random.seed(42)
+        baseline_samples = random.sample(all_samples, target_count)
+        random.seed()  # Reset seed
+        
+        logger.info(f"Sample-wise baseline created with {len(baseline_samples)} samples")
+        return baseline_samples
         
     def _save_results(self, pipeline_outputs: Dict[UniqueQuestionID, PipelineOutput]):
         """Save results for the pipeline."""
@@ -467,8 +729,13 @@ def main():
     parser.add_argument(
         "--llm-filter-only", 
         action="store_true", 
-        default=True,
+        default=False,
         help="Run only LLM filtering step, skip scoring step"
+    )
+    parser.add_argument(
+        "--skip-visualization", 
+        action="store_true", 
+        help="Skip creating performance visualization plots"
     )
     
     args = parser.parse_args()
@@ -483,7 +750,8 @@ def main():
         "num_proc": args.num_proc,
         "target_benchmark": args.target_benchmark,
         "use_specific_filters": args.specific_step1,
-        "llm_filter_only": args.llm_filter_only
+        "llm_filter_only": args.llm_filter_only,
+        "skip_visualization": args.skip_visualization
     }
     
     # Validate arguments
