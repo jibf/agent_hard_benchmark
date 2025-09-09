@@ -14,6 +14,8 @@ from math import comb
 from typing import Dict, List, Tuple, Optional
 from collections import Counter
 from datetime import datetime
+from sentence_transformers import SentenceTransformer
+import torch
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -53,6 +55,15 @@ class BenchmarkFilteringPipeline:
             num_proc=self.config.get("num_proc", 1),
             steps=[LLMJudgeStep.FILTER] if self.config.get("llm_filter_only", False) else [LLMJudgeStep.FILTER, LLMJudgeStep.SCORE]
         )
+
+        # ----- Embedding model for semantic diversity -----
+        model_name = self.config.get("embedding_model", "Qwen/Qwen3-Embedding-8B")
+        self.embedder = SentenceTransformer(
+            model_name,
+            device="cuda" if torch.cuda.is_available() else "cpu",
+            model_kwargs={"torch_dtype": torch.float16},
+        )
+        self.embedding_batch_size = self.config.get("embedding_batch_size", 8)
     
     def _make_json_serializable(self, obj):
         """Make objects JSON serializable by converting enums and other non-serializable types."""
@@ -90,6 +101,9 @@ class BenchmarkFilteringPipeline:
         separability_dict = self._compute_separability(all_responses)
         logger.info(f"Benchmark separability before filtering: {json.dumps(separability_dict, indent=2)}")
 
+        diversity_dict = self._compute_diversity(all_responses)
+        logger.info(f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}")
+
         # Step 1: Rule-based filtering
         current_responses = all_responses
         if not skip_rule_based:
@@ -105,6 +119,9 @@ class BenchmarkFilteringPipeline:
             
             separability_dict = self._compute_separability(step1_passed)
             logger.info(f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}")
+
+            diversity_dict = self._compute_diversity(step1_passed)
+            logger.info(f"Benchmark semantic diversity after Step 1: {json.dumps(diversity_dict, indent=2)}")
         else:
             logger.info("Skipping Step 1: Rule-based filtering")
 
@@ -121,6 +138,9 @@ class BenchmarkFilteringPipeline:
             step2_passed_responses = [response for qid in step2_result.keys() for response in responses_by_question.get(qid, [])]
             separability_dict = self._compute_separability(step2_passed_responses)
             logger.info(f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}")
+
+            diversity_dict = self._compute_diversity(step2_passed_responses)
+            logger.info(f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}")
         else:
             logger.info("Skipping Step 2: LLM-as-Judge filtering")
         
@@ -223,6 +243,83 @@ class BenchmarkFilteringPipeline:
         lower = np.percentile(means, (1 - ci) / 2 * 100)
         upper = np.percentile(means, (1 + ci) / 2 * 100)
         return lower, upper
+
+    # Semantic diversity metric
+    def _compute_diversity(self, samples: List[Dict]) -> Dict[str, float]:
+        """Compute semantic diversity for each benchmark using average pairwise cosine distance.
+
+        For each benchmark, we embed the `messages` field of every sample and then
+        compute the average cosine distance across all unique pairs. The metric
+        is bounded in [0, 1] per the expression: (2 / (N * (N - 1))) * sum{i<j} [1 - cos(e_i, e_j)]
+        where N is the number of samples and cos(·,·) is cosine similarity.
+        """
+        # Collect one non-empty user prompt per unique meta.id for each benchmark
+        # Structure: {benchmark: {meta_id: text}}
+        id_to_text_by_benchmark: Dict[str, Dict[str, str]] = {}
+
+        for sample in samples:
+            benchmark_name = sample["benchmark_name"]
+
+            # Unique question id (mandatory)
+            meta_id = str(sample["meta"]["id"])
+            if not meta_id:
+                # Skip if meta.id missing
+                continue
+
+            # Already captured non-empty text for this id → skip
+            if meta_id in id_to_text_by_benchmark.get(benchmark_name, {}):
+                continue
+
+            messages_field = sample["messages"]
+            if not messages_field:
+                continue
+
+            # Extract latest 'user' message before first non-user after system messages
+            msg_content = ""
+            for m in messages_field:
+                if m["role"] == "system":
+                    # Skip system messages at the start
+                    continue
+                if m["role"] == "user":
+                    msg_content = m["content"]  # update latest user candidate
+                    continue
+                # First non-user encountered (assistant/tool etc.)
+                break
+
+            if not msg_content:
+                continue
+
+            id_to_text_by_benchmark.setdefault(benchmark_name, {})[meta_id] = msg_content
+
+        print(id_to_text_by_benchmark)
+        diversity_dict: Dict[str, float] = {}
+        for benchmark_name, id_to_text in id_to_text_by_benchmark.items():
+            texts = list(id_to_text.values())
+            N = len(texts)
+            if N < 2:
+                diversity_dict[benchmark_name] = 0.0
+                continue
+
+            # Encode texts -> unit-normalised embeddings
+            embeddings = self.embedder.encode(
+                texts,
+                batch_size=self.embedding_batch_size,
+                show_progress_bar=True,
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+            )
+
+            # Cosine similarity matrix via dot product because embeddings are normalised
+            sim_matrix = np.matmul(embeddings, embeddings.T)
+
+            # Extract upper triangle (i < j)
+            triu_indices = np.triu_indices(N, k=1)
+            cosine_sims = sim_matrix[triu_indices]
+            avg_distance = np.mean(1 - cosine_sims)
+
+            diversity_dict[benchmark_name] = float(avg_distance)
+
+        return diversity_dict
         
     def _save_results(self, pipeline_outputs: Dict[UniqueQuestionID, PipelineOutput]):
         """Save results for the pipeline."""
@@ -470,6 +567,17 @@ def main():
         default=True,
         help="Run only LLM filtering step, skip scoring step"
     )
+    parser.add_argument(
+        "--embedding-model",
+        default="Qwen/Qwen3-Embedding-8B",
+        help="SentenceTransformer model for semantic diversity computation (default: Qwen/Qwen3-Embedding-8B)"
+    )
+    parser.add_argument(
+        "--embedding-batch-size",
+        type=int,
+        default=8,
+        help="Batch size when encoding texts for diversity (default: 8)"
+    )
     
     args = parser.parse_args()
     
@@ -483,7 +591,9 @@ def main():
         "num_proc": args.num_proc,
         "target_benchmark": args.target_benchmark,
         "use_specific_filters": args.specific_step1,
-        "llm_filter_only": args.llm_filter_only
+        "llm_filter_only": args.llm_filter_only,
+        "embedding_model": args.embedding_model,
+        "embedding_batch_size": args.embedding_batch_size,
     }
     
     # Validate arguments
