@@ -391,6 +391,11 @@ class BenchmarkFilteringPipeline:
             judge = LLMJudge(benchmark, self.llm_config)
             benchmark_results = judge.get_results()
 
+            # Create mapping from question ID to benchmark results
+            result_map = {}
+            for benchmark_result in benchmark_results:
+                result_map[benchmark_result.question_id] = benchmark_result
+
             passed_question_ids = [] 
             for benchmark_result in benchmark_results:
                 if not benchmark_result.is_flawed:
@@ -399,14 +404,28 @@ class BenchmarkFilteringPipeline:
             assert len(passed_question_ids) > 0, f"{benchmark.value} No question passes filtering; Check question ID format"
             for response in benchmark_responses:
                 possible_question_ids = [response['meta']['id'], f"{response['task_name']}_{response['meta']['id']}",  f"{response['task_name']}-{response['meta']['id']}"]
-                passed = False
+                matched_question_id = None
+                
                 for possible_question_id in possible_question_ids:
-                    if possible_question_id in passed_question_ids:
-                        passed = True
-                if passed:
-                    passed_responses.append(response)
-                else:
-                    filtered_responses.append(response)
+                    if possible_question_id in result_map:
+                        matched_question_id = possible_question_id
+                        break
+                
+                # Add benchmark result fields to response
+                if matched_question_id:
+                    benchmark_result = result_map[matched_question_id]
+                    response['llm_judge_result'] = {
+                        'is_flawed': benchmark_result.is_flawed,
+                        'error_category': benchmark_result.error_category,
+                        'reasoning_summary': benchmark_result.reasoning_summary,
+                        'reasoning': benchmark_result.reasoning
+                    }
+                    
+                    # Use is_flawed from benchmark_result to determine if passed
+                    if not benchmark_result.is_flawed:
+                        passed_responses.append(response)
+                    else:
+                        filtered_responses.append(response)
             
         return passed_responses, filtered_responses
     
