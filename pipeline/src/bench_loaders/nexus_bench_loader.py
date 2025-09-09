@@ -226,7 +226,8 @@ class NexusBenchLoader(BaseLoader):
             # Create conversations based on benchmark type
             conversations = self._create_conversations(sample, config)
 
-            return NexusBenchQuestion(
+            # Build the formatted question first so we can attach extra helper fields
+            formatted_question = NexusBenchQuestion(
                 question_id=sample_id,
                 instruction=user_prompt,
                 gt_conv_traj=conversations,
@@ -238,9 +239,24 @@ class NexusBenchLoader(BaseLoader):
                         'reference': str(reference),
                         'sample_type': type(sample).__name__,
                         'tools': config['tools']
-                    }
+                    },
+                    # Expose user_prompt and conversations for downstream prompt formatting
+                    'user_prompt': user_prompt,
+                    'conversations': conversations
                 }
             )
+
+            # ------------------------------------------------------------------
+            # Attach helper attributes expected by the judge prompt templates.
+            # We do this *after* construction to avoid pydantic validation errors
+            # for unexpected fields.
+            # These attributes are dynamically added so that format_judge_prompt
+            # can access them via ``hasattr(question, field)``.
+            # ------------------------------------------------------------------
+            formatted_question.user_prompt = user_prompt
+            formatted_question.conversations = conversations
+
+            return formatted_question
 
         except Exception as e:
             print(f"Error formatting sample {sample_id}: {e}")

@@ -78,7 +78,9 @@ class AceBenchQuestion(FormattedQuestion):
 
 
 class NexusBenchQuestion(FormattedQuestion):
-    pass
+    # Optional helper fields used by judge prompt templates
+    user_prompt: Optional[str] = None
+    conversations: Optional[List[Dict]] = None
 
 
 class ToolSandboxQuestion(FormattedQuestion):
