@@ -69,6 +69,7 @@ class TauBenchLoader(BaseLoader):
         
         return TauBenchQuestion(
             question_id=sample_id or f"{domain}-{user_id}",
+            task_name=domain,
             instruction=instruction,
             gt_conv_traj=conversations,
             available_function_list=functions,
@@ -319,7 +320,6 @@ class TauBenchLoader(BaseLoader):
                 print(f"Error converting task {i}: {e}")
                 continue
         
-        print(f"Converted {len(converted_tasks)} tau-bench {domain} tasks")
         return converted_tasks
 
     def _extract_tool_schemas_from_domain(self, domain: str) -> List[Dict[str, Any]]:

@@ -12,6 +12,8 @@ import argparse
 import numpy as np
 from math import comb
 from typing import Dict, List, Tuple, Optional
+from collections import Counter
+from datetime import datetime
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -20,7 +22,8 @@ from src.comprehensive_rule_filtering import ComprehensiveRuleFilter
 from src.rule_filtering_orchestrator import RuleFilteringOrchestrator
 from src.llm_judge_filtering import LLMJudge, LLMJudgeConfig, LLMJudgeStep
 from src.data_loader import BenchmarkDataLoader
-from src.utils.types import Benchmark
+from src.utils.types import Benchmark, UniqueQuestionID, LLMJudgeOutput, PipelineOutput, RuleBasedOutput
+from src.utils import group_responses_by_question, get_benchmark_from_name
 
 # Set up logging
 logging.basicConfig(
@@ -62,56 +65,68 @@ class BenchmarkFilteringPipeline:
         else:
             return obj
     
-    def _convert_response_list_to_qid_list(self, response_list: List[Dict]) -> List[Dict]:
+    def _convert_response_list_to_qid_list(self, response_list: List[Dict]) -> List[UniqueQuestionID]:
         """Convert response list to unique question ID list, removing duplicates."""
         questions = set()
         for response in response_list:
-            unique_key = (
-                response['benchmark_name'], 
-                response['task_name'], 
-                response['meta']['id']
+            unique_question_id = UniqueQuestionID(
+                benchmark=get_benchmark_from_name(response['benchmark_name']),
+                task_name=response.get('task_name', None),
+                question_id=response['meta']['id']
             )
-            questions.add(unique_key)
+            questions.add(unique_question_id)
         
-        return [{ "benchmark_name": key[0], "task_name": key[1], "question_id": key[2] } for key in questions ]
+        return list(questions)
         
         
-    def run_pipeline(self, skip_llm_judge: bool = False, skip_rule_based: bool = False) -> Tuple[List[Dict], List[Dict]]:
+    def run_pipeline(self, skip_llm_judge: bool = False, skip_rule_based: bool = False) -> Dict[UniqueQuestionID, PipelineOutput]:
         """Run the complete filtering pipeline."""
         logger.info("Starting benchmark filtering pipeline")
         
-        # Step 1: Rule-based filtering
-        all_samples = self._load_benchmark_data()
-        separability_dict = self._compute_separability(all_samples)
+        all_responses = self._load_benchmark_data()
+        responses_by_question = group_responses_by_question(all_responses)
+        pipeline_outputs = {k: PipelineOutput() for k in responses_by_question.keys()}
+
+        separability_dict = self._compute_separability(all_responses)
         logger.info(f"Benchmark separability before filtering: {json.dumps(separability_dict, indent=2)}")
 
-        if skip_rule_based:
+        # Step 1: Rule-based filtering
+        current_responses = all_responses
+        if not skip_rule_based:
+            logger.info("Step 1: Comprehensive rule-based filtering")
+            step1_passed, step1_dropped = self._run_step1_rule_filtering(all_responses)
+            current_responses = step1_passed
+            
+            # Update pipeline_outputs with step1 results
+            step1_passed_questions = set(group_responses_by_question(step1_passed).keys())
+            for question_id in pipeline_outputs.keys():
+                passed = question_id in step1_passed_questions
+                pipeline_outputs[question_id].rule_based_output = RuleBasedOutput(passed=passed, reason=None)
+            
+            separability_dict = self._compute_separability(step1_passed)
+            logger.info(f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}")
+        else:
             logger.info("Skipping Step 1: Rule-based filtering")
-            logger.info("Running LLM-as-Judge on questions independently")
-            return self._run_llm_judge(all_samples)
-        
-        
-        logger.info("Step 1: Comprehensive rule-based filtering")
-        step1_passed, step1_dropped = self._run_step1_rule_filtering(all_samples)
-        separability_dict = self._compute_separability(step1_passed)
-        logger.info(f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}")
-        self._save_step1_results(step1_passed, step1_dropped)
-        
-        if skip_llm_judge:
+
+        # Step 2: LLM-as-Judge filtering  
+        if not skip_llm_judge:
+            logger.info("Step 2: LLM-as-Judge filtering")
+            current_questions = list(group_responses_by_question(current_responses).keys())
+            step2_result = self._run_llm_judge(current_questions)
+            
+            # Update pipeline_outputs with step2 results
+            for question_id, llm_output in step2_result.items():
+                pipeline_outputs[question_id].llm_judge_output = llm_output
+            
+            step2_passed_responses = [response for qid in step2_result.keys() for response in responses_by_question.get(qid, [])]
+            separability_dict = self._compute_separability(step2_passed_responses)
+            logger.info(f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}")
+        else:
             logger.info("Skipping Step 2: LLM-as-Judge filtering")
-            return step1_passed, step1_dropped
         
-        # Step 2: LLM-as-Judge filtering
-        logger.info("Step 2: LLM-as-Judge filtering")
-        step2_passed, step2_dropped = self._run_llm_judge(step1_passed)
-        separability_dict = self._compute_separability(step2_passed)
-        logger.info(f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}")
-        
-        self._save_results(step2_passed, step2_dropped, "step2_llm_judge")
-        
-        # Final summary and results
-        self._print_final_summary(step1_passed, step2_passed)
-        return step2_passed, step1_dropped + step2_dropped
+        self._save_results(pipeline_outputs)
+        self._print_final_summary(pipeline_outputs)
+        return pipeline_outputs 
 
     
     def _load_benchmark_data(self) -> List[Dict]:
@@ -209,25 +224,23 @@ class BenchmarkFilteringPipeline:
         upper = np.percentile(means, (1 + ci) / 2 * 100)
         return lower, upper
         
-    def _save_results(self, passed_samples: List[Dict], dropped_samples: List[Dict], step_name: str):
-        """Save results for a pipeline step."""
-        logger.info(f"Saving {step_name} results...")
+    def _save_results(self, pipeline_outputs: Dict[UniqueQuestionID, PipelineOutput]):
+        """Save results for the pipeline."""
+        logger.info("Saving pipeline results...")
         
-        # Save passed samples
-        passed_filename = f"{step_name}_passed_samples.jsonl"
-        with open(passed_filename, "w") as f:
-            for sample in passed_samples:
-                serializable_sample = self._make_json_serializable(sample)
-                f.write(json.dumps(serializable_sample) + "\n")
+        # Save pipeline outputs
+        timestamp = datetime.now().strftime("%m%d_%H%M")
+        results_filename = f"pipeline_results_{timestamp}.jsonl"
+        with open(results_filename, "w") as f:
+            for question_id, output in pipeline_outputs.items():
+                result_dict = {
+                    **question_id.model_dump(),
+                    **output.model_dump()
+                }
+                serializable_result = self._make_json_serializable(result_dict)
+                f.write(json.dumps(serializable_result) + "\n")
         
-        # Save dropped samples
-        dropped_filename = f"{step_name}_dropped_samples.jsonl"
-        with open(dropped_filename, "w") as f:
-            for sample in dropped_samples:
-                serializable_sample = self._make_json_serializable(sample)
-                f.write(json.dumps(serializable_sample) + "\n")
-        
-        logger.info(f"Results saved to {passed_filename} and {dropped_filename}")
+        logger.info(f"Pipeline results saved to {results_filename}")
     
     def _save_benchmark_specific_results(self, passed_samples: List[Dict], dropped_samples: List[Dict], step_name: str):
         """Save benchmark-specific passed and pruned files after step 1."""
@@ -325,21 +338,18 @@ class BenchmarkFilteringPipeline:
                 f.write(json.dumps(serializable_sample) + "\n")
         logger.info(f"Unified dropped samples saved to {unified_dropped_filename} with {len(dropped_samples):,} samples")
     
-    def _print_final_summary(self, step1_passed: List[Dict], step2_passed: List[Dict]):
-        """Print final pipeline summary."""
+    def _print_final_summary(self, pipeline_outputs: Dict[UniqueQuestionID, PipelineOutput]):
         logger.info("Pipeline completed - Final summary")
+
+        step1_passed = [qid for qid, output in pipeline_outputs.items() 
+                       if not output.rule_based_output or output.rule_based_output.passed]
         
-        # Count samples per benchmark
-        step1_benchmarks = {}
-        step2_benchmarks = {}
+        step2_passed = [qid for qid in step1_passed 
+                       if (not pipeline_outputs[qid].llm_judge_output or 
+                           not pipeline_outputs[qid].llm_judge_output.is_flawed)]
         
-        for sample in step1_passed:
-            benchmark = sample.get('benchmark_name', 'unknown')
-            step1_benchmarks[benchmark] = step1_benchmarks.get(benchmark, 0) + 1
-        
-        for sample in step2_passed:
-            benchmark = sample.get('benchmark_name', 'unknown')
-            step2_benchmarks[benchmark] = step2_benchmarks.get(benchmark, 0) + 1
+        step1_benchmarks = Counter(qid.benchmark.value for qid in step1_passed)
+        step2_benchmarks = Counter(qid.benchmark.value for qid in step2_passed)
         
         logger.info(f"\nStep 1 (Rule-based) results:")
         for benchmark, count in sorted(step1_benchmarks.items()):
@@ -349,15 +359,11 @@ class BenchmarkFilteringPipeline:
         for benchmark, count in sorted(step2_benchmarks.items()):
             logger.info(f"  {benchmark}: {count:,}")
         
-        # Count unique questions
-        step1_questions = self._count_unique_questions(step1_passed)
-        step2_questions = self._count_unique_questions(step2_passed)
-        
         logger.info(f"\nUnique questions:")
-        logger.info(f"  After Step 1: {step1_questions:,}")
-        logger.info(f"  After Step 2: {step2_questions:,}")
+        logger.info(f"  After Step 1: {len(step1_passed):,}")
+        logger.info(f"  After Step 2: {len(step2_passed):,}")
         
-        logger.info(f"\nPipeline complete! Final results saved to step2_llm_judge_passed_samples.jsonl")
+        logger.info(f"\nPipeline complete!")
     
     def _count_unique_questions(self, samples: List[Dict]) -> int:
         """Count unique questions in samples."""
@@ -375,59 +381,31 @@ class BenchmarkFilteringPipeline:
             if normalize_name(response['benchmark_name']) == normalize_name(benchmark_name):
                 result.append(response)
         return result
+    
+    def _filter_questions_by_benchmark(self, questions: List[UniqueQuestionID], benchmark: Benchmark) -> List[UniqueQuestionID]:
+        result = []
+        for question in questions:
+            if question.benchmark == benchmark:
+                result.append(question)
+        return result
 
 
-    def _run_llm_judge(self, responses: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+
+    def _run_llm_judge(self, questions: List[UniqueQuestionID]) -> Dict[UniqueQuestionID, LLMJudgeOutput]:
         """Run LLM judge independently on questions from benchmark datasets."""
         # Determine which benchmarks to process based on target_benchmark config
-        passed_responses, filtered_responses = [], []
+        results = dict()
 
         for benchmark in Benchmark:
-            benchmark_responses = self._filter_responses_by_benchmark(responses, benchmark.value)
+            benchmark_responses = self._filter_questions_by_benchmark(questions, benchmark)
             if len(benchmark_responses) == 0:
                 continue
-
             logger.info(f"Processing {benchmark.value} benchmark: {len(benchmark_responses)} responses")
             judge = LLMJudge(benchmark, self.llm_config)
             benchmark_results = judge.get_results()
-
-            # Create mapping from question ID to benchmark results
-            result_map = {}
-            for benchmark_result in benchmark_results:
-                result_map[benchmark_result.question_id] = benchmark_result
-
-            passed_question_ids = [] 
-            for benchmark_result in benchmark_results:
-                if not benchmark_result.is_flawed:
-                    passed_question_ids.append(benchmark_result.question_id)
+            results.update(benchmark_results)
             
-            assert len(passed_question_ids) > 0, f"{benchmark.value} No question passes filtering; Check question ID format"
-            for response in benchmark_responses:
-                possible_question_ids = [response['meta']['id'], f"{response['task_name']}_{response['meta']['id']}",  f"{response['task_name']}-{response['meta']['id']}"]
-                matched_question_id = None
-                
-                for possible_question_id in possible_question_ids:
-                    if possible_question_id in result_map:
-                        matched_question_id = possible_question_id
-                        break
-                
-                # Add benchmark result fields to response
-                if matched_question_id:
-                    benchmark_result = result_map[matched_question_id]
-                    response['llm_judge_result'] = {
-                        'is_flawed': benchmark_result.is_flawed,
-                        'error_category': benchmark_result.error_category,
-                        'reasoning_summary': benchmark_result.reasoning_summary,
-                        'reasoning': benchmark_result.reasoning
-                    }
-                    
-                    # Use is_flawed from benchmark_result to determine if passed
-                    if not benchmark_result.is_flawed:
-                        passed_responses.append(response)
-                    else:
-                        filtered_responses.append(response)
-            
-        return passed_responses, filtered_responses
+        return results 
     
 def main():
     """Main entry point."""
@@ -515,14 +493,10 @@ def main():
     
     # Run pipeline
     pipeline = BenchmarkFilteringPipeline(config)
-    passed_samples, dropped_samples = pipeline.run_pipeline(
+    pipeline.run_pipeline(
         skip_llm_judge=args.skip_llm_judge,
         skip_rule_based=args.skip_rule_based
     )
     
-    logger.info(f"\nPipeline completed successfully!")
-    logger.info(f"Final passed samples: {len(passed_samples):,}")
-    logger.info(f"Total dropped samples: {len(dropped_samples):,}")
-
 if __name__ == "__main__":
     main()

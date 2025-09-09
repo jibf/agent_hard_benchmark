@@ -15,7 +15,7 @@ from multiprocessing import Pool
 from dotenv import load_dotenv
 from tqdm import tqdm
 from src.bench_loaders import get_bench_loader
-from src.utils.types import Benchmark, FormattedQuestion, LLMJudgeOutput, LLMJudgeStep
+from src.utils.types import Benchmark, FormattedQuestion, LLMJudgeOutput, LLMJudgeStep, UniqueQuestionID
 from src.utils.format_judge_prompt import format_judge_prompt
 
 load_dotenv()
@@ -87,13 +87,12 @@ class LLMJudge:
             self.config.steps = [LLMJudgeStep.FILTER, LLMJudgeStep.SCORE]  # Default to both steps
         self.benchmark = benchmark
 
-    def get_results(self) -> List[LLMJudgeOutput]:
+    def get_results(self) -> Dict[UniqueQuestionID,LLMJudgeOutput]:
         """Load benchmark questions and run configured assessments."""
         questions = self._load_benchmark_questions()
         if self.config.max_samples:
             questions = questions[:self.config.max_samples]
 
-        filter_results, score_results = [], []
         
         if LLMJudgeStep.FILTER in self.config.steps:
             logger.info(f"Running FILTER assessment on {len(questions)} questions")
@@ -103,25 +102,28 @@ class LLMJudge:
             logger.info(f"Running SCORE assessment on {len(questions)} questions")  
             score_results = self.assess_questions(questions, LLMJudgeStep.SCORE)
 
-        judgement_results: Optional[LLMJudgeOutput] = []
+        results = dict()
         for i, question in enumerate(questions):
             filter_result = filter_results[i].get("assessment", {})
-            result = LLMJudgeOutput(
+            unique_question_id = UniqueQuestionID(
                 benchmark=question.benchmark,
-                question_id=question.question_id,
+                task_name=question.task_name,
+                question_id=question.question_id
+            )
+            result = LLMJudgeOutput(
                 is_flawed=filter_result['is_flawed'],
                 error_category=filter_result['error_category'],
                 reasoning=filter_result['reasoning'],
                 reasoning_summary=filter_result['reasoning_summary']
             )
-            
+
             if LLMJudgeStep.SCORE in self.config.steps:
                 score_result = score_results[i].get("assessment", {})
                 result.scores = score_result
+
+            results[unique_question_id] = result
             
-            judgement_results.append(result)
-            
-        return judgement_results
+        return results 
 
     def load_benchmark_and_get_step_results(self, step: LLMJudgeStep = LLMJudgeStep.FILTER) -> List[Dict]:
         """Run the LLM-as-Judge assessment."""

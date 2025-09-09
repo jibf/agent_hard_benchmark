@@ -63,6 +63,7 @@ class TAUBenchFilter(BaseBenchmarkFilter):
         questions = TauBenchLoader().load_questions() # only the questions, not responses
         for question in questions:
             qid = question.question_id
+            
             domain, _ = get_domain_and_id(qid)
 
             is_modifying_database = False

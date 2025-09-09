@@ -1,6 +1,7 @@
 from enum import Enum
 from pydantic import BaseModel
 from typing import Optional, Dict, List
+import re
 
 class Benchmark(Enum):
     TAU_BENCH = "tau-bench"
@@ -14,10 +15,30 @@ class Benchmark(Enum):
     MULTI_CHALLENGE = "multi_challenge"
 
 
+class UniqueQuestionID(BaseModel):
+    benchmark: Benchmark
+    task_name: Optional[str] = None
+    question_id: str
+    
+    def _normalize_question_id(self, question_id: str) -> str:
+        if not self.task_name:
+            return question_id
+        match = re.match(f'^{re.escape(self.task_name)}[-_](\\d+)$', question_id)
+        return match.group(1) if match else question_id
+    
+    def __hash__(self):
+        return hash((self.benchmark, self.task_name, self._normalize_question_id(self.question_id)))
+    
+    def __eq__(self, other):
+        return (
+            self.benchmark == other.benchmark and 
+            self.task_name == other.task_name and 
+            self._normalize_question_id(self.question_id) == other._normalize_question_id(other.question_id)
+        )
+
+
 # Base class
-class FormattedQuestion(BaseModel):
-    benchmark: Benchmark                    # Benchmark that the question belongs to. example: Benchmark.TAU_BENCH
-    question_id: str                        # A *unique* ID of the question. example: "Flight-83" (NOT just "83", to make this serve as a unique identifier within the benchmark!)
+class FormattedQuestion(UniqueQuestionID):
     instruction: str                        # The user's instruction (request) to the agent. example: "I want to rent a car for a self-driving trip starting tomorrow. Could you provide me with the ratings of the vehicle suppliers?"
                                             # For benchmarks that uses LLMs to simulate user (e.g., Tau-Bench), the user's instruction might be multi-turn would be different in every run. 
                                             # This case, use this field as a place for the prompt that initializes the user model. example: "Your user id is mia_li_3668. You want to fly from New York to Seattle on May 20..."
@@ -85,9 +106,11 @@ class MultiChallengeQuestion(FormattedQuestion):
 
 ###
 
+class RuleBasedOutput(BaseModel):
+    passed: bool
+    reason: Optional[str] = None
+
 class LLMJudgeOutput(BaseModel):
-    benchmark: Benchmark
-    question_id: str
     # filtering
     is_flawed: bool
     error_category: Optional[str]
@@ -97,6 +120,10 @@ class LLMJudgeOutput(BaseModel):
     scores: Optional[Dict] = None
     # meta
     meta: Optional[Dict] = None
+
+class PipelineOutput(BaseModel):
+    rule_based_output: Optional[RuleBasedOutput] = None
+    llm_judge_output: Optional[LLMJudgeOutput] = None
 
 class LLMJudgeStep(Enum):
     FILTER = "filter"
