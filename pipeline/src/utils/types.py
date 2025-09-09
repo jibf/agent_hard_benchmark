@@ -82,7 +82,7 @@ class NexusBenchQuestion(FormattedQuestion):
 
 
 class ToolSandboxQuestion(FormattedQuestion):
-    pass
+    expected_output: Optional[str] = None
 
 
 

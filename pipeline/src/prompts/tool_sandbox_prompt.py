@@ -1,7 +1,6 @@
 # Please fill in the prompts to resolve the identified issue. You can refer to the prompt in src/prompts/complex_func_bench_prompt.py
 # Make sure the output format is as follows. Beware the `reasoning` attribute needs to preceed the results (`is_flawed` or `score`) to encourage the model's chain-of-thought reasoning.
 
-
 # FILTERING: 
 # {{
 #   "reasoning": "Provide a clear, step-by-step explanation for your decision. If the ground-truth is flawed, specify which argument is incorrect and why it contradicts the prompt or schema. If it is not flawed, briefly explain why the ground-truth is a correct interpretation of the user's request."
@@ -43,78 +42,81 @@
 
 
 FILTERING_PROMPT = """
-You are a rigorous evaluator for the **ToolSandbox** benchmark (Apple, 2024).  
+You are a rigorous evaluator for the **ToolSandbox** benchmark (Apple, 2024), a stateful, multi-turn tool-use benchmark.  
 Your task is to decide if the provided *ground-truth* conversation trajectory is
 **flawed** given the user's intent and the available tool schemas.
 
-Unlike stateless benchmarks, ToolSandbox tasks are *stateful* and the official
-evaluation hinges on *milestones* (essential tool invocations) that move the
-environment toward the desired goal.  Two common problems in the dataset are:
-
-1. **Ambiguous user queries** – The initial user request is underspecified, yet
-   the ground-truth assumes a single overly-specific interpretation.
-2. **Unneeded intermediate milestones** – The ground-truth forces the agent to
-   call tools that are *not logically required* to satisfy the (possibly
-   ambiguous) user request.
-
-Your evaluation must explicitly check for BOTH problems in addition to the
-standard function-call issues (argument/value/type mismatch, misspelling,
-unjustified assumption, dataset integrity error).
+ToolSandbox specifics to keep in mind:
+• Tasks are evaluated via **milestones** (essential actions) and **minefields** (undesirable actions), not just final text.
+• Scenarios are **stateful**: tools can mutate world/DB state and later steps may depend on earlier ones.
 
 ────────────────────────────────────────────────────────────────────────
 You will receive **three** inputs:
 
-1. **User Prompt** – the first message from the human user.
+1. **User Prompt** – the first instruction from the human user.
 2. **Available Function List** – JSON schema of all tools.
 3. **Ground-Truth Conversation** – the reference assistant messages *including*
    tool calls (and subsequent tool observations).
 
 ────────────────────────────────────────────────────────────────────────
-Evaluation procedure (stop at the first flaw):
+Your task is to decide whether the **ground-truth (GT) milestone trajectory** for a scenario is **flawed**, focusing these issues:
 
-1. **Determine user intent** – Carefully read the *User Prompt* and extract the
-   *minimal requirements* that an acceptable answer must satisfy.  If the
-   prompt is ambiguous, recognise the ambiguity – multiple valid answers may
-   exist.
-2. **Trace the conversation** – Walk through the assistant messages **in order**.
-   • For each *tool call*, judge whether invoking the tool was logically needed
-     to reach a valid answer.
-   • For each *assistant textual reply*, check whether it actually answers the
-     outstanding user question **at the required level of specificity**.  For
-     example, returning a *distance* when the user only asked *where* a place
-     is would be considered a mismatch.
-3. **Identify the earliest flaw** according to the categories below.  Ignore
-   later messages once the first flaw is found.
+1. **Ambiguous User Query / Over-Specific Ground Truth**  
+   – The user’s request is vague or underspecified
+   – The GT enforces an answer at a **more specific level** than requested (e.g., requires a numeric distance when the user just asked *“Where is X?”*).
+   – In such cases, multiple valid answers exist; enforcing one path is unfair → mark as flawed.
 
-Flaw categories (choose exactly one):
+2. **Unneeded Milestone**  
+   – The GT includes intermediate tool calls designated as milestones that are **not logically necessary** to answer the query.  
+   – Example: requiring `get_current_timestamp` before retrieving the first message, even though the query *“What’s my first text?”* can be answered directly with `search_messages`.  
+   – Each milestone must be **indispensable** for reaching the answer. If not, mark as flawed.
 
-* **Ambiguous User Query / Overly-Specific Answer** – The ground-truth forces a
-  single answer although multiple reasonable answers exist **or** provides an
-  answer at an unjustified level of detail (e.g., expects a distance when the
-  user merely asked "Where is X?").
-* **Unneeded Milestone** – The ground-truth includes a tool call designated as a
-  milestone that is **not logically required to fulfil the user’s request**.
-  If the question can be fully answered without that call, the milestone is
-  unneeded (e.g., fetching the *current timestamp* before using `search_messages`
-  to retrieve “the first text message I ever sent”).
-* **Argument Value Mismatch**
-* **Argument Type Mismatch**
-* **Unjustified Assumption**
-* **Misspelling**
-* **Dataset Integrity Issue** – The ground-truth relies on information that is
-  impossible to obtain from previous observations.
-* **Not Flawed** – No issues found.
+────────────────────────────────────────────────────────────
+RULES
+• Always check: Does the **level of detail in the GT final answer** match exactly what the user asked for? If it overshoots (too detailed), it is flawed.  
+• Always check: Could the task be solved **without one or more of the required milestones**? If yes, it is flawed.  
+• Ignore minor wording differences or plausible missing conversation turns.  
+• Stop at the **earliest undeniable flaw**.
+
+────────────────────────────────────────────────────────────
+FLAW CATEGORIES (choose one)
+• Ambiguous User Query / Over-Specific Ground Truth  
+• Unneeded Milestone  
+• Not Flawed
 
 ────────────────────────────────────────────────────────────────────────
 Output exactly the following JSON (no extra keys, no commentary):
 
 ```json
-{
+{{
   "reasoning": "<step-by-step explanation focusing on the first flaw or why the ground-truth is correct>",
   "reasoning_summary": "<one-sentence summary>",
   "error_category": "<one of the categories above>",
   "is_flawed": <true_or_false>
-}
+}}
+```
+
+## Target Sample
+
+### User Prompt
+```
+{instruction}
+```
+
+### Available Function List
+```json
+{available_function_list}
+```
+
+### Ground-Truth Conversation
+*Messages with `"role": "observation"` are tool outputs for the function call immediately before them.*
+```json
+{gt_conv_traj}
+```
+
+### Expected Final Assistant Message
+```
+{expected_output}
 ```
 """
 
@@ -149,31 +151,31 @@ Output a JSON **array** (no extra commentary) following this template:
 
 ```
 [
-  {
+  {{
     "dimension": "tool necessity",
     "reasoning": "...",
     "score": <1-5>
-  },
-  {
+  }},
+  {{
     "dimension": "planning and context depth",
     "reasoning": "...",
     "score": <1-5>
-  },
-  {
+  }},
+  {{
     "dimension": "parameter generation",
     "reasoning": "...",
     "score": <1-5>
-  },
-  {
+  }},
+  {{
     "dimension": "tool selection difficulty",
     "reasoning": "...",
     "score": <1-5>
-  },
-  {
+  }},
+  {{
     "dimension": "real-world applicability",
     "reasoning": "...",
     "score": <1-5>
-  }
+  }}
 ]
 ```
 """

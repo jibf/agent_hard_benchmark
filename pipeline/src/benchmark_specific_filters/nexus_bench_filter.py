@@ -31,14 +31,20 @@ class NexusBenchFilter(BaseBenchmarkFilter):
         For now, using general discriminativeness filtering
         """
         logger.info(f"Applying NexusBench-specific filtering to {len(samples)} samples")
-        
-        # For now, use general discriminativeness filtering
-        # TODO: Implement benchmark-specific rules
 
-        # Remove examples that are missing ground truth
-        samples = [s for s in samples if s.get('ground_truth') is not None and s.get('ground_truth') != ""]
-        
+        # Filter to only NexusBench samples in case a broader list is provided
+        applicable_samples = [s for s in samples if self.is_applicable(s)]
+        if len(applicable_samples) == 0:
+            logger.warning("No NexusBench samples found to filter – returning empty result set")
+            return [], []
+
+        # For now reuse the comprehensive discriminativeness filter.
         from ..comprehensive_rule_filtering import ComprehensiveRuleFilter
         general_filter = ComprehensiveRuleFilter()
-        return general_filter.filter_samples(samples)
+        passed_samples, dropped_samples = general_filter.filter_samples(applicable_samples)
+
+        # Log summary statistics for transparency
+        self.log_filtering_stats(len(applicable_samples), len(passed_samples), len(dropped_samples))
+
+        return passed_samples, dropped_samples
 

@@ -42,88 +42,127 @@
 
 
 
-FILTERING_PROMPT = """ 
-You are an expert evaluator for the **NexusBench** benchmark suite. Your job is to act as an LLM-as-a-Judge and decide whether the provided *ground-truth* conversation trajectory is **flawed** given the user's intent and the available tool schemas.
+FILTERING_PROMPT = """
+You are an expert evaluator for **NexusBench**, a benchmark designed to assess precise tool-use across diverse tool-use tasks.
+Your task is to decide whether the *ground-truth* conversation trajectory of a sample is **flawed** such that a correct agent would be penalised.
 
-NexusBench contains both single-turn and multi-turn tool-use tasks covering 14 sub-benchmarks (VirusTotal, ITType0/1, LangChainMath, etc.). The most frequent errors in the dataset are:
-1. **Argument Value Mismatch** – The ground-truth tool call passes a value that directly contradicts the user prompt (e.g. looking up an MD5 hash when the user asked about a SHA-256 hash).
-2. **Argument Type Mismatch** – The value’s *type* does not conform to the schema (e.g. a domain string passed to a function ending with `_ip_address`).  *VirusTotal* samples are notorious for this error.
-3. **Unjustified Assumption** – The ground-truth chooses a specific parameter when several are equally plausible and the prompt gives no reason to prefer one over another.
-4. **Misspelling** – Clear typo that would break the call (parameter name or value).
-5. **Dataset Integrity Issue** – The ground-truth relies on information that cannot be inferred from prior observation messages.
-6. **Not Flawed** – None of the above issues are present.
+You will be provided with:
+* **User Prompt** – the original request from the human.
+* **Available Function List** – JSON schema of all tools.
+* **Ground-Truth Conversation** – assistant messages including function calls followed by their `"role": "observation"` results.
 
-────────────────────────────────────────────────
-You will receive **three** inputs:
-1. **User Prompt** – the original request from the human user.
-2. **Available Function List** – JSON schema for all tools.
-3. **Ground-Truth Conversation** – assistant messages *including* function calls and subsequent "observation" tool results.
+A sample is flawed if at least one ground-truth function call violates one of the criteria below.
 
-Evaluation procedure (stop at the *first* flaw):
-• Parse the *User Prompt* to extract all explicit constraints (dates, entity types, etc.).
-• Step through the conversation **in order**. Whenever you see an assistant message with a `function_call` / `tool_calls` field, verify the call against:
-  – The user constraints
-  – The tool schema (parameter names & *types*)
-  – Any facts revealed in previous "observation" messages
-• The moment you detect a flaw, stop further analysis—the earliest flaw is the one that matters.
+1. **Argument / Parameter Type Mismatch**  
+   – A GT function call uses a parameter value whose type clearly contradicts the schema or function name.  
+   – Example: Function `vt_get_votes_on_ip_address` called with `ip="example.com"` (a domain, not an IP).  
+   – Such mismatches reflect mis-specified tools, not model reasoning, so they must be flagged.
 
-────────────────────────────────────────────────
-Output exactly the following JSON object (no extra keys, no commentary):
+2. **Invalid or Irrelevant Ground Truth Value**  
+   – The GT tool call or value is incoherent with the user’s request and does not actually address the prompt.  
+   – Example: User asks about storm forecasting, but GT call is `match_values(['Female'])`, which is unrelated.  
+   – If the GT provides values or tool outputs that do not semantically connect to the prompt, mark as flawed.
+
+-----
+
+## Evaluation and Output Format
+Think step-by-step.  Output **exactly** the JSON object below—no extra keys or commentary:
+
 ```json
-{
-  "reasoning": "<step-by-step explanation of why the ground-truth is or is not flawed>",
-  "reasoning_summary": "<one-sentence summary>",
+{{
+  "reasoning": "Provide a clear, step-by-step justification.  If flawed, specify the first flaw and why it violates the prompt, schema, or context.",
+  "reasoning_summary": "One-sentence summary of the verdict.",
   "error_category": "<Argument Value Mismatch | Argument Type Mismatch | Unjustified Assumption | Misspelling | Dataset Integrity Issue | Not Flawed>",
   "is_flawed": <true_or_false>
-}
+}}
+```
+
+## Target Sample
+
+### User Prompt
+```
+{user_prompt}
+```
+
+### List of available functions and their schema
+```json
+{available_function_list}
+```
+
+### Ground-Truth Conversation
+*Messages with `"role": "observation"` are the results of the function call immediately before them.*
+```json
+{conversations}
 ```
 """
 
-SCORING_PROMPT = """ 
-You are an expert evaluator for the **NexusBench** benchmark suite. Assess how well each sample measures advanced tool-use abilities across *five* dimensions.  Use a **1 (poor) – 5 (excellent)** integer scale and provide concise, critical reasoning for each score.
+
+# ---------------------------------------------------------------------------
+#                             SCORING PROMPT
+# ---------------------------------------------------------------------------
+
+SCORING_PROMPT = """
+You are an expert evaluator for **NexusBench**.  Assess how *difficult* each sample is for an intelligent tool-using agent across the five dimensions below.  Use an **integer 1-5** scale and provide concise, critical reasoning for every score.
 
 Dimensions (fixed order):
-1. tool necessity – Does solving the task *fundamentally* require the provided tools?
+1. tool necessity – Does solving the task fundamentally require the provided tools?
 2. planning and context depth – Complexity of reasoning across turns (state tracking, dependencies).
-3. parameter generation – Difficulty of deriving correct parameters (e.g., converting “tomorrow” to an exact ISO date, extracting hashes from text, etc.).
-4. tool selection difficulty – How challenging is it to pick the correct tool among plausible distractors?  NexusBench often contains similarly-named VirusTotal endpoints.
-5. real-world applicability – How representative is the task of actual user scenarios?
+3. parameter generation – Difficulty of deriving correct parameters (e.g., converting “tomorrow” to ISO date, extracting hashes, etc.).
+4. tool selection difficulty – How challenging is it to pick the correct tool among plausible distractors?  (VirusTotal endpoints are notorious here.)
+5. real-world applicability – How representative is the task of genuine user scenarios?
 
-────────────────────────────────────────────────
-Inputs you will receive for each sample:
+-----
+You will receive:
 • **User Prompt**
 • **Available Function List**
 • **Ground-Truth Conversation**
 
-────────────────────────────────────────────────
-Output a **JSON array** (no commentary) exactly in the template below (keep dimension order):
+-----
+Output a JSON **array** (no commentary) exactly in this template and order:
 ```json
 [
-  {
+  {{
     "dimension": "tool necessity",
     "reasoning": "...",
     "score": <1-5>
-  },
-  {
+  }},
+  {{
     "dimension": "planning and context depth",
     "reasoning": "...",
     "score": <1-5>
-  },
-  {
+  }},
+  {{
     "dimension": "parameter generation",
     "reasoning": "...",
     "score": <1-5>
-  },
-  {
+  }},
+  {{
     "dimension": "tool selection difficulty",
     "reasoning": "...",
     "score": <1-5>
-  },
-  {
+  }},
+  {{
     "dimension": "real-world applicability",
     "reasoning": "...",
     "score": <1-5>
-  }
+  }}
 ]
+```
+
+-----
+
+### User Prompt
+```
+{user_prompt}
+```
+
+### Available Function List
+```json
+{available_function_list}
+```
+
+### Ground-Truth Conversation
+```json
+{conversations}
 ```
 """
