@@ -6,6 +6,8 @@ Implements custom filtering logic for TAU Bench evaluation data.
 from typing import Dict, List, Tuple
 from .base_filter import BaseBenchmarkFilter
 import logging
+import numpy as np
+from collections import defaultdict
 from src.bench_loaders.tau_bench_loader import TauBenchLoader
 
 logger = logging.getLogger(__name__)
@@ -33,12 +35,16 @@ class TAUBenchFilter(BaseBenchmarkFilter):
         """
         logger.info(f"Applying TAU Bench-specific filtering to {len(samples)} samples")
         
-        # STEP 1: Filter questions solvable by a trivial agent
-        qids_to_filter = self._get_ids_of_tasks_solvable_by_trivial()
+        # STEP 1: Filter questions solvable by a trivial agent, but keep those with success rate <= 0.5
+        DO_NOTHING_SUCCESS_RATE_THRESHOLD = 0.5
+        qids_to_filter = self._get_qids_solvable_by_do_nothing()
+        question_groups = self._group_samples_by_question(samples)
+        
         surviving_samples = []
         for sample in samples:
             qid = f"{sample['task_name']}-{sample['meta']['id']}"
-            if qid not in qids_to_filter:
+            mean_score = self._calculate_mean_score(question_groups[qid])
+            if qid not in qids_to_filter or mean_score <= DO_NOTHING_SUCCESS_RATE_THRESHOLD:
                 surviving_samples.append(sample)
         
         # STEP 2: Apply comprehensive rules
@@ -47,7 +53,7 @@ class TAUBenchFilter(BaseBenchmarkFilter):
         return general_filter.filter_samples(surviving_samples)
 
 
-    def _get_ids_of_tasks_solvable_by_trivial(self) -> Tuple[List[Dict], List[Dict]]:
+    def _get_qids_solvable_by_do_nothing(self) -> Tuple[List[Dict], List[Dict]]:
         function_names_modifying_database = {
             'retail': ['cancel_pending_order', "exchange_delivered_order_items", "modify_pending_order_address", "modify_pending_order_items", "modify_pending_order_payment", "modify_user_address", "return_delivered_order_items"],
             'airline': ["book_reservation", "cancel_reservation", "send_certificate", "update_reservation_baggages", "update_reservation_flights", "update_reservation_passengers"] 
@@ -71,6 +77,53 @@ class TAUBenchFilter(BaseBenchmarkFilter):
 
         return result
 
+    def _group_samples_by_question(self, samples: List[Dict]) -> Dict[str, List[Dict]]:
+        """Group samples by their question identifier."""
+        question_groups = defaultdict(list)
+        
+        for sample in samples:
+            qid = f"{sample['task_name']}-{sample['meta']['id']}"
+            question_groups[qid].append(sample)
+        
+        return dict(question_groups)
+
+    def _calculate_mean_score(self, question_samples: List[Dict]) -> float:
+        """Calculate mean score for a question based on all model responses."""
+        if not question_samples:
+            return None
+        
+        # Extract scores for this question
+        scores = []
+        for sample in question_samples:
+            # Try different possible score locations
+            if 'eval_result' in sample and 'score' in sample['eval_result']:
+                scores.append(sample['eval_result']['score'])
+            elif 'eval_result' in sample and 'scores' in sample['eval_result']:
+                scores.extend(sample['eval_result']['scores'])
+            elif 'score' in sample:
+                scores.append(sample['score'])
+            elif 'scores' in sample:
+                scores.extend(sample['scores'])
+        
+        if not scores:
+            return None
+        
+        # Convert to numeric scores
+        numeric_scores = []
+        for score in scores:
+            if isinstance(score, (int, float)):
+                numeric_scores.append(float(score))
+            elif isinstance(score, dict) and 'score' in score:
+                try:
+                    numeric_scores.append(float(score['score']))
+                except (ValueError, TypeError):
+                    continue
+        
+        if not numeric_scores:
+            return None
+        
+        # Calculate mean score (success rate)
+        return np.mean(numeric_scores)
 
 
 def get_domain_and_id(question_id: str) -> Tuple[str, int]:
