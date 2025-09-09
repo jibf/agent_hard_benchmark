@@ -86,6 +86,12 @@ class LLMJudge:
         if self.config.steps is None:
             self.config.steps = [LLMJudgeStep.FILTER, LLMJudgeStep.SCORE]  # Default to both steps
         self.benchmark = benchmark
+    
+    def _parse_task_name_from_question_id(self, question_id: str) -> str:
+        """Parse task name from question_id by removing the last number part."""
+        import re
+        match = re.match(r'^(.+)[-_](\d+)$', question_id)
+        return match.group(1) if match else question_id
 
     def get_results(self) -> Dict[UniqueQuestionID,LLMJudgeOutput]:
         """Load benchmark questions and run configured assessments."""
@@ -107,7 +113,7 @@ class LLMJudge:
             filter_result = filter_results[i].get("assessment", {})
             unique_question_id = UniqueQuestionID(
                 benchmark=question.benchmark,
-                task_name=question.task_name,
+                task_name=question.task_name or self._parse_task_name_from_question_id(question.question_id),
                 question_id=question.question_id
             )
             result = LLMJudgeOutput(
