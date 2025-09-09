@@ -291,7 +291,6 @@ class BenchmarkFilteringPipeline:
 
             id_to_text_by_benchmark.setdefault(benchmark_name, {})[meta_id] = msg_content
 
-        print(id_to_text_by_benchmark)
         diversity_dict: Dict[str, float] = {}
         for benchmark_name, id_to_text in id_to_text_by_benchmark.items():
             texts = list(id_to_text.values())
