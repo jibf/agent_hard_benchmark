@@ -209,7 +209,7 @@ class BenchmarkRunner:
         self.logger.info(f"Running {benchmark_name}...")
         
         provider = self.get_provider_from_model()
-        command = f"python evaluation.py --model {self.model_name} --model-provider {provider} --temperature {self.temperature} --vllm_url {self.base_url}"
+        command = f"python evaluation.py --model {self.model_name} --model-provider {provider} --temperature {self.temperature} --vllm_url {self.base_url} --proc_num {self.proc_num}"
         
         success, output = self.run_command(command, benchmark_dir)
         
@@ -233,7 +233,7 @@ class BenchmarkRunner:
         self.logger.info(f"Running {benchmark_name}...")
 
         # Note: ToolSandbox does not have --proc_num parameter
-        command = f"tool_sandbox --user Dynamic --user_model_name {self.user_model} --agent Dynamic --model_name {self.model_name}"
+        command = f"tool_sandbox --user Dynamic --user_model_name {self.user_model} --agent Dynamic --model_name {self.model_name} --parallel {self.proc_num}"
         
         success, output = self.run_command(command, benchmark_dir)
         
@@ -243,15 +243,15 @@ class BenchmarkRunner:
             f.write(output)
         
         # Run average calculation if available
-        if success:
-            avg_script = benchmark_dir / "cal_avg_benchmark.py"
-            if avg_script.exists():
-                self.logger.info("Calculating ToolSandbox average score...")
-                avg_success, avg_output = self.run_command("python cal_avg_benchmark.py", benchmark_dir)
+        # if success:
+        #     avg_script = benchmark_dir / "cal_avg_benchmark.py"
+        #     if avg_script.exists():
+        #         self.logger.info("Calculating ToolSandbox average score...")
+        #         avg_success, avg_output = self.run_command("python cal_avg_benchmark.py --log ", benchmark_dir)
                 
-                avg_file = self.output_dir / f"{benchmark_name}_avg_score.log"
-                with open(avg_file, 'w') as f:
-                    f.write(avg_output)
+        #         avg_file = self.output_dir / f"{benchmark_name}_avg_score.log"
+        #         with open(avg_file, 'w') as f:
+        #             f.write(avg_output)
         
         self.copy_results(benchmark_dir, benchmark_name)
         return success
@@ -270,7 +270,7 @@ class BenchmarkRunner:
         # Create .env file
         self.create_env_file(benchmark_dir)
 
-        command = f"nexusbench --client OpenAI --base_url {self.base_url} --api_key {self.api_key} --model {self.model_name} --benchmarks all"
+        command = f"nexusbench --client OpenAI --base_url {self.base_url} --api_key {self.api_key} --model {self.model_name} --benchmarks all --num_samples_parallel {self.proc_num}"
 
         success, output = self.run_command(command, benchmark_dir)
         
@@ -295,7 +295,7 @@ class BenchmarkRunner:
             
         self.logger.info(f"Running {benchmark_name}...")
         
-        command = f"python evaluation.py --model_name={self.model_name}"
+        command = f"python evaluation.py --model_name={self.model_name} --proc_num {self.proc_num}"
         
         success, output = self.run_command(command, benchmark_dir)
         
@@ -323,7 +323,7 @@ class BenchmarkRunner:
         # Extract model name without provider prefix
         model_safe_name = self.model_name.replace('/', '_')
         
-        command = f"python main.py --model-provider {provider} --provider-args model={self.model_name} temp={self.temperature} --attempts 1 --output-file results/{model_safe_name}_evaluation_results.txt --raw results/{model_safe_name}_detailed_results.csv"
+        command = f"python main.py --model-provider {provider} --provider-args model={self.model_name} temp={self.temperature} --attempts 1 --output-file results/{model_safe_name}_evaluation_results.txt --raw results/{model_safe_name}_detailed_results.csv --max-workers_response_gen {self.proc_num} --max-workers_eval {self.proc_num}"
         
         success, output = self.run_command(command, benchmark_dir)
         
@@ -358,8 +358,8 @@ class BenchmarkRunner:
         }
         self.create_env_file(benchmark_dir, custom_vars)
 
-        command = f"python generate.py --model {self.model_name} --category normal special agent --language en --num-threads {self.proc_num}"
-        
+        command = f"python generate.py --model {self.model_name} --user-model {self.user_model} --temperature {self.temperature} --category normal special agent --language en --num-threads {self.proc_num}"
+
         success, output = self.run_command(command, benchmark_dir)
         
         # Save generation output
@@ -370,8 +370,7 @@ class BenchmarkRunner:
         # Run evaluation if generation succeeded
         if success:
             self.logger.info("Running ACEBench evaluation...")
-            model_for_eval = self.model_name.replace('/', '-')
-            eval_command = f"python eval_main.py --model {model_for_eval} --category normal special agent --language en"
+            eval_command = f"python eval_main.py --model {self.model_name} --category normal special agent --language en"
 
             eval_success, eval_output = self.run_command(eval_command, benchmark_dir)
 
@@ -410,7 +409,7 @@ class BenchmarkRunner:
 
         for env_type in ['retail', 'airline']:
             self.logger.info(f"Running TauBench on {env_type} environment...")
-            command = f"python run.py --agent-strategy tool-calling --env {env_type} --model {self.model_name} --model-provider {provider} --user-model {self.user_model} --user-model-provider {user_provider} --user-strategy llm --max-concurrency {self.proc_num}"
+            command = f"python run.py --agent-strategy tool-calling --env {env_type} --model {self.model_name} --model-provider {provider} --user-model {self.user_model} --user-model-provider {user_provider} --user-strategy llm --max-concurrency {self.proc_num} --temperature {self.temperature} --base-url {self.base_url}"
 
             env_success, env_output = self.run_command(command, benchmark_dir, timeout=7200)
             all_success = all_success and env_success
@@ -443,7 +442,7 @@ class BenchmarkRunner:
         self.logger.info(f"Running {benchmark_name}...")
         
         # Run generation
-        command = f"bfcl generate --model {self.model_name} --num-threads {self.proc_num}"
+        command = f"bfcl generate --model {self.model_name} --num-threads {self.proc_num} --temperature {self.temperature} --num-threads {self.proc_num}"
         
         success, output = self.run_command(command, benchmark_dir, timeout=7200)  # 2 hours timeout
         
@@ -489,8 +488,8 @@ class BenchmarkRunner:
         
         for domain in domains:
             self.logger.info(f"Running Tau2Bench on {domain} domain...")
-            command = f"tau2 run --domain {domain} --agent-llm {self.model_name} --user-llm {self.user_model} --num-trials 1 --max-concurrency {self.proc_num}"
-            
+            command = f"tau2 run --domain {domain} --agent-llm {self.model_name} --user-llm {self.user_model} --num-trials 1 --max-concurrency {self.proc_num} --base-url {self.base_url}"
+
             domain_success, domain_output = self.run_command(command, benchmark_dir, timeout=7200)
             all_success = all_success and domain_success
             all_outputs.append(f"=== {domain.upper()} DOMAIN ===\n{domain_output}")
@@ -537,14 +536,14 @@ class BenchmarkRunner:
         """Run all benchmarks"""
         benchmarks = [
             'drafterbench',
-            'toolsandbox', 
+            'bfcl',
+            'toolsandbox',
             'nexusbench',
             'cfbench',
-            'multichallenge',
             'acebench',
+            'multichallenge',
             'taubench',
             'tau2bench',
-            'bfcl'
         ]
         
         results = {}
