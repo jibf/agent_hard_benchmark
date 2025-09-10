@@ -50,30 +50,8 @@ echo "Activating environment..."
 source $(conda info --base)/etc/profile.d/conda.sh
 conda activate agenthard
 
-# Install unified requirements
-echo "Installing unified dependencies..."
-if python -c "import torch, transformers, openai" 2>/dev/null; then
-    echo "Core packages already installed, checking versions..."
-    python -c "
-import torch, transformers, openai
-print(f'Current PyTorch: {torch.__version__}')
-print(f'Current Transformers: {transformers.__version__}')
-print(f'Current OpenAI: {openai.__version__}')
-"
-    echo "Do you want to reinstall dependencies? (y/N)"
-    read -r response
-    if [[ "$response" =~ ^[Yy]$ ]]; then
-        pip install -r requirements.txt
-    else
-        echo "Skipping dependency installation..."
-    fi
-else
-    echo "Installing fresh dependencies..."
-    pip install -r requirements.txt
-fi
-
-# Install editable packages for each benchmark
-echo "Installing benchmark packages..."
+# Install benchmark packages first to get all dependencies
+echo "Installing benchmark packages (will install their dependencies)..."
 
 # Function to install package with check
 install_benchmark_package() {
@@ -93,81 +71,62 @@ install_benchmark_package() {
 }
 
 # Install benchmark packages
+# Install all benchmark packages using consistent function
+install_benchmark_package "NexusBench" "nexusbench"
+install_benchmark_package "tau2-bench" "tau2"
+install_benchmark_package "DrafterBench" "drafterbench"
+install_benchmark_package "gorilla/berkeley-function-call-leaderboard" "bfcl_eval"  
+install_benchmark_package "tau-bench" "tau_bench"
 install_benchmark_package "ToolSandbox" "tool_sandbox"
 
-# NexusBench - Handle nexusflowai version conflict
-if [ -d "NexusBench" ]; then
-    if python -c "import nexusbench" 2>/dev/null; then
-        echo "  nexusbench already installed, skipping..."
+# Now install any remaining dependencies from requirements.txt that weren't covered by benchmark packages
+echo "Installing any remaining dependencies from requirements.txt..."
+if python -c "import torch, transformers, openai" 2>/dev/null; then
+    echo "Core packages already installed via benchmark dependencies"
+    echo "Do you want to install additional requirements.txt dependencies? (y/N)"
+    read -r response
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        pip install -r requirements.txt
     else
-        echo "  Installing NexusBench..."
-        cd "NexusBench"
-        # Install nexusflowai separately with older openai version if needed
-        echo "    Note: nexusflowai may conflict with litellm's openai version requirement"
-        echo "    Attempting to install with current openai version..."
-        pip install -e .
-        cd - >/dev/null
+        echo "Skipping additional requirements.txt installation..."
     fi
 else
-    echo "  NexusBench directory not found, skipping..."
-fi
-
-install_benchmark_package "tau2-bench" "tau2"
-
-# Special cases without importable module names
-if [ -d "DrafterBench" ]; then
-    if [ -f "DrafterBench/setup.py" ]; then
-        echo "  Installing DrafterBench..."
-        cd DrafterBench && pip install -e . && cd - >/dev/null
-    else
-        echo "  DrafterBench (no setup.py), skipping..."
-    fi
-else
-    echo "  DrafterBench directory not found, skipping..."
-fi
-
-if [ -d "gorilla/berkeley-function-call-leaderboard" ]; then
-    if python -c "import bfcl_eval" 2>/dev/null; then
-        echo "  BFCL already installed, skipping..."
-    else
-        echo "  Installing BFCL..."
-        cd gorilla/berkeley-function-call-leaderboard && pip install -e . && cd - >/dev/null
-    fi
-else
-    echo "  BFCL directory not found, skipping..."
-fi
-
-if [ -d "tau-bench" ]; then
-    if python -c "import tau_bench" 2>/dev/null; then
-        echo "  tau-bench already installed, skipping..."
-    else
-        echo "  Installing tau-bench..."
-        cd tau-bench && pip install -e . && cd - >/dev/null
-    fi
-else
-    echo "  tau-bench directory not found, skipping..."
+    echo "Installing requirements.txt for any missing dependencies..."
+    pip install -r requirements.txt
 fi
 
 # ComplexFuncBench (install requirements only, no setup.py)
-if [ -d "ComplexFuncBench" ]; then
-    echo "  Installing ComplexFuncBench dependencies..."
-    # Use requirements.txt instead of pyproject.toml to avoid torch>=2.8.0 issue
-    cd ComplexFuncBench
-    if [ -f "requirements.txt" ]; then
-        pip install -r requirements.txt
-    fi
-    cd ..
-fi
+# if [ -d "ComplexFuncBench" ]; then
+#     echo "  Installing ComplexFuncBench dependencies..."
+#     # Use requirements.txt instead of pyproject.toml to avoid torch>=2.8.0 issue
+#     cd ComplexFuncBench
+#     if [ -f "requirements.txt" ]; then
+#         pip install -r requirements.txt
+#     fi
+#     cd ..
+# fi
 
-# MultiChallenge (install requirements only)
-if [ -d "multi_challenge" ]; then
-    echo "  Installing MultiChallenge dependencies..."
-    cd multi_challenge
-    if [ -f "requirements.txt" ]; then
-        pip install -r requirements.txt
-    fi
-    cd ..
-fi
+# # MultiChallenge (install requirements only)
+# if [ -d "multi_challenge" ]; then
+#     echo "  Installing MultiChallenge dependencies..."
+#     cd multi_challenge
+#     if [ -f "requirements.txt" ]; then
+#         pip install -r requirements.txt
+#     fi
+#     cd ..
+# fi
+
+# # ACEBench (install requirements only)
+# if [ -d "ACEBench" ]; then
+#     echo "  Installing ACEBench dependencies..."
+#     cd ACEBench
+#     if [ -f "requirements.txt" ]; then
+#         pip install -r requirements.txt
+#     fi
+#     cd ..
+# else
+#     echo "  ACEBench directory not found, skipping..."
+# fi
 
 # Optional: Install vLLM if needed (commented out by default due to potential conflicts)
 # echo "Install vLLM for local model inference? (y/N)"
@@ -177,6 +136,7 @@ fi
 #     pip install vllm>=0.8.0
 # fi
 pip install torchvision==0.20.1
+pip install wcwidth
 
 echo ""
 echo "Unified environment setup completed!"
