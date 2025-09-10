@@ -592,7 +592,7 @@ Focus on whether the test case can be solved by ANY model with perfect function-
     
     def run_enhanced_analysis(self, resume_from: Optional[str] = None):
         """Run enhanced analysis on all task types"""
-        output_dir = Path(r"E:\Users\김현준\Downloads\agent_hard_benchmark_2\gorilla\berkeley-function-call-leaderboard\score")
+        output_dir = Path("score")
         output_dir.mkdir(exist_ok=True)
         
         # Determine which tasks to run
