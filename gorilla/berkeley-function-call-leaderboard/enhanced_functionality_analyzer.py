@@ -415,7 +415,75 @@ Focus on whether the test case can be solved by ANY model with perfect function-
             if case_id in possible_answers:
                 case['ground_truth'] = possible_answers[case_id]
         
+        # Apply BFCL's multi-turn function loading logic
+        test_cases = self._apply_multi_turn_function_loading(test_cases)
+        
         return test_cases
+    
+    def _apply_multi_turn_function_loading(self, test_cases: List[Dict]) -> List[Dict]:
+        """Apply BFCL's multi-turn function loading logic"""
+        # Function mapping from BFCL
+        MULTI_TURN_FUNC_DOC_FILE_MAPPING = {
+            "GorillaFileSystem": "gorilla_file_system.json",
+            "MathAPI": "math_api.json", 
+            "MessageAPI": "message_api.json",
+            "TwitterAPI": "posting_api.json",
+            "TicketAPI": "ticket_api.json",
+            "TradingBot": "trading_bot.json",
+            "TravelAPI": "travel_booking.json",
+            "VehicleControlAPI": "vehicle_control.json",
+        }
+        
+        multi_turn_func_doc_path = Path("bfcl_eval/data/multi_turn_func_doc")
+        
+        for entry in test_cases:
+            # Check if this is a multi-turn case (based on BFCL logic)
+            if not self._is_multi_turn(entry.get("id", "")):
+                continue
+                
+            # Multi-turn cases need function docs loaded dynamically
+            involved_classes = entry.get("involved_classes", [])
+            entry["function"] = []
+            
+            for func_collection in involved_classes:
+                if func_collection in MULTI_TURN_FUNC_DOC_FILE_MAPPING:
+                    func_doc_file = multi_turn_func_doc_path / MULTI_TURN_FUNC_DOC_FILE_MAPPING[func_collection]
+                    if func_doc_file.exists():
+                        try:
+                            with open(func_doc_file, 'r', encoding='utf-8') as f:
+                                content = f.read().strip()
+                                func_doc = []
+                                
+                                # Try JSON array format first
+                                if content.startswith('['):
+                                    try:
+                                        func_doc = json.loads(content)
+                                    except json.JSONDecodeError:
+                                        # Fallback to JSONL parsing
+                                        for line in content.split('\n'):
+                                            if line.strip():
+                                                try:
+                                                    func_doc.append(json.loads(line.strip()))
+                                                except json.JSONDecodeError:
+                                                    continue
+                                else:
+                                    # JSONL format - each line is a separate JSON object
+                                    for line in content.split('\n'):
+                                        if line.strip():
+                                            try:
+                                                func_doc.append(json.loads(line.strip()))
+                                            except json.JSONDecodeError:
+                                                continue
+                                
+                                entry["function"].extend(func_doc)
+                        except Exception as e:
+                            print(f"Warning: Failed to load {func_doc_file}: {e}")
+        
+        return test_cases
+    
+    def _is_multi_turn(self, test_id: str) -> bool:
+        """Check if test case is multi-turn based on ID"""
+        return "multi_turn" in test_id
     
     def call_gpt4(self, prompt: str, model_config: Dict) -> str:
         """Call GPT-4.1 API with model-specific configuration"""
