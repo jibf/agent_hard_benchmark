@@ -1,6 +1,5 @@
 import argparse
 import os
-os.environ["OPENAI_API_KEY"]="sk-sgl-MH7bEVVJlBp3RT_P5cPQ6-KfC1qJElBRCfTDHy40Ue4"
 import time
 import sys
 from litellm import provider_list

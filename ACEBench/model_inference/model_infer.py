@@ -1,10 +1,14 @@
 
 import os
+import logging
 
 import subprocess
 from openai import OpenAI
 import google.generativeai as genai
-from vllm import LLM, SamplingParams
+try:
+    from vllm import LLM, SamplingParams
+except ImportError:
+    logging.warning("vLLM is not installed. Please install it via `pip install vllm` to use local model inference.")
 import time
 
 
