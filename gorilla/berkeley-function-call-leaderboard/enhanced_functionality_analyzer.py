@@ -341,7 +341,8 @@ Focus on whether the test case can be solved by ANY model with perfect function-
     
     def load_test_data_with_context(self, task_type: str) -> List[Dict]:
         """Load test cases with additional context information"""
-        data_dir = Path(r"E:\Users\김현준\Downloads\agent_hard_benchmark_2\gorilla\berkeley-function-call-leaderboard\bfcl_eval\data")
+        # Use relative path from current working directory
+        data_dir = Path("bfcl_eval/data")
         
         # Load main test cases
         main_file = data_dir / f"BFCL_v3_{task_type}.json"
