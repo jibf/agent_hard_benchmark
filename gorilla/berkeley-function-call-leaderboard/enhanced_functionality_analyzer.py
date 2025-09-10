@@ -351,14 +351,26 @@ Focus on whether the test case can be solved by ANY model with perfect function-
             with open(main_file, 'r', encoding='utf-8') as f:
                 content = f.read().strip()
                 
+                # Try JSON array format first
                 if content.startswith('['):
-                    test_cases = json.loads(content)
+                    try:
+                        test_cases = json.loads(content)
+                    except json.JSONDecodeError:
+                        # Fallback to JSONL parsing
+                        for line in content.split('\n'):
+                            if line.strip():
+                                try:
+                                    test_cases.append(json.loads(line.strip()))
+                                except json.JSONDecodeError:
+                                    continue
                 else:
+                    # JSONL format - each line is a separate JSON object
                     for line in content.split('\n'):
                         if line.strip():
                             try:
                                 test_cases.append(json.loads(line.strip()))
-                            except json.JSONDecodeError:
+                            except json.JSONDecodeError as e:
+                                print(f"Warning: Failed to parse line in {main_file}: {e}")
                                 continue
         
         # Load possible answers for additional context
@@ -369,11 +381,23 @@ Focus on whether the test case can be solved by ANY model with perfect function-
             try:
                 with open(possible_answer_file, 'r', encoding='utf-8') as f:
                     content = f.read().strip()
+                    
                     if content.startswith('['):
-                        answers_list = json.loads(content)
-                        for item in answers_list:
-                            possible_answers[item.get('id', '')] = item.get('ground_truth', [])
+                        try:
+                            answers_list = json.loads(content)
+                            for item in answers_list:
+                                possible_answers[item.get('id', '')] = item.get('ground_truth', [])
+                        except json.JSONDecodeError:
+                            # Fallback to JSONL
+                            for line in content.split('\n'):
+                                if line.strip():
+                                    try:
+                                        item = json.loads(line.strip())
+                                        possible_answers[item.get('id', '')] = item.get('ground_truth', [])
+                                    except json.JSONDecodeError:
+                                        continue
                     else:
+                        # JSONL format
                         for line in content.split('\n'):
                             if line.strip():
                                 try:
