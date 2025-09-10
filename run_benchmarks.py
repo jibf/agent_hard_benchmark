@@ -14,17 +14,22 @@ import time
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 import shutil
+from dotenv import load_dotenv
 
 
 class BenchmarkRunner:
     """Main benchmark runner class"""
     
-    def __init__(self, api_key: str, base_url: str, model_name: str, output_dir: Optional[str] = None):
+    def __init__(self, api_key: str, base_url: str, model_name: str, output_dir: Optional[str] = None,
+                 temperature: float = 0.0, proc_num: int = 4, user_model: Optional[str] = None):
         self.api_key = api_key
         self.base_url = base_url
         self.model_name = model_name
+        self.temperature = temperature
+        self.proc_num = proc_num
+        self.user_model = user_model or "openai/gpt-4o-20240806"  # Default user model
         
         # Setup output directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -54,10 +59,14 @@ class BenchmarkRunner:
         )
         self.logger = logging.getLogger(__name__)
         
-        
+
     def get_provider_from_model(self) -> str:
         """Determine provider from model name"""
-        model_lower = self.model_name.lower()
+        return self.get_provider_from_model_name(self.model_name)
+    
+    def get_provider_from_model_name(self, model_name: str) -> str:
+        """Determine provider from any model name"""
+        model_lower = model_name.lower()
         if 'claude' in model_lower:
             return 'anthropic'
         elif 'gemini' in model_lower:
@@ -84,7 +93,15 @@ class BenchmarkRunner:
             'GPT_API_KEY': self.api_key,
             'API_KEY': self.api_key,
             'BASE_URL': self.base_url,
+            'ANTHROPIC_API_KEY': self.api_key,  # For benchmarks that use Anthropic
+            'GOOGLE_API_KEY': self.api_key,     # For benchmarks that use Google
+            'MISTRAL_API_KEY': self.api_key,    # For benchmarks that use Mistral
         }
+
+        # Add RAPID_API_KEY if it exists in environment
+        rapid_api_key = os.getenv('RAPID_API_KEY')
+        if rapid_api_key:
+            env_vars['RAPID_API_KEY'] = rapid_api_key
         
         env.update(env_vars)
         return env
@@ -192,7 +209,7 @@ class BenchmarkRunner:
         self.logger.info(f"Running {benchmark_name}...")
         
         provider = self.get_provider_from_model()
-        command = f"python evaluation.py --model {self.model_name} --model-provider {provider} --temperature 0.0 --vllm_url {self.base_url}"
+        command = f"python evaluation.py --model {self.model_name} --model-provider {provider} --temperature {self.temperature} --vllm_url {self.base_url}"
         
         success, output = self.run_command(command, benchmark_dir)
         
@@ -215,8 +232,8 @@ class BenchmarkRunner:
         
         self.logger.info(f"Running {benchmark_name}...")
 
-        # TODO: implement api_key and base_url and setup a mapping from model_path to agent
-        command = "tool_sandbox --user GPT_4_o_2024_08_06 --agent GPT_4_o_2024_08_06"
+        # Note: ToolSandbox does not have --proc_num parameter
+        command = f"tool_sandbox --user Dynamic --user_model_name {self.user_model} --agent Dynamic --model_name {self.model_name}"
         
         success, output = self.run_command(command, benchmark_dir)
         
@@ -266,6 +283,7 @@ class BenchmarkRunner:
         return success
     
     # TODO: check how to run cfbench
+    # TODO: add api_key, base_url and rapid_api_key to .env file
     def run_cfbench(self) -> bool:
         """Run CFBench"""
         benchmark_name = "CFBench"
@@ -305,7 +323,7 @@ class BenchmarkRunner:
         # Extract model name without provider prefix
         model_safe_name = self.model_name.replace('/', '_')
         
-        command = f"python main.py --model-provider {provider} --provider-args model={self.model_name} temp=0 --attempts 1 --output-file results/{model_safe_name}_evaluation_results.txt --raw results/{model_safe_name}_detailed_results.csv"
+        command = f"python main.py --model-provider {provider} --provider-args model={self.model_name} temp={self.temperature} --attempts 1 --output-file results/{model_safe_name}_evaluation_results.txt --raw results/{model_safe_name}_detailed_results.csv"
         
         success, output = self.run_command(command, benchmark_dir)
         
@@ -339,13 +357,8 @@ class BenchmarkRunner:
             'QWEN_BASE_URL': self.base_url,
         }
         self.create_env_file(benchmark_dir, custom_vars)
-        
-        # Run generation
-        if 'local' in self.model_name.lower():
-            self.logger.warning("Local model detected. Please ensure model path is available.")
-            command = f"python generate.py --model {self.model_name} --model-path /path/to/model --category normal --language en --num-gpus 4"
-        else:
-            command = f"python generate.py --model {self.model_name} --category normal --language en"
+
+        command = f"python generate.py --model {self.model_name} --category normal special agent --language en --num-threads {self.proc_num}"
         
         success, output = self.run_command(command, benchmark_dir)
         
@@ -358,48 +371,63 @@ class BenchmarkRunner:
         if success:
             self.logger.info("Running ACEBench evaluation...")
             model_for_eval = self.model_name.replace('/', '-')
-            eval_command = f"python eval_main.py --model {model_for_eval} --category normal --language en"
-            
+            eval_command = f"python eval_main.py --model {model_for_eval} --category normal special agent --language en"
+
             eval_success, eval_output = self.run_command(eval_command, benchmark_dir)
-            
+
             # Save evaluation output
             eval_output_file = self.output_dir / f"{benchmark_name}_eval_output.log"
             with open(eval_output_file, 'w') as f:
                 f.write(eval_output)
-        
+
         self.copy_results(benchmark_dir, benchmark_name)
         return success
-    
+
     def run_taubench(self) -> bool:
         """Run TauBench"""
         benchmark_name = "TauBench"
         benchmark_dir = self.root_dir / "tau-bench"
-        
+
         if not benchmark_dir.exists():
             self.logger.warning(f"{benchmark_name} directory not found, skipping...")
             return False
-            
+
         self.logger.info(f"Running {benchmark_name}...")
-        
+
         # Create .env file with specific variables for TauBench
         custom_vars = {
             'ANTHROPIC_API_BASE': self.base_url,
             'VLLM_API_BASE': self.base_url,
         }
         self.create_env_file(benchmark_dir, custom_vars)
-        
+
         provider = self.get_provider_from_model()
-        user_model = "openai/gpt-4o-20240806"  # Use stable user model
-        
-        command = f"python run.py --agent-strategy tool-calling --env retail --model {self.model_name} --model-provider {provider} --user-model {user_model} --user-model-provider openai --user-strategy llm --max-concurrency 10"
-        
-        success, output = self.run_command(command, benchmark_dir, timeout=7200)  # 2 hours timeout
-        
+        user_provider = self.get_provider_from_model_name(self.user_model)
+
+        # Run both retail and airline environments
+        all_success = True
+        all_outputs = []
+
+        for env_type in ['retail', 'airline']:
+            self.logger.info(f"Running TauBench on {env_type} environment...")
+            command = f"python run.py --agent-strategy tool-calling --env {env_type} --model {self.model_name} --model-provider {provider} --user-model {self.user_model} --user-model-provider {user_provider} --user-strategy llm --max-concurrency {self.proc_num}"
+
+            env_success, env_output = self.run_command(command, benchmark_dir, timeout=7200)
+            all_success = all_success and env_success
+            all_outputs.append(f"=== {env_type.upper()} ENVIRONMENT ===\n{env_output}")
+
+            if not env_success:
+                self.logger.error(f"TauBench failed on {env_type} environment")
+
+        # Combine all outputs
+        output = "\n\n".join(all_outputs)
+        success = all_success
+
         # Save output
         output_file = self.output_dir / f"{benchmark_name}_output.log"
         with open(output_file, 'w') as f:
             f.write(output)
-        
+
         self.copy_results(benchmark_dir, benchmark_name)
         return success
     
@@ -407,16 +435,15 @@ class BenchmarkRunner:
         """Run BFCL-v3"""
         benchmark_name = "BFCL"
         benchmark_dir = self.root_dir / "gorilla" / "berkeley-function-call-leaderboard"
-        
+
         if not benchmark_dir.exists():
             self.logger.warning(f"{benchmark_name} directory not found, skipping...")
             return False
-            
+
         self.logger.info(f"Running {benchmark_name}...")
         
         # Run generation
-        # TODO: make num_threads configurable
-        command = f"bfcl generate --model {self.model_name} --num-threads 4"
+        command = f"bfcl generate --model {self.model_name} --num-threads {self.proc_num}"
         
         success, output = self.run_command(command, benchmark_dir, timeout=7200)  # 2 hours timeout
         
@@ -440,6 +467,48 @@ class BenchmarkRunner:
         self.copy_results(benchmark_dir, benchmark_name)
         return success
     
+    def run_tau2bench(self) -> bool:
+        """Run Tau2Bench (tau2-bench)"""
+        benchmark_name = "Tau2Bench"
+        benchmark_dir = self.root_dir / "tau2-bench"
+        
+        if not benchmark_dir.exists():
+            self.logger.warning(f"{benchmark_name} directory not found, skipping...")
+            return False
+            
+        self.logger.info(f"Running {benchmark_name}...")
+        
+        # Create .env file
+        self.create_env_file(benchmark_dir)
+        
+        # Run all three domains: retail, airline, telecom
+        all_success = True
+        all_outputs = []
+        
+        domains = ['retail', 'airline', 'telecom']
+        
+        for domain in domains:
+            self.logger.info(f"Running Tau2Bench on {domain} domain...")
+            command = f"tau2 run --domain {domain} --agent-llm {self.model_name} --user-llm {self.user_model} --num-trials 1 --max-concurrency {self.proc_num}"
+            
+            domain_success, domain_output = self.run_command(command, benchmark_dir, timeout=7200)
+            all_success = all_success and domain_success
+            all_outputs.append(f"=== {domain.upper()} DOMAIN ===\n{domain_output}")
+            
+            if not domain_success:
+                self.logger.error(f"Tau2Bench failed on {domain} domain")
+        
+        # Combine all outputs
+        output = "\n\n".join(all_outputs)
+        
+        # Save output
+        output_file = self.output_dir / f"{benchmark_name}_output.log"
+        with open(output_file, 'w') as f:
+            f.write(output)
+        
+        self.copy_results(benchmark_dir, benchmark_name)
+        return all_success
+    
     def run_single_benchmark(self, benchmark_name: str) -> bool:
         """Run a single benchmark"""
         benchmark_methods = {
@@ -450,6 +519,7 @@ class BenchmarkRunner:
             'multichallenge': self.run_multichallenge,
             'acebench': self.run_acebench,
             'taubench': self.run_taubench,
+            'tau2bench': self.run_tau2bench,
             'bfcl': self.run_bfcl,
         }
         
@@ -473,6 +543,7 @@ class BenchmarkRunner:
             'multichallenge',
             'acebench',
             'taubench',
+            'tau2bench',
             'bfcl'
         ]
         
@@ -555,15 +626,28 @@ class BenchmarkRunner:
         self.logger.info(f"Summary saved to {summary_file} and {text_summary_file}")
 
 
+def load_env_config():
+    """Load configuration from .env file if it exists"""
+    env_file = Path('.env')
+    if env_file.exists():
+        load_dotenv(env_file)
+        print(f"Loaded configuration from {env_file}")
+    else:
+        print("No .env file found. Please copy .env.example to .env and configure API credentials.")
+
 def main():
     parser = argparse.ArgumentParser(description='Universal Benchmark Runner for AgentHard Suite')
-    parser.add_argument('api_key', help='API key for the model provider')
-    parser.add_argument('base_url', help='Base URL for the API (e.g., https://api.openai.com/v1)')
     parser.add_argument('model_name', help='Name of the model (e.g., openai/gpt-4o-20240806)')
     parser.add_argument('--benchmark', help='Specific benchmark to run (default: all)', default='all')
     parser.add_argument('--output-dir', help='Output directory for results')
     parser.add_argument('--concurrent', action='store_true', help='Run benchmarks concurrently (use with caution for API limits)')
+    parser.add_argument('--temperature', type=float, default=0.0, help='Temperature for model generation (default: 0.0)')
+    parser.add_argument('--proc-num', type=int, default=4, help='Number of processes/threads for parallel execution (default: 4)')
+    parser.add_argument('--user-model', help='User model for benchmarks that need it (default: from .env USER_MODEL or openai/gpt-4o-20240806)')
     parser.add_argument('--list-benchmarks', action='store_true', help='List available benchmarks')
+    
+    # Load .env configuration first
+    load_env_config()
     
     args = parser.parse_args()
     
@@ -576,23 +660,45 @@ def main():
             'cfbench - CFBench comprehensive function calling evaluation',
             'multichallenge - MultiChallenge conversation evaluation',
             'acebench - ACEBench comprehensive agent evaluation',
-            'taubench - TauBench tool-agent-user interaction',
+            'taubench - TauBench tool-agent-user interaction (retail + airline)',
+            'tau2bench - Tau2Bench conversational agents (retail + airline + telecom)',
             'bfcl - BFCL-v3 multi-turn function calling'
         ]
         for benchmark in benchmarks:
             print(f"  {benchmark}")
         return
     
+    # Get API credentials from .env file (required)
+    api_key = os.getenv('API_KEY')
+    base_url = os.getenv('BASE_URL')
+    
+    if not api_key:
+        print("Error: API_KEY not found in .env file. Please set API_KEY in .env file")
+        sys.exit(1)
+    
+    if not base_url:
+        print("Error: BASE_URL not found in .env file. Please set BASE_URL in .env file")
+        sys.exit(1)
+    
+    # Get user model from command line or .env file
+    user_model = args.user_model or os.getenv('USER_MODEL')
+    
     runner = BenchmarkRunner(
-        api_key=args.api_key,
-        base_url=args.base_url,
+        api_key=api_key,
+        base_url=base_url,
         model_name=args.model_name,
-        output_dir=args.output_dir
+        output_dir=args.output_dir,
+        temperature=args.temperature,
+        proc_num=args.proc_num,
+        user_model=user_model
     )
     
     runner.logger.info("Starting benchmark execution...")
     runner.logger.info(f"Model: {args.model_name}")
-    runner.logger.info(f"Base URL: {args.base_url}")
+    runner.logger.info(f"User Model: {runner.user_model}")
+    runner.logger.info(f"Base URL: {base_url}")
+    runner.logger.info(f"Temperature: {args.temperature}")
+    runner.logger.info(f"Processes/Threads: {args.proc_num}")
     runner.logger.info(f"Output directory: {runner.output_dir}")
     
     try:
