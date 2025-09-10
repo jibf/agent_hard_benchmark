@@ -95,6 +95,8 @@ def run_sandbox(
     name_to_scenario: dict[str, Scenario],
     processes: int,
     output_base_dir: Path,
+    model_name: Optional[str] = None,
+    user_model_name: Optional[str] = None,
 ) -> None:
     """Entry point for Tool Sandbox
 
@@ -104,6 +106,8 @@ def run_sandbox(
         name_to_scenario: Dictionary from scenario name to scenario definition.
         processes:        Number of processes to run in parallel.
         output_base_dir:  Base directory for model outputs.
+        model_name:       Model name for dynamic agent (when agent_type is Dynamic).
+        user_model_name:  Model name for dynamic user (when user_type is Dynamic).
 
     """
     # Show all rows and all columns when converting polars dataframes to strings.
@@ -113,8 +117,23 @@ def run_sandbox(
     pl.Config.set_tbl_rows(-1).set_tbl_cols(-1).set_fmt_str_lengths(10000)
     pl.Config.set_tbl_formatting("ASCII_FULL")
 
-    agent = AGENT_TYPE_TO_FACTORY[agent_type]()
-    user = USER_TYPE_TO_FACTORY[user_type]()
+    # Create agent - handle dynamic agent case
+    if agent_type == RoleImplType.Dynamic:
+        if model_name is None:
+            raise ValueError("model_name must be provided when using Dynamic agent type")
+        from tool_sandbox.roles.openai_api_agent import create_dynamic_agent
+        agent = create_dynamic_agent(model_name)()
+    else:
+        agent = AGENT_TYPE_TO_FACTORY[agent_type]()
+
+    # Create user - handle dynamic user case
+    if user_type == RoleImplType.Dynamic:
+        if user_model_name is None:
+            raise ValueError("user_model_name must be provided when using Dynamic user type")
+        from tool_sandbox.roles.openai_api_user import create_dynamic_user
+        user = create_dynamic_user(user_model_name)()
+    else:
+        user = USER_TYPE_TO_FACTORY[user_type]()
     output_directory = (
         Path(output_base_dir) / f"agent_{getattr(agent, 'model_name', agent_type)}_"
         f"user_{getattr(user, 'model_name', user_type)}_"
@@ -169,6 +188,8 @@ def run_sandbox(
                     agent_type=agent_type,
                     user_type=user_type,
                     output_directory=output_directory,
+                    model_name=model_name,
+                    user_model_name=user_model_name,
                 ),
                 name_and_scenario_list,
             )
@@ -182,6 +203,8 @@ def run_sandbox(
                     agent_type=agent_type,
                     user_type=user_type,
                     output_directory=output_directory,
+                    model_name=model_name,
+                    user_model_name=user_model_name,
                 )
             )
 
@@ -202,6 +225,18 @@ def main() -> None:
         help="Agent type.",
         default="GPT_4_o_2024_05_13",
         choices=[str(t) for t in AGENT_TYPE_TO_FACTORY.keys()],
+    )
+    parser.add_argument(
+        "--model_name",
+        help="Model name for dynamic agent. Only used when --agent is Dynamic.",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--user_model_name",
+        help="Model name for dynamic user. Only used when --user is Dynamic.",
+        type=str,
+        default=None,
     )
     parser.add_argument(
         "--user",
@@ -264,6 +299,8 @@ def main() -> None:
         name_to_scenario=name_to_scenario,
         processes=args.parallel,
         output_base_dir=args.output_dir,
+        model_name=args.model_name,
+        user_model_name=args.user_model_name,
     )
 
 

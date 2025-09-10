@@ -37,10 +37,8 @@ class OpenAIAPIAgent(BaseRole):
 
     def __init__(self) -> None:
         # We set the `base_url` explicitly here to avoid picking up the
-        # `OPENAI_BASE_URL` environment variable that may be set for serving models as
-        # OpenAI API compatible servers.
-        # self.openai_client: OpenAI = OpenAI(base_url="https://api.openai.com/v1")
-        # self.openai_client: OpenAI = OpenAI(api_key="sk-sgl-MH7bEVVJlBp3RT_P5cPQ6-KfC1qJElBRCfTDHy40Ue4", base_url="http://5.78.122.79:10000/v1", )
+        # Uses OPENAI_BASE_URL environment variable for serving models as
+        # OpenAI API compatible servers. API key is read from OPENAI_API_KEY.
         self.openai_client: OpenAI = OpenAI(base_url=os.getenv("OPENAI_BASE_URL"), )
         # import pdb; pdb.set_trace()
 
@@ -233,3 +231,20 @@ class Qwen_8B_Agent(OpenAIAPIAgent):
 
 class Qwen_32B_Agent(OpenAIAPIAgent):
     model_name = "/data/jibf/.cache/huggingface/hub/models--Qwen--Qwen3-32B/snapshots/9216db5781bf21249d130ec9da846c4624c16137/"
+
+
+def create_dynamic_agent(model_name: str):
+    """Factory function to create an agent with dynamic model name
+    
+    Args:
+        model_name: The model name to use for the agent
+        
+    Returns:
+        A dynamically created agent class with the specified model name
+    """
+    class DynamicAgent(OpenAIAPIAgent):
+        def __init__(self):
+            super().__init__()
+            self.model_name = model_name
+    
+    return DynamicAgent

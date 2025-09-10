@@ -50,6 +50,9 @@ from tool_sandbox.roles.openai_api_agent import (
     Kimi_K2_Agent,
     Qwen_32B_Agent,
     Qwen_8B_Agent,
+    
+    # Dynamic agent factory
+    create_dynamic_agent,
 )
 from tool_sandbox.roles.openai_api_user import (
     GPT_3_5_0125_User,
@@ -60,6 +63,9 @@ from tool_sandbox.roles.openai_api_user import (
     GPT_o_3_high_User,
     GPT_o_4_mini_high_User,
     GPT_4_1_User,
+    
+    # Dynamic user factory
+    create_dynamic_user,
 )
 from tool_sandbox.roles.unhelpful_agent import UnhelpfulAgent
 from tool_sandbox.scenarios import named_scenarios
@@ -89,6 +95,9 @@ class RoleImplType(StrEnum):
     Kimi_K2 = auto()
     Qwen_32B = auto()
     Qwen_8B = auto()
+    
+    # Dynamic agent
+    Dynamic = auto()
 
     Claude_3_Opus = auto()
     Claude_3_Sonnet = auto()
@@ -135,6 +144,9 @@ AGENT_TYPE_TO_FACTORY: dict[RoleImplType, Callable[..., BaseRole]] = {
     RoleImplType.Kimi_K2: Kimi_K2_Agent,
     RoleImplType.Qwen_32B: Qwen_32B_Agent,
     RoleImplType.Qwen_8B: Qwen_8B_Agent,
+    
+    # Dynamic agent placeholder - actual creation handled separately
+    RoleImplType.Dynamic: lambda: None,  # This will never be called
 
     RoleImplType.Claude_3_Opus: ClaudeOpusAgent,
     RoleImplType.Claude_3_Sonnet: ClaudeSonnetAgent,
@@ -163,6 +175,10 @@ USER_TYPE_TO_FACTORY: dict[RoleImplType, Callable[..., BaseRole]] = {
     RoleImplType.GPT_o_3_high: GPT_o_3_high_User,
     RoleImplType.GPT_o_4_mini_high: GPT_o_4_mini_high_User,
     RoleImplType.GPT_4_1: GPT_4_1_User,
+    
+    # Dynamic user placeholder - actual creation handled separately
+    RoleImplType.Dynamic: lambda: None,  # This will never be called
+    
     RoleImplType.Cli: CliUser,
 }
 
@@ -219,6 +235,8 @@ def run_scenario(
     agent_type: RoleImplType,
     user_type: RoleImplType,
     output_directory: Path,
+    model_name: Optional[str] = None,
+    user_model_name: Optional[str] = None,
 ) -> dict[str, Any]:
     """Play and evaluate a scenario.
 
@@ -229,15 +247,34 @@ def run_scenario(
         agent_type:                     Agent type.
         user_type:                      User type.
         output_directory:               Directory to write output into.
+        model_name:                     Model name for dynamic agent (when agent_type is Dynamic).
+        user_model_name:                Model name for dynamic user (when user_type is Dynamic).
 
     Returns:
         Evaluation info
     """
     name, scenario = name_and_scenario
+    
+    # Create agent - handle dynamic agent case
+    if agent_type == RoleImplType.Dynamic:
+        if model_name is None:
+            raise ValueError("model_name must be provided when using Dynamic agent type")
+        agent = create_dynamic_agent(model_name)()
+    else:
+        agent = AGENT_TYPE_TO_FACTORY[agent_type]()
+    
+    # Create user - handle dynamic user case
+    if user_type == RoleImplType.Dynamic:
+        if user_model_name is None:
+            raise ValueError("user_model_name must be provided when using Dynamic user type")
+        user = create_dynamic_user(user_model_name)()
+    else:
+        user = USER_TYPE_TO_FACTORY[user_type]()
+    
     roles = {
-        RoleType.USER: USER_TYPE_TO_FACTORY[user_type](),
+        RoleType.USER: user,
         RoleType.EXECUTION_ENVIRONMENT: ExecutionEnvironment(),
-        RoleType.AGENT: AGENT_TYPE_TO_FACTORY[agent_type](),
+        RoleType.AGENT: agent,
     }
     output_directory.mkdir(parents=True, exist_ok=True)
 

@@ -218,3 +218,20 @@ class GPT_o_4_mini_high_User(OpenAIAPIUser):
 
 class GPT_4_1_User(OpenAIAPIUser):
     model_name = "openai/gpt-4.1"
+
+
+def create_dynamic_user(model_name: str):
+    """Factory function to create a user with dynamic model name
+    
+    Args:
+        model_name: The model name to use for the user
+        
+    Returns:
+        A dynamically created user class with the specified model name
+    """
+    class DynamicUser(OpenAIAPIUser):
+        def __init__(self):
+            super().__init__()
+            self.model_name = model_name
+    
+    return DynamicUser
