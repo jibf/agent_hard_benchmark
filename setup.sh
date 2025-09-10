@@ -80,63 +80,10 @@ install_benchmark_package "tau-bench" "tau_bench"
 install_benchmark_package "ToolSandbox" "tool_sandbox"
 
 # Now install any remaining dependencies from requirements.txt that weren't covered by benchmark packages
-echo "Installing any remaining dependencies from requirements.txt..."
-if python -c "import torch, transformers, openai" 2>/dev/null; then
-    echo "Core packages already installed via benchmark dependencies"
-    echo "Do you want to install additional requirements.txt dependencies? (y/N)"
-    read -r response
-    if [[ "$response" =~ ^[Yy]$ ]]; then
-        pip install -r requirements.txt
-    else
-        echo "Skipping additional requirements.txt installation..."
-    fi
-else
-    echo "Installing requirements.txt for any missing dependencies..."
-    pip install -r requirements.txt
-fi
+pip install -r requirements.txt
 
-# ComplexFuncBench (install requirements only, no setup.py)
-# if [ -d "ComplexFuncBench" ]; then
-#     echo "  Installing ComplexFuncBench dependencies..."
-#     # Use requirements.txt instead of pyproject.toml to avoid torch>=2.8.0 issue
-#     cd ComplexFuncBench
-#     if [ -f "requirements.txt" ]; then
-#         pip install -r requirements.txt
-#     fi
-#     cd ..
-# fi
-
-# # MultiChallenge (install requirements only)
-# if [ -d "multi_challenge" ]; then
-#     echo "  Installing MultiChallenge dependencies..."
-#     cd multi_challenge
-#     if [ -f "requirements.txt" ]; then
-#         pip install -r requirements.txt
-#     fi
-#     cd ..
-# fi
-
-# # ACEBench (install requirements only)
-# if [ -d "ACEBench" ]; then
-#     echo "  Installing ACEBench dependencies..."
-#     cd ACEBench
-#     if [ -f "requirements.txt" ]; then
-#         pip install -r requirements.txt
-#     fi
-#     cd ..
-# else
-#     echo "  ACEBench directory not found, skipping..."
-# fi
-
-# Optional: Install vLLM if needed (commented out by default due to potential conflicts)
-# echo "Install vLLM for local model inference? (y/N)"
-# read -r response
-# if [[ "$response" =~ ^[Yy]$ ]]; then
-#     echo "Installing vLLM..."
-#     pip install vllm>=0.8.0
-# fi
-pip install torchvision==0.20.1
-pip install wcwidth
+# pip install torchvision==0.20.1
+# pip install wcwidth
 
 echo ""
 echo "Unified environment setup completed!"
@@ -147,7 +94,7 @@ echo "To use the environment:"
 echo "  conda activate agenthard"
 echo ""
 echo "To run all benchmarks:"
-echo "  python run_benchmarks.py <api_key> <base_url> <model_name>"
+echo "  python run_benchmarks.py <model_name> --benchmark all --proc-num <num_processes> --user-model <user_model_name> --temperature <temp_value> --output-dir <output_directory> --concurrent"
 echo ""
 echo "Testing environment compatibility..."
 echo "Checking key packages:"

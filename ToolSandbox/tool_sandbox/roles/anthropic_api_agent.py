@@ -9,7 +9,25 @@ import re
 from typing import Iterable, Optional, Union, cast
 
 import anthropic
-import anthropic.types.beta.tools
+try:
+    from anthropic.types.beta.tools import (
+        ToolUseBlock,
+        ToolsBetaMessageParam,
+        ToolsBetaMessage,
+        ToolResultBlockParam,
+        ToolParam
+    )
+except ImportError as e:
+    logging.warning(
+        "Could not import `anthropic.types.beta.tools`. If you need to run anthropic API, "
+        f"please try downgrade anthropic by `pip install anthropic==0.26.1` Error: {e}"
+    )
+    ToolUseBlock = None
+    ToolsBetaMessageParam = None
+    ToolsBetaMessage = None
+    ToolResultBlockParam = None
+    ToolParam = None
+
 from requests.exceptions import HTTPError
 from tenacity import (
     retry,
@@ -28,7 +46,7 @@ LOGGER = logging.getLogger(__name__)
 
 def tool_use_block_to_python_code(
     execution_facing_tool_name: str,
-    tool_use_block: anthropic.types.beta.tools.ToolUseBlock,
+    tool_use_block: ToolUseBlock,
     available_tool_names: set[str],
 ) -> str:
     """Converts Anthropic tool use block to Python code for calling the function.
@@ -69,7 +87,7 @@ def tool_use_block_to_python_code(
 
 
 def to_tool_call_message(
-    tool_use_block: anthropic.types.beta.tools.ToolUseBlock,
+    tool_use_block: ToolUseBlock,
     sender: RoleType,
     execution_facing_tool_name: str,
     available_tool_names: set[str],
@@ -110,7 +128,7 @@ def to_tool_call_message(
 
 
 def response_to_messages(
-    response: anthropic.types.beta.tools.ToolsBetaMessage,
+    response: ToolsBetaMessage,
     sender: RoleType,
     available_tool_names: set[str],
     agent_to_execution_facing_tool_name: dict[str, str],
@@ -134,7 +152,7 @@ def response_to_messages(
 
     if response.stop_reason == "tool_use":
         assert len(response.content) > 0 and any(
-            isinstance(content_block, anthropic.types.beta.tools.ToolUseBlock)
+            isinstance(content_block, ToolUseBlock)
             for content_block in response.content
         ), "At least 1 ToolUseBlock content element is needed for tool use, but got 0."
         # The content can have mixed blocks like text and tool use blocks.
@@ -148,7 +166,7 @@ def response_to_messages(
                 available_tool_names=available_tool_names,
             )
             for content_block in response.content
-            if isinstance(content_block, anthropic.types.beta.tools.ToolUseBlock)
+            if isinstance(content_block, ToolUseBlock)
         ]
 
     # No tool use needed. Simply return the text response.
@@ -180,12 +198,12 @@ class AnthropicMessageCollection:
                        https://docs.anthropic.com/claude/docs/system-prompts#how-to-use-system-prompts
     """
 
-    messages: list[anthropic.types.beta.tools.ToolsBetaMessageParam]
+    messages: list[ToolsBetaMessageParam]
     system_prompt: Union[str, anthropic.NotGiven]
 
 
 def has_tool_result_block(
-    anthropic_message: anthropic.types.beta.tools.ToolsBetaMessageParam,
+    anthropic_message: ToolsBetaMessageParam,
 ) -> bool:
     """Check if the given Anthropic API message has a tool result block.
 
@@ -203,7 +221,7 @@ def has_tool_result_block(
 
 def to_anthropic_tool_result_block(
     message: Message,
-) -> anthropic.types.beta.tools.ToolResultBlockParam:
+) -> ToolResultBlockParam:
     """Convert a tool sandbox message to an Anthropic tool result block.
 
     Args:
@@ -214,7 +232,7 @@ def to_anthropic_tool_result_block(
     """
     assert message.openai_tool_call_id is not None
     assert message.openai_function_name is not None
-    return anthropic.types.beta.tools.ToolResultBlockParam(
+    return ToolResultBlockParam(
         tool_use_id=message.openai_tool_call_id,
         type="tool_result",
         content=[anthropic.types.TextBlockParam(text=message.content, type="text")],
@@ -223,7 +241,7 @@ def to_anthropic_tool_result_block(
 
 
 def has_tool_use_block(
-    anthropic_message: anthropic.types.beta.tools.ToolsBetaMessageParam,
+    anthropic_message: ToolsBetaMessageParam,
 ) -> bool:
     """Check if the given Anthropic API message has a tool use block.
 
@@ -234,14 +252,14 @@ def has_tool_use_block(
         True if the message contains at least one tool use, false otherwise.
     """
     return isinstance(anthropic_message, dict) and any(
-        isinstance(block, anthropic.types.beta.tools.ToolUseBlock)
+        isinstance(block, ToolUseBlock)
         for block in anthropic_message["content"]
     )
 
 
 def to_anthropic_tool_use_block(
     message: Message,
-) -> anthropic.types.beta.tools.ToolUseBlock:
+) -> ToolUseBlock:
     """Convert a tool sandbox message to an Anthropic tool use block.
 
     Args:
@@ -255,7 +273,7 @@ def to_anthropic_tool_use_block(
     assert match is not None
     assert message.openai_tool_call_id is not None
     assert message.openai_function_name is not None
-    return anthropic.types.beta.tools.ToolUseBlock(
+    return ToolUseBlock(
         id=message.openai_tool_call_id,
         input=ast.literal_eval(match.group("arguments")),
         name=message.openai_function_name,
@@ -275,7 +293,7 @@ def to_anthropic_message_collection(
     Returns:
         A list of Anthropic API messages and a system prompt.
     """
-    anthropic_messages: list[anthropic.types.beta.tools.ToolsBetaMessageParam] = []
+    anthropic_messages: list[ToolsBetaMessageParam] = []
     # The Anthropic API expects system prompts as a separate argument instead of just
     # providing them via a "system" role like in the OpenAI API. Note that multiple
     # system prompts are not supported.
@@ -289,7 +307,7 @@ def to_anthropic_message_collection(
             system_prompt = message.content
         elif message.sender == RoleType.USER and message.recipient == RoleType.AGENT:
             anthropic_messages.append(
-                anthropic.types.beta.tools.ToolsBetaMessageParam(
+                ToolsBetaMessageParam(
                     content=message.content, role="user"
                 )
             )
@@ -310,7 +328,7 @@ def to_anthropic_message_collection(
                 anthropic_messages[-1]["content"].append(tool_result_block)
             else:
                 anthropic_messages.append(
-                    anthropic.types.beta.tools.ToolsBetaMessageParam(
+                    ToolsBetaMessageParam(
                         content=[tool_result_block], role="user"
                     )
                 )
@@ -330,13 +348,13 @@ def to_anthropic_message_collection(
                 anthropic_messages[-1]["content"].append(tool_use_block)
             else:
                 anthropic_messages.append(
-                    anthropic.types.beta.tools.ToolsBetaMessageParam(
+                    ToolsBetaMessageParam(
                         content=[tool_use_block], role="assistant"
                     )
                 )
         elif message.sender == RoleType.AGENT and message.recipient == RoleType.USER:
             anthropic_messages.append(
-                anthropic.types.beta.tools.ToolsBetaMessageParam(
+                ToolsBetaMessageParam(
                     content=message.content, role="assistant"
                 )
             )
@@ -411,7 +429,7 @@ class AnthropicAPIAgent(BaseRole):
         # pylance tooltip in VSCode correctly says `list[ToolParam] | NotGiven` (even
         # without the cast).
         anthropic_tools = cast(
-            Union[Iterable[anthropic.types.beta.tools.ToolParam], anthropic.NotGiven],
+            Union[Iterable[ToolParam], anthropic.NotGiven],
             anthropic_tools,
         )
         # Convert from tool sandbox message to Anthropic message format.
@@ -443,12 +461,12 @@ class AnthropicAPIAgent(BaseRole):
     )
     def model_inference(
         self,
-        anthropic_messages: list[anthropic.types.beta.tools.ToolsBetaMessageParam],
+        anthropic_messages: list[ToolsBetaMessageParam],
         system: Union[str, anthropic.NotGiven],
         anthropic_tools: Union[
-            Iterable[anthropic.types.beta.tools.ToolParam], anthropic.NotGiven
+            Iterable[ToolParam], anthropic.NotGiven
         ],
-    ) -> anthropic.types.beta.tools.ToolsBetaMessage:
+    ) -> ToolsBetaMessage:
         """Run OpenAI model inference
 
         Args:
@@ -475,7 +493,7 @@ class AnthropicAPIAgent(BaseRole):
         )
         # The `messages.create` return type hint is a union of the tools message and a
         # stream, but this code expects and can only handle the non-streamed response.
-        assert isinstance(response, anthropic.types.beta.tools.ToolsBetaMessage)
+        assert isinstance(response, ToolsBetaMessage)
         return response
 
 

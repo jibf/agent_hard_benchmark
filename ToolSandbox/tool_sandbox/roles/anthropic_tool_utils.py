@@ -11,8 +11,15 @@ with tools in the Anthropic API format.
 """
 
 from typing import Any, Callable
-
-from anthropic.types.beta.tools import ToolParam
+import logging
+try:
+    from anthropic.types.beta.tools import ToolParam
+except ImportError as e:
+    ToolParam = None
+    logging.warning(
+        "Could not import `anthropic.types.beta.tools`. If you need to run anthropic API, "
+        f"please try downgrade anthropic by `pip install anthropic==0.26.1` Error: {e}"
+    )
 
 from tool_sandbox.common.tool_conversion import convert_to_openai_tool
 
