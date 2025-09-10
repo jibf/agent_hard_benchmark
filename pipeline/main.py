@@ -64,6 +64,10 @@ class BenchmarkFilteringPipeline:
             model_kwargs={"torch_dtype": torch.float16},
         )
         self.embedding_batch_size = self.config.get("embedding_batch_size", 8)
+
+        # Whether to embed the concatenation of all initial prompts (system & user)
+        # before the first assistant/tool call, instead of only the last user prompt.
+        self.embed_all_initial_prompts: bool = self.config.get("embed_all_initial_prompts", False)
     
     def _make_json_serializable(self, obj):
         """Make objects JSON serializable by converting enums and other non-serializable types."""
@@ -274,17 +278,33 @@ class BenchmarkFilteringPipeline:
             if not messages_field:
                 continue
 
-            # Extract latest 'user' message before first non-user after system messages
-            msg_content = ""
-            for m in messages_field:
-                if m["role"] == "system":
-                    # Skip system messages at the start
-                    continue
-                if m["role"] == "user":
-                    msg_content = m["content"]  # update latest user candidate
-                    continue
-                # First non-user encountered (assistant/tool etc.)
-                break
+            # Extract text to embed depending on configuration
+            if self.embed_all_initial_prompts:
+                # Concatenate contents of all messages (system & user) **before** the
+                # first assistant/tool (or any non-system/user) message.
+                initial_contents = []
+                for m in messages_field:
+                    role = m.get("role")
+                    if role not in {"system", "user"}:
+                        break  # stop at first assistant/tool/etc.
+                    # Include both system and user prompt contents
+                    if m.get("content"):
+                        initial_contents.append(m["content"].strip())
+                msg_content = "\n".join(initial_contents).strip()
+            else:
+                # Fallback to default behaviour: latest user message before first
+                # assistant/tool message (ignoring leading system messages)
+                msg_content = ""
+                for m in messages_field:
+                    role = m.get("role")
+                    if role == "system":
+                        # Skip system messages at the start
+                        continue
+                    if role == "user":
+                        msg_content = m["content"]
+                        continue  # keep scanning; we want *latest* user before assistant
+                    # Any other role stops the search
+                    break
 
             if not msg_content:
                 continue
@@ -577,6 +597,12 @@ def main():
         default=8,
         help="Batch size when encoding texts for diversity (default: 8)"
     )
+
+    parser.add_argument(
+        "--embed-all-initial-prompts",
+        action="store_true",
+        help="Diversity calculation: If set, embed the concatenation of all initial (system & user) prompts before the first assistant call instead of only the last user prompt."
+    )
     
     args = parser.parse_args()
     
@@ -593,6 +619,7 @@ def main():
         "llm_filter_only": args.llm_filter_only,
         "embedding_model": args.embedding_model,
         "embedding_batch_size": args.embedding_batch_size,
+        "embed_all_initial_prompts": args.embed_all_initial_prompts,
     }
     
     # Validate arguments
