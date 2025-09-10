@@ -217,9 +217,14 @@ class ComprehensiveRuleFilter:
         # - Too hard: Low mean score (<0.2) with low variance (<0.01)
         # - Normal: Everything else (including high variance cases)
         
-        if mean_score > 0.8 and variance < 0.01:
+        # if mean_score > 0.8 and variance < 0.01:
+        #     return 'too_easy'
+        # elif mean_score < 0.2 and variance < 0.01:
+        #     return 'too_hard'
+        # Update to too_easy > 0.9, too_hard < 0.1
+        if mean_score > 0.9:
             return 'too_easy'
-        elif mean_score < 0.2 and variance < 0.01:
+        elif mean_score < 0.1:
             return 'too_hard'
         else:
             return 'normal'
