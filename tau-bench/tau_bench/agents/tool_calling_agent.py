@@ -155,6 +155,8 @@ class ToolCallingAgent(Agent):
             
             if "openai" in self.model:
                 kwargs["model"] = "openai/" + self.model
+            else:
+                kwargs["model"] = self.model
         
         return kwargs
 
@@ -247,7 +249,6 @@ class ToolCallingAgent(Agent):
                 else:
                     res = completion(
                         messages=messages,
-                        model=self.model,
                         **kwargs
                     )
             else:
