@@ -37,6 +37,8 @@ def get_args():
     parser.add_argument("--max-dialog-turns", type=int, default=40, help="Maximum number of dialog turns allowed for agent interactions")
     # Model used by the user role in the agent, it is recommended to use an advanced large model
     parser.add_argument("--user-model", type=str, default="openai/gpt-4o-20240806", help="Model used by the user role in the agent")
+    # Output directory for results
+    parser.add_argument("--output-dir", type=str, default="./", help="Directory to save results (result_all and score_all will be created here)")
     args = parser.parse_args()
     return args
 
@@ -174,9 +176,12 @@ if __name__ == "__main__":
         args.category = [args.category]
 
     
+    # Use output_dir parameter for result paths
+    result_base = os.path.join(args.output_dir, "result_all")
+
     paths = {
-        "zh": {"data_path": "./data_all/data_zh/", "result_path": "./result_all/result_zh/"},
-        "en": {"data_path": "./data_all/data_en/", "result_path": "./result_all/result_en/"},
+        "zh": {"data_path": "./data_all/data_zh/", "result_path": f"{result_base}/result_zh/"},
+        "en": {"data_path": "./data_all/data_en/", "result_path": f"{result_base}/result_en/"},
     }
 
     data_path = paths[args.language]["data_path"]

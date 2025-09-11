@@ -1,3 +1,4 @@
+import os
 import sys
 
 sys.path.append("../")
@@ -560,10 +561,7 @@ def agent_eval_process(model_name, model_results, possible_answers, test_categor
     # Calculate the overall accuracy of all entries
     overall_accuracy = total_accuracy / len(model_results)
     overall_accuracy = round(overall_accuracy, 3)  # Keep two decimal places
-    if language == "zh":
-        file_name = "./score_all/score_zh/" + model_name + "/data_" + test_category + "_process.json"
-    elif language == "en":
-        file_name = "./score_all/score_en/" + model_name + "/data_" + test_category + "_process.json"
+    file_name = os.path.join(OUTPUT_PATH, model_name, f"data_{test_category}_process.json")
     # Write individual_accuracies to JSON file line by line
     with open(file_name, 'w', encoding="utf-8") as f:
         for entry in individual_accuracies:
@@ -677,19 +675,22 @@ def runner(model_names, categories, paths):
     generate_result_csv(RESULT_TABLE, OUTPUT_PATH)
 
 
-def get_paths(language):
+def get_paths(language, output_dir="./"):
+    result_base = os.path.join(output_dir, "result_all")
+    score_base = os.path.join(output_dir, "score_all")
+
     base_paths = {
         "zh": {
-            "INPUT_PATH": "./result_all/result_zh/",
+            "INPUT_PATH": f"{result_base}/result_zh/",
             "PROMPT_PATH": "./data_all/data_zh/",
             "POSSIBLE_ANSWER_PATH": "./data_all/data_zh/possible_answer/",
-            "OUTPUT_PATH": "./score_all/score_zh/"
+            "OUTPUT_PATH": f"{score_base}/score_zh/"
         },
         "en": {
-            "INPUT_PATH": "./result_all/result_en/",
+            "INPUT_PATH": f"{result_base}/result_en/",
             "PROMPT_PATH": "./data_all/data_en/",
             "POSSIBLE_ANSWER_PATH": "./data_all/data_en/possible_answer/",
-            "OUTPUT_PATH": "./score_all/score_en/"
+            "OUTPUT_PATH": f"{score_base}/score_en/"
         }
     }
     return base_paths.get(language)
@@ -710,10 +711,16 @@ if __name__ == "__main__":
         type=str,
         help="A list of test categories to run the evaluation on",
     )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="./",
+        help="Directory containing result_all and where score_all will be created",
+    )
 
     args = parser.parse_args()
 
-    paths = get_paths(args.language)
+    paths = get_paths(args.language, args.output_dir)
 
     if paths:
         INPUT_PATH = paths["INPUT_PATH"]
