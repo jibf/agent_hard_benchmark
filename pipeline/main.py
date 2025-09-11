@@ -391,7 +391,7 @@ class BenchmarkFilteringPipeline:
         
         # Save pipeline outputs
         timestamp = datetime.now().strftime("%m%d_%H%M")
-        results_filename = f"pipeline_results_{timestamp}.jsonl"
+        results_filename = f"pipeline_results/result_{timestamp}.jsonl"
         with open(results_filename, "w") as f:
             for question_id, output in pipeline_outputs.items():
                 result_dict = {
