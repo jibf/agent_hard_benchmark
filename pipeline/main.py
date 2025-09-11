@@ -10,12 +10,16 @@ import json
 import logging
 import argparse
 import numpy as np
+import random
+import matplotlib.pyplot as plt
+import seaborn as sns
 from math import comb
 from typing import Dict, List, Tuple, Optional
 from collections import Counter
 from datetime import datetime
 from sentence_transformers import SentenceTransformer
 import torch
+from sklearn.manifold import TSNE
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -45,6 +49,7 @@ class BenchmarkFilteringPipeline:
         self.config = config or {}
         self.data_loader = BenchmarkDataLoader()
         self.orchestrator = RuleFilteringOrchestrator()
+        self.use_specific_filters = self.config.get('use_specific_filters', False)
         
         self.llm_config = LLMJudgeConfig(
             model=self.config.get("llm_model", "openai/gpt-4.1"),
@@ -108,6 +113,13 @@ class BenchmarkFilteringPipeline:
         diversity_dict = self._compute_diversity(all_responses)
         logger.info(f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}")
 
+        # Calculate model ranking from original dataset for consistent ordering
+        model_ranking = None
+        if not self.config.get('skip_visualization', False):
+            model_ranking = self._calculate_model_ranking(all_responses)
+            self._visualize_model_performance(all_responses, "Original Dataset", "original_performance", model_ranking=model_ranking)
+            self._visualize_diversity(all_responses, "Original Dataset", "original_diversity")
+
         # Step 0: Always apply comprehensive filtering first
         current_responses = all_responses
         if not skip_rule_based:
@@ -124,6 +136,28 @@ class BenchmarkFilteringPipeline:
             for question_id in pipeline_outputs.keys():
                 passed = question_id in step1_passed_questions
                 pipeline_outputs[question_id].rule_based_output = RuleBasedOutput(passed=passed, reason=None)
+
+            # Count unique tasks in step1_passed
+            step1_unique_tasks = self._count_unique_tasks(step1_passed)
+            logger.info(f"Step 1 passed: {len(step1_passed)} samples from {step1_unique_tasks} unique tasks")
+            
+            # Visualize Step 1 filtered performance
+            if not self.config.get('skip_visualization', False):
+                self._visualize_model_performance(step1_passed, "After Step 1 (Rule-based Filtering)", "step1_filtered_performance", model_ranking=model_ranking)
+                self._visualize_diversity(step1_passed, "After Step 1 (Rule-based Filtering)", "step1_filtered_diversity")
+            
+            # Create baseline sample set by randomly sampling N tasks from original samples
+            baseline_samples = self._create_task_wise_baseline_sample_set(all_responses, step1_unique_tasks)
+            logger.info(f"Created task-wise baseline sample set with {len(baseline_samples)} samples from {step1_unique_tasks} tasks")
+            
+            # Compute separability for baseline for comparison
+            baseline_separability = self._compute_separability(baseline_samples)
+            print(f"Benchmark separability for baseline (sample size same as post-step1): {json.dumps(baseline_separability)}")
+            
+            # Visualize baseline performance
+            if not self.config.get('skip_visualization', False):
+                self._visualize_model_performance(baseline_samples, "Baseline (Random Sampling)", "baseline_performance", model_ranking=model_ranking)
+                self._visualize_diversity(baseline_samples, "Baseline (Random Sampling)", "baseline_diversity")
             
             separability_dict = self._compute_separability(step1_passed)
             logger.info(f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}")
@@ -144,11 +178,60 @@ class BenchmarkFilteringPipeline:
                 pipeline_outputs[question_id].llm_judge_output = llm_output
             
             step2_passed_responses = [response for qid in step2_result.keys() for response in responses_by_question.get(qid, [])]
+            
+            # Count unique tasks in step2_passed
+            step2_unique_tasks = self._count_unique_tasks(step2_passed_responses)
+            logger.info(f"Step 2 passed: {len(step2_passed_responses)} samples from {step2_unique_tasks} unique tasks")
+            
+            # Create baseline sample set by randomly sampling N tasks from step1_passed
+            baseline_samples_step1 = self._create_task_wise_baseline_sample_set(current_responses, step2_unique_tasks)
+            baseline_separability = self._compute_separability(baseline_samples_step1)
+            print(f"Benchmark separability for baseline (from step1_passed, sample size same as post-step2): {json.dumps(baseline_separability)}")
+
+            # Create baseline sample set by randomly sampling N tasks from all_samples
+            baseline_samples_all = self._create_task_wise_baseline_sample_set(all_responses, step2_unique_tasks)
+            baseline_separability = self._compute_separability(baseline_samples_all)
+            print(f"Benchmark separability for baseline (from all_samples, sample size same as post-step2): {json.dumps(baseline_separability)}")
+            
             separability_dict = self._compute_separability(step2_passed_responses)
             logger.info(f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}")
-
+            
             diversity_dict = self._compute_diversity(step2_passed_responses)
             logger.info(f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}")
+            
+            # Visualize Step 2 filtered performance
+            if not self.config.get('skip_visualization', False):
+                self._visualize_model_performance(step2_passed_responses, "After Step 2 (LLM-as-Judge Filtering)", "step2_filtered_performance", model_ranking=model_ranking)
+                self._visualize_diversity(step2_passed_responses, "After Step 2 (LLM-as-Judge Filtering)", "step2_filtered_diversity")
+            
+            # Step 3: Top-K selection based on scores
+            if LLMJudgeStep.SCORE in self.llm_config.steps:
+                logger.info("Step 3: Selecting top 50 samples based on total scores")
+                step3_passed_responses = self._run_step3_top_k_selection(step2_result, responses_by_question, 50)
+                
+                # Count unique tasks in step3_passed
+                step3_unique_tasks = self._count_unique_tasks(step3_passed_responses)
+                logger.info(f"Step 3 passed: {len(step3_passed_responses)} samples from {step3_unique_tasks} unique tasks")
+                
+                # Create baseline sample sets for step3 comparison
+                baseline_samples_step2 = self._create_task_wise_baseline_sample_set(step2_passed_responses, step3_unique_tasks)
+                baseline_separability_step2 = self._compute_separability(baseline_samples_step2)
+                print(f"Benchmark separability for baseline (from step2_passed, sample size same as post-step3): {json.dumps(baseline_separability_step2)}")
+                
+                baseline_samples_all_step3 = self._create_task_wise_baseline_sample_set(all_responses, step3_unique_tasks)
+                baseline_separability_all_step3 = self._compute_separability(baseline_samples_all_step3)
+                print(f"Benchmark separability for baseline (from all_samples, sample size same as post-step3): {json.dumps(baseline_separability_all_step3)}")
+                
+                # Compute separability for step3 results
+                separability_dict_step3 = self._compute_separability(step3_passed_responses)
+                print(f"Benchmark separability after Step 3: {json.dumps(separability_dict_step3)}")
+                
+                # Visualize Step 3 filtered performance
+                if not self.config.get('skip_visualization', False):
+                    self._visualize_model_performance(step3_passed_responses, "After Step 3 (Top-K Selection)", "step3_filtered_performance", model_ranking=model_ranking)
+                    self._visualize_diversity(step3_passed_responses, "After Step 3 (Top-K Selection)", "step3_filtered_diversity")
+            else:
+                logger.info("Skipping Step 3: Scoring not enabled")
         else:
             logger.info("Skipping Step 2: LLM-as-Judge filtering")
         
@@ -225,7 +308,7 @@ class BenchmarkFilteringPipeline:
         self._save_unified_step1_results(step1_passed, step1_dropped)
     
 
-    def _compute_separability(self, samples: List[Dict], n_bootstrap: int=100, ci: float=0.95) -> float:
+    def _compute_separability(self, samples: List[Dict], n_bootstrap: int=10000, ci: float=0.95) -> float:
 
         score_dict = {}
         separability_dict = {}
@@ -242,35 +325,28 @@ class BenchmarkFilteringPipeline:
         for benchmark in score_dict:
             # Calculate mean scores for each model
             model_scores = []
-            for model in sorted(score_dict[benchmark].keys()):
-                scores = score_dict[benchmark][model]
-                if scores:  # Only include models with scores
-                    model_scores.append(np.mean(scores))
-                else:
-                    model_scores.append(0.0)  # Default score for models with no data
             
-            score_matrix = np.array(model_scores)
-            num_models = score_matrix.shape[0]
+            models_with_scores = sorted([model for model, scores in score_dict[benchmark].items() if scores])
+            if len(models_with_scores) < 2:
+                separability_dict[benchmark] = 1.0 if len(models_with_scores) < 2 else 0.0
+                continue
+
+            score_matrix = [score_dict[benchmark][model] for model in models_with_scores]
+            num_models = len(score_matrix)
             intervals = []
 
             for i in range(num_models):
-                # For single values, create a confidence interval around the mean
-                if len(score_dict[benchmark][sorted(score_dict[benchmark].keys())[i]]) > 1:
-                    i_ci = self._bootstrap_confidence_interval(
-                        score_dict[benchmark][sorted(score_dict[benchmark].keys())[i]], 
-                        n_bootstrap=n_bootstrap, ci=ci
-                    )
-                else:
-                    # For single values, use the value itself as both bounds
-                    val = score_matrix[i]
-                    i_ci = (val, val)
+                i_ci = self._bootstrap_confidence_interval(
+                    np.array(score_matrix[i]), 
+                    n_bootstrap=n_bootstrap, ci=ci
+                )
                 intervals.append(i_ci)
             intervals.sort(key=lambda x: x[0])
 
             overlapping_pairs = []
             total_pairs = comb(num_models, 2)
             for i in range(len(intervals)):
-                for j in range(i+1, len(intervals)):
+                for j in range(i + 1, len(intervals)):
                     # If the start time of the second interval is less than the end time of the first, they overlap
                     if intervals[j][0] < intervals[i][1]:
                         # Check if the pair is already in the list
@@ -284,6 +360,11 @@ class BenchmarkFilteringPipeline:
         return separability_dict
 
     def _bootstrap_confidence_interval(self, scores: np.ndarray, n_bootstrap: int=100, ci: float=0.95):
+        if len(scores) == 0:
+            return (0, 0)
+        if len(scores) == 1:
+            return (scores[0], scores[0])
+            
         n = len(scores)
         means = []
         for _ in range(n_bootstrap):
@@ -302,63 +383,11 @@ class BenchmarkFilteringPipeline:
         is bounded in [0, 1] per the expression: (2 / (N * (N - 1))) * sum{i<j} [1 - cos(e_i, e_j)]
         where N is the number of samples and cos(·,·) is cosine similarity.
         """
-        # Collect one non-empty user prompt per unique meta.id for each benchmark
-        # Structure: {benchmark: {meta_id: text}}
-        id_to_text_by_benchmark: Dict[str, Dict[str, str]] = {}
-
-        for sample in samples:
-            benchmark_name = str(sample["benchmark_name"])
-
-            # Unique question id (mandatory)
-            meta_id = str(sample["meta"]["id"])
-            if not meta_id:
-                # Skip if meta.id missing
-                continue
-
-            # Already captured non-empty text for this id → skip
-            if meta_id in id_to_text_by_benchmark.get(benchmark_name, {}):
-                continue
-
-            messages_field = sample["messages"]
-            if not messages_field:
-                continue
-
-            # Extract text to embed depending on configuration
-            if self.embed_all_initial_prompts:
-                # Concatenate contents of all messages (system & user) **before** the
-                # first assistant/tool (or any non-system/user) message.
-                initial_contents = []
-                for m in messages_field:
-                    role = m.get("role")
-                    if role not in {"system", "user"}:
-                        break  # stop at first assistant/tool/etc.
-                    # Include both system and user prompt contents
-                    if m.get("content"):
-                        initial_contents.append(m["content"].strip())
-                msg_content = "\n".join(initial_contents).strip()
-            else:
-                # Fallback to default behaviour: latest user message before first
-                # assistant/tool message (ignoring leading system messages)
-                msg_content = ""
-                for m in messages_field:
-                    role = m.get("role")
-                    if role == "system":
-                        # Skip system messages at the start
-                        continue
-                    if role == "user":
-                        msg_content = m["content"]
-                        continue  # keep scanning; we want *latest* user before assistant
-                    # Any other role stops the search
-                    break
-
-            if not msg_content:
-                continue
-
-            id_to_text_by_benchmark.setdefault(benchmark_name, {})[meta_id] = msg_content
+        id_to_data_by_benchmark = self._extract_texts_for_diversity(samples)
 
         diversity_dict: Dict[str, float] = {}
-        for benchmark_name, id_to_text in id_to_text_by_benchmark.items():
-            texts = list(id_to_text.values())
+        for benchmark_name, id_to_data in id_to_data_by_benchmark.items():
+            texts = [data['text'] for data in id_to_data.values()]
             N = len(texts)
             if N < 2:
                 diversity_dict[benchmark_name] = 0.0
@@ -385,13 +414,336 @@ class BenchmarkFilteringPipeline:
 
         return diversity_dict
         
+    def _extract_texts_for_diversity(self, samples: List[Dict]) -> Dict[str, Dict[str, Dict]]:
+        """Helper to extract unique texts and task names from samples for diversity computation/visualization."""
+        id_to_data_by_benchmark: Dict[str, Dict[str, Dict]] = {}
+        for sample in samples:
+            benchmark_name = str(sample["benchmark_name"])
+            meta_id = str(sample["meta"]["id"])
+            if not meta_id or meta_id in id_to_data_by_benchmark.get(benchmark_name, {}):
+                continue
+            
+            messages_field = sample.get("messages")
+            if not messages_field:
+                continue
+            
+            if self.embed_all_initial_prompts:
+                initial_contents = []
+                for m in messages_field:
+                    role = m.get("role")
+                    if role not in {"system", "user"}:
+                        break
+                    if m.get("content"):
+                        initial_contents.append(m["content"].strip())
+                msg_content = "\n".join(initial_contents).strip()
+            else:
+                msg_content = ""
+                for m in messages_field:
+                    role = m.get("role")
+                    if role == "system":
+                        continue
+                    if role == "user":
+                        msg_content = m["content"]
+                        continue
+                    break
+            
+            if msg_content:
+                task_name = sample.get("task_name", "unknown")
+                id_to_data_by_benchmark.setdefault(benchmark_name, {})[meta_id] = {
+                    "text": msg_content,
+                    "task_name": task_name
+                }
+        return id_to_data_by_benchmark
+
+    def _visualize_diversity(self, samples: List[Dict], title: str, filename: str):
+        """Create visualizations for semantic diversity: 2D embedding projection and pairwise distance histogram."""
+        logger.info(f"Creating diversity visualization: {title}")
+        
+        plots_dir = "pipeline_results/plots"
+        os.makedirs(plots_dir, exist_ok=True)
+        
+        id_to_data_by_benchmark = self._extract_texts_for_diversity(samples)
+
+        for benchmark_name, id_to_data in id_to_data_by_benchmark.items():
+            if len(id_to_data) < 2:
+                continue
+
+            texts = [data['text'] for data in id_to_data.values()]
+            task_names = [data['task_name'] for data in id_to_data.values()]
+
+            logger.info(f"Generating diversity plots for {benchmark_name} with {len(texts)} unique questions.")
+            
+            embeddings = self.embedder.encode(
+                texts,
+                batch_size=self.embedding_batch_size,
+                show_progress_bar=True,
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+            )
+
+            # 1. 2D Embedding Representation (t-SNE)
+            if len(embeddings) > 1:
+                tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(embeddings) - 1))
+                embeddings_2d = tsne.fit_transform(embeddings)
+                
+                plt.figure(figsize=(12, 10))
+                
+                unique_task_names = sorted(list(set(task_names)))
+                palette = sns.color_palette("husl", len(unique_task_names))
+                
+                scatter = sns.scatterplot(
+                    x=embeddings_2d[:, 0], 
+                    y=embeddings_2d[:, 1], 
+                    hue=task_names,
+                    hue_order=unique_task_names,
+                    palette=palette,
+                    alpha=0.7, 
+                    edgecolor='none'
+                )
+                
+                plt.title(f'2D t-SNE Embedding Visualization for {benchmark_name}\n({title})', fontsize=14, fontweight='bold')
+                plt.xlabel('t-SNE Component 1', fontsize=12)
+                plt.ylabel('t-SNE Component 2', fontsize=12)
+                plt.grid(True, alpha=0.3)
+                
+                if len(unique_task_names) > 10:
+                    scatter.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
+                    plt.tight_layout(rect=[0, 0, 0.85, 1])
+                else:
+                    scatter.legend(loc='best')
+                    plt.tight_layout()
+
+                safe_benchmark_name = str(benchmark_name).replace('/', '_').replace(' ', '_')
+                plot_filename_tsne = os.path.join(plots_dir, f"{filename}_{safe_benchmark_name}_tsne.png")
+                plt.savefig(plot_filename_tsne, dpi=150, bbox_inches='tight')
+                plt.close()
+                logger.info(f"Saved t-SNE plot: {plot_filename_tsne}")
+
+            # 2. Pairwise Embedding Distance Histogram
+            sim_matrix = np.matmul(embeddings, embeddings.T)
+            triu_indices = np.triu_indices(len(embeddings), k=1)
+            distances = 1 - sim_matrix[triu_indices]
+            
+            plt.figure(figsize=(10, 6))
+            sns.histplot(distances, bins=50, kde=True)
+            mean_dist = np.mean(distances)
+            median_dist = np.median(distances)
+            plt.axvline(mean_dist, color='r', linestyle='--', label=f'Mean: {mean_dist:.3f}')
+            plt.axvline(median_dist, color='g', linestyle='-', label=f'Median: {median_dist:.3f}')
+            
+            plt.title(f'Pairwise Embedding Distance Histogram for {benchmark_name}\n({title})', fontsize=14, fontweight='bold')
+            plt.xlabel('Cosine Distance (1 - Cosine Similarity)', fontsize=12)
+            plt.ylabel('Frequency', fontsize=12)
+            plt.legend()
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
+            
+            safe_benchmark_name = str(benchmark_name).replace('/', '_').replace(' ', '_')
+            plot_filename_hist = os.path.join(plots_dir, f"{filename}_{safe_benchmark_name}_distance_hist.png")
+            plt.savefig(plot_filename_hist, dpi=150)
+            plt.close()
+            logger.info(f"Saved distance histogram: {plot_filename_hist}")
+
+    def _calculate_model_ranking(self, samples: List[Dict]) -> Dict[str, List[str]]:
+        """Calculate model ranking based on performance for consistent ordering across visualizations."""
+        benchmark_data = {}
+        for sample in samples:
+            benchmark_name = str(sample["benchmark_name"])
+            model_name = sample["model_path"]
+            score = sample["eval_result"]["score"]
+            
+            if benchmark_name not in benchmark_data:
+                benchmark_data[benchmark_name] = {}
+            if model_name not in benchmark_data[benchmark_name]:
+                benchmark_data[benchmark_name][model_name] = []
+            benchmark_data[benchmark_name][model_name].append(score)
+        
+        # Calculate ranking for each benchmark
+        model_ranking = {}
+        for benchmark_name, model_scores in benchmark_data.items():
+            model_means = {}
+            for model_name, scores in model_scores.items():
+                model_means[model_name] = np.mean(scores)
+            # Sort by performance (descending)
+            model_ranking[benchmark_name] = sorted(model_means.keys(), key=lambda x: model_means[x], reverse=True)
+        
+        return model_ranking
+
+    def _visualize_model_performance(self, samples: List[Dict], title: str, filename: str, n_bootstrap: int=100, ci: float=0.95, model_ranking: Dict[str, List[str]] = None):
+        """Create bar graph visualization of model-wise performance with confidence intervals."""
+        logger.info(f"Creating visualization: {title}")
+        
+        # Create output directory for plots
+        plots_dir = "pipeline_results/plots"
+        os.makedirs(plots_dir, exist_ok=True)
+        
+        # Group samples by benchmark
+        benchmark_data = {}
+        for sample in samples:
+            benchmark_name = str(sample["benchmark_name"])
+            model_name = sample["model_path"]
+            score = sample["eval_result"]["score"]
+            
+            if benchmark_name not in benchmark_data:
+                benchmark_data[benchmark_name] = {}
+            if model_name not in benchmark_data[benchmark_name]:
+                benchmark_data[benchmark_name][model_name] = []
+            benchmark_data[benchmark_name][model_name].append(score)
+        
+        # Create separate plots for each benchmark
+        for benchmark_name, model_scores in benchmark_data.items():
+            # Determine model ordering
+            if model_ranking and benchmark_name in model_ranking:
+                # Use provided ranking, but only include models that exist in current data
+                available_models = set(model_scores.keys())
+                ordered_models = [model for model in model_ranking[benchmark_name] if model in available_models]
+                # Add any models not in ranking at the end
+                remaining_models = sorted(available_models - set(ordered_models))
+                model_order = ordered_models + remaining_models
+            else:
+                # Calculate ranking based on current data (for original dataset)
+                model_means = {}
+                for model_name, scores in model_scores.items():
+                    model_means[model_name] = np.mean(scores)
+                model_order = sorted(model_means.keys(), key=lambda x: model_means[x], reverse=True)
+            
+            # Calculate means and confidence intervals for each model in the determined order
+            model_names = []
+            means = []
+            ci_lowers = []
+            ci_uppers = []
+            
+            for model_name in model_order:
+                scores = np.array(model_scores[model_name])
+                mean_score = np.mean(scores)
+                ci_lower, ci_upper = self._bootstrap_confidence_interval(scores, n_bootstrap, ci)
+                
+                model_names.append(model_name)
+                means.append(mean_score)
+                ci_lowers.append(ci_lower)
+                ci_uppers.append(ci_upper)
+            
+            # Create the plot with smaller figure size
+            plt.figure(figsize=(10, 6))
+            x_pos = np.arange(len(model_names))
+            
+            # Create bars with error bars
+            bars = plt.bar(x_pos, means, yerr=[np.array(means) - np.array(ci_lowers), 
+                                              np.array(ci_uppers) - np.array(means)], 
+                          capsize=3, alpha=0.7, color='skyblue', edgecolor='navy', linewidth=0.8)
+            
+            # Customize the plot
+            plt.xlabel('Model', fontsize=10, fontweight='bold')
+            plt.ylabel('Performance Score', fontsize=10, fontweight='bold')
+            plt.title(f'{title} - {benchmark_name}\nModel Performance with {int(ci*100)}% Confidence Intervals', 
+                     fontsize=12, fontweight='bold', pad=15)
+            
+            # Set x-axis labels
+            plt.xticks(x_pos, model_names, rotation=45, ha='right', fontsize=9)
+            
+            # Add value labels on top of bars (smaller font)
+            for bar, mean, ci_low, ci_high in zip(bars, means, ci_lowers, ci_uppers):
+                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + (ci_high - mean) + 0.005,
+                        f'{mean:.3f}\n[{ci_low:.3f}, {ci_high:.3f}]',
+                        ha='center', va='bottom', fontsize=7, fontweight='bold')
+            
+            # Add grid for better readability
+            plt.grid(True, alpha=0.3, axis='y')
+            
+            # Adjust layout to prevent label cutoff
+            plt.tight_layout()
+            
+            # Save the plot with reduced DPI
+            safe_benchmark_name = benchmark_name.replace('/', '_').replace(' ', '_')
+            plot_filename = os.path.join(plots_dir, f"{filename}_{safe_benchmark_name}.png")
+            plt.savefig(plot_filename, dpi=150, bbox_inches='tight', 
+                       facecolor='white', edgecolor='none', 
+                       format='png')
+            plt.close()
+            
+            logger.info(f"Saved plot: {plot_filename}")
+            
+            # Print summary statistics
+            logger.info(f"\n{benchmark_name} - Model Performance Summary:")
+            logger.info("=" * 60)
+            for model_name, mean, ci_low, ci_high in zip(model_names, means, ci_lowers, ci_uppers):
+                logger.info(f"{model_name:30} | Mean: {mean:.4f} | CI: [{ci_low:.4f}, {ci_high:.4f}]")
+
+    def _count_unique_tasks(self, samples: List[Dict]) -> int:
+        """Count unique tasks in samples."""
+        task_ids = set()
+        for sample in samples:
+            task_id = self._extract_task_id(sample)
+            task_ids.add(task_id)
+        return len(task_ids)
+    
+    def _extract_task_id(self, sample: Dict) -> str:
+        """Extract a unique task identifier from a sample."""
+        # Use the same logic as in comprehensive_rule_filtering.py
+        if 'task_name' in sample and 'meta' in sample and 'id' in sample['meta']:
+            return sample['task_name'] + "_" + sample['meta']['id']
+        elif 'task_name' in sample:
+            return sample['task_name']
+        elif 'question' in sample:
+            return sample['question']
+        elif 'prompt' in sample:
+            return sample['prompt']
+        elif 'messages' in sample and sample['messages']:
+            # Use first message content as task identifier
+            first_msg = sample['messages'][0]
+            if isinstance(first_msg, dict) and 'content' in first_msg:
+                return first_msg['content'][:100]  # First 100 chars
+        elif 'conversation' in sample and sample['conversation']:
+            # Use first turn as task identifier
+            first_turn = sample['conversation'][0]
+            if isinstance(first_turn, dict) and 'content' in first_turn:
+                return first_turn['content'][:100]
+        
+        # Fallback: use a hash of the entire sample
+        import hashlib
+        return hashlib.md5(json.dumps(sample, sort_keys=True).encode()).hexdigest()
+    
+    def _create_task_wise_baseline_sample_set(self, all_samples: List[Dict], target_task_count: int) -> List[Dict]:
+        """Create a baseline sample set by randomly sampling N tasks from original samples."""
+        logger.info(f"Creating task-wise baseline: sampling {target_task_count} tasks from {len(all_samples)} total samples")
+        
+        # Group samples by task
+        task_groups = {}
+        for sample in all_samples:
+            task_id = self._extract_task_id(sample)
+            if task_id not in task_groups:
+                task_groups[task_id] = []
+            task_groups[task_id].append(sample)
+        
+        total_tasks = len(task_groups)
+        logger.info(f"Found {total_tasks} unique tasks in dataset")
+        
+        if target_task_count >= total_tasks:
+            logger.info("Target task count >= total tasks, returning all samples")
+            return all_samples.copy()
+        
+        # Use random sampling with a fixed seed for reproducibility
+        random.seed(42)
+        selected_task_ids = random.sample(list(task_groups.keys()), target_task_count)
+        random.seed()  # Reset seed
+        
+        # Collect all samples for selected tasks
+        baseline_samples = []
+        for task_id in selected_task_ids:
+            baseline_samples.extend(task_groups[task_id])
+        
+        logger.info(f"Task-wise baseline created: {len(baseline_samples)} samples from {len(selected_task_ids)} tasks")
+        return baseline_samples
+        
     def _save_results(self, pipeline_outputs: Dict[UniqueQuestionID, PipelineOutput]):
         """Save results for the pipeline."""
         logger.info("Saving pipeline results...")
         
         # Save pipeline outputs
         timestamp = datetime.now().strftime("%m%d_%H%M")
-        results_filename = f"pipeline_results/result_{timestamp}.jsonl"
+        output_dir = "pipeline_results"
+        os.makedirs(output_dir, exist_ok=True)
+        results_filename = os.path.join(output_dir, f"result_{timestamp}.jsonl")
         with open(results_filename, "w") as f:
             for question_id, output in pipeline_outputs.items():
                 result_dict = {
@@ -565,6 +917,37 @@ class BenchmarkFilteringPipeline:
             
         return results 
     
+    def _run_step3_top_k_selection(self, step2_result: Dict[UniqueQuestionID, LLMJudgeOutput], 
+                                  responses_by_question: Dict[UniqueQuestionID, List[Dict]], 
+                                  top_k: int) -> List[Dict]:
+        """Select top-K samples based on total scores from LLM judge results."""
+        
+        # Create list of (question_id, total_score) pairs
+        scored_questions = []
+        for question_id, llm_output in step2_result.items():
+            if llm_output.scores and 'total_score' in llm_output.scores:
+                total_score = llm_output.scores['total_score']
+                scored_questions.append((question_id, total_score))
+            else:
+                logger.warning(f"No total_score found for question {question_id}")
+        
+        # Sort by total_score in descending order and select top-K
+        scored_questions.sort(key=lambda x: x[1], reverse=True)
+        top_k_questions = [q[0] for q in scored_questions[:top_k]]
+        
+        logger.info(f"Selected top {len(top_k_questions)} questions out of {len(scored_questions)} scored questions")
+        if scored_questions:
+            logger.info(f"Score range: {scored_questions[0][1]:.3f} (highest) to {scored_questions[-1][1]:.3f} (lowest)")
+            if top_k_questions:
+                logger.info(f"Top-K score range: {scored_questions[0][1]:.3f} to {scored_questions[top_k-1][1]:.3f}")
+        
+        # Collect responses for selected questions
+        step3_responses = []
+        for question_id in top_k_questions:
+            step3_responses.extend(responses_by_question.get(question_id, []))
+        
+        return step3_responses
+    
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Benchmark Filtering Pipeline")
@@ -620,8 +1003,13 @@ def main():
     parser.add_argument(
         "--llm-filter-only", 
         action="store_true", 
-        default=True,
+        default=False,
         help="Run only LLM filtering step, skip scoring step"
+    )
+    parser.add_argument(
+        "--skip-visualization", 
+        action="store_true", 
+        help="Skip creating performance visualization plots"
     )
     parser.add_argument(
         "--embedding-model",
@@ -653,6 +1041,7 @@ def main():
         "num_proc": args.num_proc,
         "target_benchmark": args.target_benchmark,
         "llm_filter_only": args.llm_filter_only,
+        "skip_visualization": args.skip_visualization,
         "embedding_model": args.embedding_model,
         "embedding_batch_size": args.embedding_batch_size,
         "embed_all_initial_prompts": args.embed_all_initial_prompts,
