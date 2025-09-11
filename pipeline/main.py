@@ -19,6 +19,7 @@ from collections import Counter
 from datetime import datetime
 from sentence_transformers import SentenceTransformer
 import torch
+from sklearn.manifold import TSNE
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -116,6 +117,7 @@ class BenchmarkFilteringPipeline:
         if not self.config.get('skip_visualization', False):
             model_ranking = self._calculate_model_ranking(all_responses)
             self._visualize_model_performance(all_responses, "Original Dataset", "original_performance", model_ranking=model_ranking)
+            self._visualize_diversity(all_responses, "Original Dataset", "original_diversity")
 
         # Step 1: Rule-based filtering
         current_responses = all_responses
@@ -137,6 +139,7 @@ class BenchmarkFilteringPipeline:
             # Visualize Step 1 filtered performance
             if not self.config.get('skip_visualization', False):
                 self._visualize_model_performance(step1_passed, "After Step 1 (Rule-based Filtering)", "step1_filtered_performance", model_ranking=model_ranking)
+                self._visualize_diversity(step1_passed, "After Step 1 (Rule-based Filtering)", "step1_filtered_diversity")
             
             # Create baseline sample set by randomly sampling N tasks from original samples
             baseline_samples = self._create_task_wise_baseline_sample_set(all_responses, step1_unique_tasks)
@@ -149,6 +152,7 @@ class BenchmarkFilteringPipeline:
             # Visualize baseline performance
             if not self.config.get('skip_visualization', False):
                 self._visualize_model_performance(baseline_samples, "Baseline (Random Sampling)", "baseline_performance", model_ranking=model_ranking)
+                self._visualize_diversity(baseline_samples, "Baseline (Random Sampling)", "baseline_diversity")
             
             # baseline_samples = self._create_task_wise_baseline_sample_set(all_responses, 80)
             # logger.info(f"Created task-wise baseline sample set with {len(baseline_samples)} samples from 80 tasks")
@@ -200,6 +204,7 @@ class BenchmarkFilteringPipeline:
             # Visualize Step 2 filtered performance
             if not self.config.get('skip_visualization', False):
                 self._visualize_model_performance(step2_passed_responses, "After Step 2 (LLM-as-Judge Filtering)", "step2_filtered_performance", model_ranking=model_ranking)
+                self._visualize_diversity(step2_passed_responses, "After Step 2 (LLM-as-Judge Filtering)", "step2_filtered_diversity")
             
             # Step 3: Top-K selection based on scores
             if LLMJudgeStep.SCORE in self.llm_config.steps:
@@ -226,6 +231,7 @@ class BenchmarkFilteringPipeline:
                 # Visualize Step 3 filtered performance
                 if not self.config.get('skip_visualization', False):
                     self._visualize_model_performance(step3_passed_responses, "After Step 3 (Top-K Selection)", "step3_filtered_performance", model_ranking=model_ranking)
+                    self._visualize_diversity(step3_passed_responses, "After Step 3 (Top-K Selection)", "step3_filtered_diversity")
             else:
                 logger.info("Skipping Step 3: Scoring not enabled")
         else:
@@ -340,59 +346,7 @@ class BenchmarkFilteringPipeline:
         is bounded in [0, 1] per the expression: (2 / (N * (N - 1))) * sum{i<j} [1 - cos(e_i, e_j)]
         where N is the number of samples and cos(·,·) is cosine similarity.
         """
-        # Collect one non-empty user prompt per unique meta.id for each benchmark
-        # Structure: {benchmark: {meta_id: text}}
-        id_to_text_by_benchmark: Dict[str, Dict[str, str]] = {}
-
-        for sample in samples:
-            benchmark_name = sample["benchmark_name"]
-
-            # Unique question id (mandatory)
-            meta_id = str(sample["meta"]["id"])
-            if not meta_id:
-                # Skip if meta.id missing
-                continue
-
-            # Already captured non-empty text for this id → skip
-            if meta_id in id_to_text_by_benchmark.get(benchmark_name, {}):
-                continue
-
-            messages_field = sample["messages"]
-            if not messages_field:
-                continue
-
-            # Extract text to embed depending on configuration
-            if self.embed_all_initial_prompts:
-                # Concatenate contents of all messages (system & user) **before** the
-                # first assistant/tool (or any non-system/user) message.
-                initial_contents = []
-                for m in messages_field:
-                    role = m.get("role")
-                    if role not in {"system", "user"}:
-                        break  # stop at first assistant/tool/etc.
-                    # Include both system and user prompt contents
-                    if m.get("content"):
-                        initial_contents.append(m["content"].strip())
-                msg_content = "\n".join(initial_contents).strip()
-            else:
-                # Fallback to default behaviour: latest user message before first
-                # assistant/tool message (ignoring leading system messages)
-                msg_content = ""
-                for m in messages_field:
-                    role = m.get("role")
-                    if role == "system":
-                        # Skip system messages at the start
-                        continue
-                    if role == "user":
-                        msg_content = m["content"]
-                        continue  # keep scanning; we want *latest* user before assistant
-                    # Any other role stops the search
-                    break
-
-            if not msg_content:
-                continue
-
-            id_to_text_by_benchmark.setdefault(benchmark_name, {})[meta_id] = msg_content
+        id_to_text_by_benchmark = self._extract_texts_for_diversity(samples)
 
         diversity_dict: Dict[str, float] = {}
         for benchmark_name, id_to_text in id_to_text_by_benchmark.items():
@@ -422,6 +376,111 @@ class BenchmarkFilteringPipeline:
             diversity_dict[benchmark_name] = float(avg_distance)
 
         return diversity_dict
+        
+    def _extract_texts_for_diversity(self, samples: List[Dict]) -> Dict[str, Dict[str, str]]:
+        """Helper to extract unique texts from samples for diversity computation/visualization."""
+        id_to_text_by_benchmark: Dict[str, Dict[str, str]] = {}
+        for sample in samples:
+            benchmark_name = sample["benchmark_name"]
+            meta_id = str(sample["meta"]["id"])
+            if not meta_id or meta_id in id_to_text_by_benchmark.get(benchmark_name, {}):
+                continue
+            
+            messages_field = sample.get("messages")
+            if not messages_field:
+                continue
+            
+            if self.embed_all_initial_prompts:
+                initial_contents = []
+                for m in messages_field:
+                    role = m.get("role")
+                    if role not in {"system", "user"}:
+                        break
+                    if m.get("content"):
+                        initial_contents.append(m["content"].strip())
+                msg_content = "\n".join(initial_contents).strip()
+            else:
+                msg_content = ""
+                for m in messages_field:
+                    role = m.get("role")
+                    if role == "system":
+                        continue
+                    if role == "user":
+                        msg_content = m["content"]
+                        continue
+                    break
+            
+            if msg_content:
+                id_to_text_by_benchmark.setdefault(benchmark_name, {})[meta_id] = msg_content
+        return id_to_text_by_benchmark
+
+    def _visualize_diversity(self, samples: List[Dict], title: str, filename: str):
+        """Create visualizations for semantic diversity: 2D embedding projection and pairwise distance histogram."""
+        logger.info(f"Creating diversity visualization: {title}")
+        
+        plots_dir = "pipeline_results/plots"
+        os.makedirs(plots_dir, exist_ok=True)
+        
+        id_to_text_by_benchmark = self._extract_texts_for_diversity(samples)
+
+        for benchmark_name, id_to_text in id_to_text_by_benchmark.items():
+            texts = list(id_to_text.values())
+            if len(texts) < 2:
+                continue
+
+            logger.info(f"Generating diversity plots for {benchmark_name} with {len(texts)} unique questions.")
+            
+            embeddings = self.embedder.encode(
+                texts,
+                batch_size=self.embedding_batch_size,
+                show_progress_bar=True,
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+            )
+
+            # 1. 2D Embedding Representation (t-SNE)
+            if len(embeddings) > 1:
+                tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(embeddings) - 1))
+                embeddings_2d = tsne.fit_transform(embeddings)
+                
+                plt.figure(figsize=(10, 8))
+                sns.scatterplot(x=embeddings_2d[:, 0], y=embeddings_2d[:, 1], alpha=0.7, edgecolor='none')
+                plt.title(f'2D t-SNE Embedding Visualization for {benchmark_name}\n({title})', fontsize=14, fontweight='bold')
+                plt.xlabel('t-SNE Component 1', fontsize=12)
+                plt.ylabel('t-SNE Component 2', fontsize=12)
+                plt.grid(True, alpha=0.3)
+                plt.tight_layout()
+                
+                safe_benchmark_name = benchmark_name.replace('/', '_').replace(' ', '_')
+                plot_filename_tsne = os.path.join(plots_dir, f"{filename}_{safe_benchmark_name}_tsne.png")
+                plt.savefig(plot_filename_tsne, dpi=150)
+                plt.close()
+                logger.info(f"Saved t-SNE plot: {plot_filename_tsne}")
+
+            # 2. Pairwise Embedding Distance Histogram
+            sim_matrix = np.matmul(embeddings, embeddings.T)
+            triu_indices = np.triu_indices(len(embeddings), k=1)
+            distances = 1 - sim_matrix[triu_indices]
+            
+            plt.figure(figsize=(10, 6))
+            sns.histplot(distances, bins=50, kde=True)
+            mean_dist = np.mean(distances)
+            median_dist = np.median(distances)
+            plt.axvline(mean_dist, color='r', linestyle='--', label=f'Mean: {mean_dist:.3f}')
+            plt.axvline(median_dist, color='g', linestyle='-', label=f'Median: {median_dist:.3f}')
+            
+            plt.title(f'Pairwise Embedding Distance Histogram for {benchmark_name}\n({title})', fontsize=14, fontweight='bold')
+            plt.xlabel('Cosine Distance (1 - Cosine Similarity)', fontsize=12)
+            plt.ylabel('Frequency', fontsize=12)
+            plt.legend()
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
+            
+            safe_benchmark_name = benchmark_name.replace('/', '_').replace(' ', '_')
+            plot_filename_hist = os.path.join(plots_dir, f"{filename}_{safe_benchmark_name}_distance_hist.png")
+            plt.savefig(plot_filename_hist, dpi=150)
+            plt.close()
+            logger.info(f"Saved distance histogram: {plot_filename_hist}")
 
     def _calculate_model_ranking(self, samples: List[Dict]) -> Dict[str, List[str]]:
         """Calculate model ranking based on performance for consistent ordering across visualizations."""
