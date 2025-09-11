@@ -346,11 +346,11 @@ class BenchmarkFilteringPipeline:
         is bounded in [0, 1] per the expression: (2 / (N * (N - 1))) * sum{i<j} [1 - cos(e_i, e_j)]
         where N is the number of samples and cos(·,·) is cosine similarity.
         """
-        id_to_text_by_benchmark = self._extract_texts_for_diversity(samples)
+        id_to_data_by_benchmark = self._extract_texts_for_diversity(samples)
 
         diversity_dict: Dict[str, float] = {}
-        for benchmark_name, id_to_text in id_to_text_by_benchmark.items():
-            texts = list(id_to_text.values())
+        for benchmark_name, id_to_data in id_to_data_by_benchmark.items():
+            texts = [data['text'] for data in id_to_data.values()]
             N = len(texts)
             if N < 2:
                 diversity_dict[benchmark_name] = 0.0
@@ -377,13 +377,13 @@ class BenchmarkFilteringPipeline:
 
         return diversity_dict
         
-    def _extract_texts_for_diversity(self, samples: List[Dict]) -> Dict[str, Dict[str, str]]:
-        """Helper to extract unique texts from samples for diversity computation/visualization."""
-        id_to_text_by_benchmark: Dict[str, Dict[str, str]] = {}
+    def _extract_texts_for_diversity(self, samples: List[Dict]) -> Dict[str, Dict[str, Dict]]:
+        """Helper to extract unique texts and task names from samples for diversity computation/visualization."""
+        id_to_data_by_benchmark: Dict[str, Dict[str, Dict]] = {}
         for sample in samples:
             benchmark_name = sample["benchmark_name"]
             meta_id = str(sample["meta"]["id"])
-            if not meta_id or meta_id in id_to_text_by_benchmark.get(benchmark_name, {}):
+            if not meta_id or meta_id in id_to_data_by_benchmark.get(benchmark_name, {}):
                 continue
             
             messages_field = sample.get("messages")
@@ -411,8 +411,12 @@ class BenchmarkFilteringPipeline:
                     break
             
             if msg_content:
-                id_to_text_by_benchmark.setdefault(benchmark_name, {})[meta_id] = msg_content
-        return id_to_text_by_benchmark
+                task_name = sample.get("task_name", "unknown")
+                id_to_data_by_benchmark.setdefault(benchmark_name, {})[meta_id] = {
+                    "text": msg_content,
+                    "task_name": task_name
+                }
+        return id_to_data_by_benchmark
 
     def _visualize_diversity(self, samples: List[Dict], title: str, filename: str):
         """Create visualizations for semantic diversity: 2D embedding projection and pairwise distance histogram."""
@@ -421,12 +425,14 @@ class BenchmarkFilteringPipeline:
         plots_dir = "pipeline_results/plots"
         os.makedirs(plots_dir, exist_ok=True)
         
-        id_to_text_by_benchmark = self._extract_texts_for_diversity(samples)
+        id_to_data_by_benchmark = self._extract_texts_for_diversity(samples)
 
-        for benchmark_name, id_to_text in id_to_text_by_benchmark.items():
-            texts = list(id_to_text.values())
-            if len(texts) < 2:
+        for benchmark_name, id_to_data in id_to_data_by_benchmark.items():
+            if len(id_to_data) < 2:
                 continue
+
+            texts = [data['text'] for data in id_to_data.values()]
+            task_names = [data['task_name'] for data in id_to_data.values()]
 
             logger.info(f"Generating diversity plots for {benchmark_name} with {len(texts)} unique questions.")
             
@@ -443,17 +449,36 @@ class BenchmarkFilteringPipeline:
                 tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(embeddings) - 1))
                 embeddings_2d = tsne.fit_transform(embeddings)
                 
-                plt.figure(figsize=(10, 8))
-                sns.scatterplot(x=embeddings_2d[:, 0], y=embeddings_2d[:, 1], alpha=0.7, edgecolor='none')
+                plt.figure(figsize=(12, 10))
+                
+                unique_task_names = sorted(list(set(task_names)))
+                palette = sns.color_palette("husl", len(unique_task_names))
+                
+                scatter = sns.scatterplot(
+                    x=embeddings_2d[:, 0], 
+                    y=embeddings_2d[:, 1], 
+                    hue=task_names,
+                    hue_order=unique_task_names,
+                    palette=palette,
+                    alpha=0.7, 
+                    edgecolor='none'
+                )
+                
                 plt.title(f'2D t-SNE Embedding Visualization for {benchmark_name}\n({title})', fontsize=14, fontweight='bold')
                 plt.xlabel('t-SNE Component 1', fontsize=12)
                 plt.ylabel('t-SNE Component 2', fontsize=12)
                 plt.grid(True, alpha=0.3)
-                plt.tight_layout()
                 
+                if len(unique_task_names) > 10:
+                    scatter.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
+                    plt.tight_layout(rect=[0, 0, 0.85, 1])
+                else:
+                    scatter.legend(loc='best')
+                    plt.tight_layout()
+
                 safe_benchmark_name = benchmark_name.replace('/', '_').replace(' ', '_')
                 plot_filename_tsne = os.path.join(plots_dir, f"{filename}_{safe_benchmark_name}_tsne.png")
-                plt.savefig(plot_filename_tsne, dpi=150)
+                plt.savefig(plot_filename_tsne, dpi=150, bbox_inches='tight')
                 plt.close()
                 logger.info(f"Saved t-SNE plot: {plot_filename_tsne}")
 
