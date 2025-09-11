@@ -1,18 +1,14 @@
 from typing import List, Literal, Type, Optional
-
 import argparse
-
 from functools import partial
-
 from time import time
-
 from os import environ
-
 import json
-
 from multiprocessing import Pool
-
 from tqdm import tqdm
+import json
+from pathlib import Path
+from datetime import datetime
 
 from rich.console import Console
 from rich.table import Table
@@ -99,6 +95,108 @@ class BenchmarkRunner:
             )
 
         return [result for result in all_results if result is not None]
+
+    def save_results_locally(self, results, output_dir: str):
+        """Save benchmark results to local directory using same processing logic as upload_predictions"""
+
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        # Create summary data
+        summary_data = {
+            "model": self.model,
+            "client": self.client,
+            "timestamp": datetime.now().isoformat(),
+            "results": {}
+        }
+
+        for benchmark_class, metrics, correct_calls, time_taken_s in results:
+            benchmark_name = benchmark_class.__name__
+
+            # Use the same data processing logic as upload_predictions
+            # Filter out calls that are not proper dict results (e.g. Exception instances)
+            valid_pairs = []  # (call_dict, prompt_completion_dict)
+            for call in correct_calls:
+                if not isinstance(call, dict):
+                    continue
+                if "context" not in call:
+                    continue
+                try:
+                    prompt_ctx = self.prompter.get_prompt_completions_from_context(call["context"])
+                except Exception as e:  # pragma: no cover – defensive; skip bad contexts
+                    print(f"Skipping result during save due to context parsing error: {e}")
+                    continue
+                valid_pairs.append((call, prompt_ctx))
+
+            if not valid_pairs:
+                print(f"No valid benchmark results for {benchmark_name} – skipping save.")
+                continue
+
+            # Separate the two lists after validation
+            correct_calls_filtered, context_history = zip(*valid_pairs)
+
+            # Convert to mutable lists
+            correct_calls_filtered = list(correct_calls_filtered)
+            context_history = list(context_history)
+
+            # Normalize context_history keys (same as upload_predictions)
+            max_keys_dict = max(
+                context_history, key=lambda d: len(d) if isinstance(d, dict) else 0
+            )
+            all_keys = list(max_keys_dict.keys())
+            for d in context_history:
+                for key in all_keys:
+                    if key not in d:
+                        d[key] = None
+
+            # Merge context history with call data (same as upload_predictions)
+            processed_samples = [
+                {
+                    **d,
+                    **{
+                        k: call[k]
+                        for k in call
+                        if k != "context"
+                    },
+                }
+                for d, call in zip(context_history, correct_calls_filtered)
+            ]
+
+            # Convert all values to strings (same as upload_predictions)
+            for item in processed_samples:
+                for k, v in item.items():
+                    item[k] = str(v)
+
+            # Save benchmark-specific results
+            benchmark_data = {
+                "metrics": metrics,
+                "time_taken_seconds": time_taken_s,
+                "total_samples": len(correct_calls),
+                "valid_samples": len(processed_samples),
+                "successful_samples": len([call for call in correct_calls_filtered if isinstance(call, dict) and call.get("is_correct", False)])
+            }
+
+            summary_data["results"][benchmark_name] = benchmark_data
+
+            # Save detailed results for this benchmark (using processed samples)
+            detailed_file = output_path / f"{benchmark_name}_detailed.json"
+            detailed_data = {
+                "benchmark": benchmark_name,
+                "model": self.model,
+                "metrics": metrics,
+                "time_taken_seconds": time_taken_s,
+                "samples": processed_samples
+            }
+
+            with open(detailed_file, 'w') as f:
+                json.dump(detailed_data, f, indent=2, ensure_ascii=False)
+
+        # Save overall summary
+        summary_file = output_path / "benchmark_summary.json"
+        with open(summary_file, 'w') as f:
+            json.dump(summary_data, f, indent=2, ensure_ascii=False)
+
+        print(f"Results saved to {output_path}")
 
     def upload_predictions(self, results):
         # Results returned by `run_single_benchmark` include `time_taken_s` as the fourth element.
@@ -288,6 +386,12 @@ def main():
         help="Hugging Face namespace/owner under which to upload datasets",
         default=None,
     )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        help="Directory to save local benchmark results",
+        default=None,
+    )
 
     args = parser.parse_args()
 
@@ -349,6 +453,9 @@ Running {runner.num_samples_parallel} samples per benchmark in parallel
 """
     )
     accuracies = runner.run_benchmarks(all_benchmarks, args.limit)
+
+    if args.output_dir:
+        runner.save_results_locally(accuracies, args.output_dir)
 
     if args.upload:
         runner.upload_predictions(accuracies)
