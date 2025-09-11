@@ -2,6 +2,7 @@ from enum import Enum
 from pydantic import BaseModel
 from typing import Optional, Dict, List
 import re
+import json
 
 class Benchmark(Enum):
     TAU_BENCH = "tau-bench"
@@ -13,6 +14,9 @@ class Benchmark(Enum):
     DRAFTER_BENCH = "DrafterBench"
     BFCL = "BFCL"
     MULTI_CHALLENGE = "multi_challenge"
+    
+    def __str__(self):
+        return self.value
 
 
 class UniqueQuestionID(BaseModel):
@@ -130,3 +134,5 @@ class PipelineOutput(BaseModel):
 class LLMJudgeStep(Enum):
     FILTER = "filter"
     SCORE = "score"
+
+

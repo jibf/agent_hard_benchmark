@@ -555,12 +555,9 @@ class BenchmarkFilteringPipeline:
         if benchmark_name not in list(benchmark.value for benchmark in Benchmark):
             raise ValueError(f"Invalid benchmark name {benchmark_name}")
         
-        def normalize_name(name: str) -> str:
-            return name.lower().replace('-', '').replace('_', '')
-        
         result = []
         for response in responses:
-            if normalize_name(response['benchmark_name']) == normalize_name(benchmark_name):
+            if response['benchmark_name'].value == benchmark_name:  # benchmark_name is enum, compare with .value
                 result.append(response)
         return result
 

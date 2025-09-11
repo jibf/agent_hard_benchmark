@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional
 import logging
+from src.utils import normalize_benchmark_name
+from src.utils.types import Benchmark
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,8 @@ class BenchmarkDataLoader:
                     all_samples.extend(benchmark_samples)
         
         logger.info(f"Loaded {len(all_samples)} total samples")
+        for sample in all_samples:
+            self._convert_benchmark_name_to_enum(sample)
         return all_samples
     
     def _load_benchmark_directory(self, benchmark_dir: Path, benchmark_name: str) -> List[Dict]:
@@ -128,3 +132,14 @@ class BenchmarkDataLoader:
     def extract_ground_truth_conversation(self, messages: List[Dict]) -> List[Dict]:
         """Extract ground truth conversation from messages."""
         return messages
+
+    def _convert_benchmark_name_to_enum(self, sample: Dict) -> Dict:
+        if "benchmark_name" not in sample:
+            raise ValueError("Sample missing 'benchmark_name' field")
+        benchmark_name = sample["benchmark_name"]
+        normalized_name = normalize_benchmark_name(benchmark_name)
+        if normalized_name in map(normalize_benchmark_name, Benchmark.__members__.keys()):
+            original_key = next(k for k in Benchmark.__members__.keys() if normalize_benchmark_name(k) == normalized_name)
+            sample["benchmark_name"] = Benchmark[original_key]
+        else:
+            raise ValueError(f"Unknown benchmark name: {benchmark_name}")

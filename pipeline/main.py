@@ -25,7 +25,7 @@ from src.rule_filtering_orchestrator import RuleFilteringOrchestrator
 from src.llm_judge_filtering import LLMJudge, LLMJudgeConfig, LLMJudgeStep
 from src.data_loader import BenchmarkDataLoader
 from src.utils.types import Benchmark, UniqueQuestionID, LLMJudgeOutput, PipelineOutput, RuleBasedOutput
-from src.utils import group_responses_by_question, get_benchmark_from_name
+from src.utils import group_responses_by_question, get_benchmark_from_name, normalize_benchmark_name
 
 # Set up logging
 logging.basicConfig(
@@ -85,7 +85,7 @@ class BenchmarkFilteringPipeline:
         questions = set()
         for response in response_list:
             unique_question_id = UniqueQuestionID(
-                benchmark=get_benchmark_from_name(response['benchmark_name']),
+                benchmark=response['benchmark_name'],  # Already enum after data loading
                 task_name=response.get('task_name', None),
                 question_id=response['meta']['id']
             )
@@ -200,12 +200,12 @@ class BenchmarkFilteringPipeline:
         
         # Process each benchmark
         for benchmark_name, benchmark_samples in benchmark_groups.items():
-            if benchmark_name in self.orchestrator.benchmark_filters:
+            if normalize_benchmark_name(benchmark_name.value) in map(normalize_benchmark_name, self.orchestrator.benchmark_filters.keys()):
                 logger.info(f"Applying {benchmark_name}-specific filtering to {len(benchmark_samples)} samples")
                 passed_samples, dropped_samples = self.orchestrator.filter_samples(
                     benchmark_samples, 
                     use_specific_filters=True,
-                    target_benchmark=benchmark_name
+                    target_benchmark=benchmark_name.value
                 )
                 all_passed_samples.extend(passed_samples)
                 all_dropped_samples.extend(dropped_samples)
@@ -231,7 +231,7 @@ class BenchmarkFilteringPipeline:
         separability_dict = {}
         for sample in samples:
             model_name = sample["model_path"]
-            benchmark_name = sample["benchmark_name"]
+            benchmark_name = str(sample["benchmark_name"])
             score = sample["eval_result"]["score"]
             if benchmark_name not in score_dict:
                 score_dict[benchmark_name] = {}
@@ -307,7 +307,7 @@ class BenchmarkFilteringPipeline:
         id_to_text_by_benchmark: Dict[str, Dict[str, str]] = {}
 
         for sample in samples:
-            benchmark_name = sample["benchmark_name"]
+            benchmark_name = str(sample["benchmark_name"])
 
             # Unique question id (mandatory)
             meta_id = str(sample["meta"]["id"])
@@ -534,12 +534,9 @@ class BenchmarkFilteringPipeline:
         if benchmark_name not in list(benchmark.value for benchmark in Benchmark):
             raise ValueError(f"Invalid benchmark name {benchmark_name}")
         
-        def normalize_name(name: str) -> str:
-            return name.lower().replace('-', '').replace('_', '')
-        
         result = []
         for response in responses:
-            if normalize_name(response['benchmark_name']) == normalize_name(benchmark_name):
+            if response['benchmark_name'].value == benchmark_name:  # benchmark_name is enum, compare with .value
                 result.append(response)
         return result
     

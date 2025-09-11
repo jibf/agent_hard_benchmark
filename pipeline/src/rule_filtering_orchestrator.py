@@ -6,6 +6,7 @@ from .benchmark_specific_filters import (
     DrafterBenchFilter, MultiChallengeFilter, ACEBenchFilter,
     ComplexFuncBenchFilter, BFCLFilter, NexusBenchFilter, TAUBenchFilter
 )
+from .utils import normalize_benchmark_name, EnumJSONEncoder
 
 
 class RuleFilteringOrchestrator:
@@ -39,8 +40,10 @@ class RuleFilteringOrchestrator:
         """
         if use_specific_filters and target_benchmark:
             # Use benchmark-specific filter (comprehensive filtering already applied)
-            if target_benchmark in self.benchmark_filters:
-                filter_instance = self.benchmark_filters[target_benchmark]
+            if normalize_benchmark_name(target_benchmark) in map(normalize_benchmark_name, self.benchmark_filters.keys()):
+                # Find the original key that matches the normalized target
+                original_key = next(k for k in self.benchmark_filters.keys() if normalize_benchmark_name(k) == normalize_benchmark_name(target_benchmark))
+                filter_instance = self.benchmark_filters[original_key]
                 passed_samples, dropped_samples = filter_instance.filter_samples(samples)
                 filter_name = filter_instance.get_filter_name()
                 
@@ -121,7 +124,7 @@ class RuleFilteringOrchestrator:
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
                 for sample in samples:
-                    json.dump(sample, f, ensure_ascii=False)
+                    json.dump(sample, f, ensure_ascii=False, cls=EnumJSONEncoder)
                     f.write('\n')
             print(f"Saved {len(samples)} samples to {file_path}")
         except Exception as e:
