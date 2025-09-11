@@ -200,12 +200,12 @@ class BenchmarkFilteringPipeline:
         
         # Process each benchmark
         for benchmark_name, benchmark_samples in benchmark_groups.items():
-            if normalize_benchmark_name(benchmark_name.value) in map(normalize_benchmark_name, self.orchestrator.benchmark_filters.keys()):
-                logger.info(f"Applying {benchmark_name}-specific filtering to {len(benchmark_samples)} samples")
+            if benchmark_name in self.orchestrator.benchmark_filters:
+                logger.info(f"Applying {str(benchmark_name)}-specific filtering to {len(benchmark_samples)} samples")
                 passed_samples, dropped_samples = self.orchestrator.filter_samples(
                     benchmark_samples, 
                     use_specific_filters=True,
-                    target_benchmark=benchmark_name.value
+                    target_benchmark=benchmark_name
                 )
                 all_passed_samples.extend(passed_samples)
                 all_dropped_samples.extend(dropped_samples)

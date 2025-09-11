@@ -7,6 +7,7 @@ from .benchmark_specific_filters import (
     ComplexFuncBenchFilter, BFCLFilter, NexusBenchFilter, TAUBenchFilter
 )
 from .utils import normalize_benchmark_name, EnumJSONEncoder
+from .utils.types import Benchmark
 
 
 class RuleFilteringOrchestrator:
@@ -15,17 +16,17 @@ class RuleFilteringOrchestrator:
     def __init__(self):
         self.comprehensive_filter = ComprehensiveRuleFilter()
         self.benchmark_filters = {
-            'DrafterBench': DrafterBenchFilter(),
-            'multi_challenge': MultiChallengeFilter(),
-            'ACEBench': ACEBenchFilter(),
-            'complex-func-bench': ComplexFuncBenchFilter(),
-            'BFCL': BFCLFilter(),
-            'NexusBench': NexusBenchFilter(),
-            'tau-bench': TAUBenchFilter()
+            Benchmark.DRAFTER_BENCH: DrafterBenchFilter(),
+            Benchmark.MULTI_CHALLENGE: MultiChallengeFilter(),
+            Benchmark.ACE_BENCH: ACEBenchFilter(),
+            Benchmark.COMPLEX_FUNC_BENCH: ComplexFuncBenchFilter(),
+            Benchmark.BFCL: BFCLFilter(),
+            Benchmark.NEXUS_BENCH: NexusBenchFilter(),
+            Benchmark.TAU_BENCH: TAUBenchFilter()
         }
     
     def filter_samples(self, samples: List[Dict], use_specific_filters: bool = False, 
-                      target_benchmark: str = None) -> Tuple[List[Dict], List[Dict]]:
+                      target_benchmark: Benchmark = None) -> Tuple[List[Dict], List[Dict]]:
         """
         Filter samples using benchmark-specific filtering.
         Note: This is now called AFTER comprehensive filtering has been applied.
@@ -40,15 +41,13 @@ class RuleFilteringOrchestrator:
         """
         if use_specific_filters and target_benchmark:
             # Use benchmark-specific filter (comprehensive filtering already applied)
-            if normalize_benchmark_name(target_benchmark) in map(normalize_benchmark_name, self.benchmark_filters.keys()):
-                # Find the original key that matches the normalized target
-                original_key = next(k for k in self.benchmark_filters.keys() if normalize_benchmark_name(k) == normalize_benchmark_name(target_benchmark))
-                filter_instance = self.benchmark_filters[original_key]
+            if target_benchmark in self.benchmark_filters:
+                filter_instance = self.benchmark_filters[target_benchmark]
                 passed_samples, dropped_samples = filter_instance.filter_samples(samples)
                 filter_name = filter_instance.get_filter_name()
                 
                 # Save results
-                self._save_filtered_results(passed_samples, filter_name, target_benchmark)
+                self._save_filtered_results(passed_samples, filter_name, target_benchmark.value)
                 
                 return passed_samples, dropped_samples
             else:
