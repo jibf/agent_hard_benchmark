@@ -17,6 +17,8 @@ from math import comb
 from typing import Dict, List, Tuple, Optional
 from collections import Counter
 from datetime import datetime
+from sentence_transformers import SentenceTransformer
+import torch
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -57,6 +59,19 @@ class BenchmarkFilteringPipeline:
             steps=[LLMJudgeStep.FILTER] if self.config.get("llm_filter_only", False) else [LLMJudgeStep.FILTER, LLMJudgeStep.SCORE]
         )
     
+        # ----- Embedding model for semantic diversity -----
+        model_name = self.config.get("embedding_model", "Qwen/Qwen3-Embedding-8B")
+        self.embedder = SentenceTransformer(
+            model_name,
+            device="cuda" if torch.cuda.is_available() else "cpu",
+            model_kwargs={"torch_dtype": torch.float16},
+        )
+        self.embedding_batch_size = self.config.get("embedding_batch_size", 8)
+
+        # Whether to embed the concatenation of all initial prompts (system & user)
+        # before the first assistant/tool call, instead of only the last user prompt.
+        self.embed_all_initial_prompts: bool = self.config.get("embed_all_initial_prompts", False)
+    
     def _make_json_serializable(self, obj):
         """Make objects JSON serializable by converting enums and other non-serializable types."""
         if isinstance(obj, dict):
@@ -91,7 +106,10 @@ class BenchmarkFilteringPipeline:
         pipeline_outputs = {k: PipelineOutput() for k in responses_by_question.keys()}
 
         separability_dict = self._compute_separability(all_responses)
-        print(f"Benchmark separability before filtering: {json.dumps(separability_dict)}")
+        logger.info(f"Benchmark separability before filtering: {json.dumps(separability_dict, indent=2)}")
+
+        diversity_dict = self._compute_diversity(all_responses)
+        logger.info(f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}")
 
         # Calculate model ranking from original dataset for consistent ordering
         model_ranking = None
@@ -140,7 +158,10 @@ class BenchmarkFilteringPipeline:
             # logger.info(f"Benchmark separability for baseline: {json.dumps(baseline_separability)}")
             
             separability_dict = self._compute_separability(step1_passed)
-            print(f"Benchmark separability after Step 1: {json.dumps(separability_dict)}")
+            logger.info(f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}")
+
+            diversity_dict = self._compute_diversity(step1_passed)
+            logger.info(f"Benchmark semantic diversity after Step 1: {json.dumps(diversity_dict, indent=2)}")
         else:
             logger.info("Skipping Step 1: Rule-based filtering")
 
@@ -171,7 +192,10 @@ class BenchmarkFilteringPipeline:
             print(f"Benchmark separability for baseline (from all_samples, sample size same as post-step2): {json.dumps(baseline_separability)}")
             
             separability_dict = self._compute_separability(step2_passed_responses)
-            print(f"Benchmark separability after Step 2: {json.dumps(separability_dict)}")
+            logger.info(f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}")
+            
+            diversity_dict = self._compute_diversity(step2_passed_responses)
+            logger.info(f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}")
             
             # Visualize Step 2 filtered performance
             if not self.config.get('skip_visualization', False):
@@ -306,6 +330,98 @@ class BenchmarkFilteringPipeline:
         lower = np.percentile(means, (1 - ci) / 2 * 100)
         upper = np.percentile(means, (1 + ci) / 2 * 100)
         return lower, upper
+
+    # Semantic diversity metric
+    def _compute_diversity(self, samples: List[Dict]) -> Dict[str, float]:
+        """Compute semantic diversity for each benchmark using average pairwise cosine distance.
+
+        For each benchmark, we embed the `messages` field of every sample and then
+        compute the average cosine distance across all unique pairs. The metric
+        is bounded in [0, 1] per the expression: (2 / (N * (N - 1))) * sum{i<j} [1 - cos(e_i, e_j)]
+        where N is the number of samples and cos(·,·) is cosine similarity.
+        """
+        # Collect one non-empty user prompt per unique meta.id for each benchmark
+        # Structure: {benchmark: {meta_id: text}}
+        id_to_text_by_benchmark: Dict[str, Dict[str, str]] = {}
+
+        for sample in samples:
+            benchmark_name = sample["benchmark_name"]
+
+            # Unique question id (mandatory)
+            meta_id = str(sample["meta"]["id"])
+            if not meta_id:
+                # Skip if meta.id missing
+                continue
+
+            # Already captured non-empty text for this id → skip
+            if meta_id in id_to_text_by_benchmark.get(benchmark_name, {}):
+                continue
+
+            messages_field = sample["messages"]
+            if not messages_field:
+                continue
+
+            # Extract text to embed depending on configuration
+            if self.embed_all_initial_prompts:
+                # Concatenate contents of all messages (system & user) **before** the
+                # first assistant/tool (or any non-system/user) message.
+                initial_contents = []
+                for m in messages_field:
+                    role = m.get("role")
+                    if role not in {"system", "user"}:
+                        break  # stop at first assistant/tool/etc.
+                    # Include both system and user prompt contents
+                    if m.get("content"):
+                        initial_contents.append(m["content"].strip())
+                msg_content = "\n".join(initial_contents).strip()
+            else:
+                # Fallback to default behaviour: latest user message before first
+                # assistant/tool message (ignoring leading system messages)
+                msg_content = ""
+                for m in messages_field:
+                    role = m.get("role")
+                    if role == "system":
+                        # Skip system messages at the start
+                        continue
+                    if role == "user":
+                        msg_content = m["content"]
+                        continue  # keep scanning; we want *latest* user before assistant
+                    # Any other role stops the search
+                    break
+
+            if not msg_content:
+                continue
+
+            id_to_text_by_benchmark.setdefault(benchmark_name, {})[meta_id] = msg_content
+
+        diversity_dict: Dict[str, float] = {}
+        for benchmark_name, id_to_text in id_to_text_by_benchmark.items():
+            texts = list(id_to_text.values())
+            N = len(texts)
+            if N < 2:
+                diversity_dict[benchmark_name] = 0.0
+                continue
+
+            # Encode texts -> unit-normalised embeddings
+            embeddings = self.embedder.encode(
+                texts,
+                batch_size=self.embedding_batch_size,
+                show_progress_bar=True,
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+            )
+
+            # Cosine similarity matrix via dot product because embeddings are normalised
+            sim_matrix = np.matmul(embeddings, embeddings.T)
+
+            # Extract upper triangle (i < j)
+            triu_indices = np.triu_indices(N, k=1)
+            cosine_sims = sim_matrix[triu_indices]
+            avg_distance = np.mean(1 - cosine_sims)
+
+            diversity_dict[benchmark_name] = float(avg_distance)
+
+        return diversity_dict
 
     def _calculate_model_ranking(self, samples: List[Dict]) -> Dict[str, List[str]]:
         """Calculate model ranking based on performance for consistent ordering across visualizations."""
@@ -797,6 +913,24 @@ def main():
         help="Skip creating performance visualization plots"
     )
     
+    parser.add_argument(
+        "--embedding-model",
+        default="Qwen/Qwen3-Embedding-8B",
+        help="SentenceTransformer model for semantic diversity computation (default: Qwen/Qwen3-Embedding-8B)"
+    )
+    parser.add_argument(
+        "--embedding-batch-size",
+        type=int,
+        default=8,
+        help="Batch size when encoding texts for diversity (default: 8)"
+    )
+
+    parser.add_argument(
+        "--embed-all-initial-prompts",
+        action="store_true",
+        help="Diversity calculation: If set, embed the concatenation of all initial (system & user) prompts before the first assistant call instead of only the last user prompt."
+    )
+    
     args = parser.parse_args()
     
     # Configuration
@@ -810,7 +944,10 @@ def main():
         "target_benchmark": args.target_benchmark,
         "use_specific_filters": args.specific_step1,
         "llm_filter_only": args.llm_filter_only,
-        "skip_visualization": args.skip_visualization
+        "skip_visualization": args.skip_visualization,
+        "embedding_model": args.embedding_model,
+        "embedding_batch_size": args.embedding_batch_size,
+        "embed_all_initial_prompts": args.embed_all_initial_prompts,
     }
     
     # Validate arguments
