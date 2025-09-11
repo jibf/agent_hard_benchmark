@@ -30,15 +30,18 @@ class BFCLFilter(BaseBenchmarkFilter):
     def filter_samples(self, samples: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
         """
         Apply BFCL-specific filtering rules.
+        Note: Comprehensive filtering has already been applied before this method is called.
         
         TODO: Implement custom filtering logic for BFCL
-        For now, using general discriminativeness filtering
+        For now, returning samples as-is since comprehensive filtering was already applied
         """
         logger.info(f"Applying BFCL-specific filtering to {len(samples)} samples")
         
-        # For now, use general discriminativeness filtering
+        # For now, return samples as-is since comprehensive filtering was already applied
         # TODO: Implement benchmark-specific rules
-        from ..comprehensive_rule_filtering import ComprehensiveRuleFilter
-        general_filter = ComprehensiveRuleFilter()
-        return general_filter.filter_samples(samples)
+        passed_samples = samples
+        dropped_samples = []
+        
+        logger.info(f"BFCL filtering completed: {len(passed_samples)} passed, {len(dropped_samples)} dropped")
+        return passed_samples, dropped_samples
 

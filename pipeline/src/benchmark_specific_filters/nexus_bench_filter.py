@@ -26,9 +26,10 @@ class NexusBenchFilter(BaseBenchmarkFilter):
     def filter_samples(self, samples: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
         """
         Apply NexusBench-specific filtering rules.
+        Note: Comprehensive filtering has already been applied before this method is called.
         
         TODO: Implement custom filtering logic for NexusBench
-        For now, using general discriminativeness filtering
+        For now, returning samples as-is since comprehensive filtering was already applied
         """
         logger.info(f"Applying NexusBench-specific filtering to {len(samples)} samples")
 
@@ -38,10 +39,10 @@ class NexusBenchFilter(BaseBenchmarkFilter):
             logger.warning("No NexusBench samples found to filter – returning empty result set")
             return [], []
 
-        # For now reuse the comprehensive discriminativeness filter.
-        from ..comprehensive_rule_filtering import ComprehensiveRuleFilter
-        general_filter = ComprehensiveRuleFilter()
-        passed_samples, dropped_samples = general_filter.filter_samples(applicable_samples)
+        # For now, return samples as-is since comprehensive filtering was already applied
+        # TODO: Add NexusBench-specific filtering logic here
+        passed_samples = applicable_samples
+        dropped_samples = []
 
         # Log summary statistics for transparency
         self.log_filtering_stats(len(applicable_samples), len(passed_samples), len(dropped_samples))

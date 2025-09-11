@@ -44,7 +44,7 @@ class BenchmarkFilteringPipeline:
     def __init__(self, config: Dict = None):
         self.config = config or {}
         self.data_loader = BenchmarkDataLoader()
-        self.use_specific_filters = self.config.get('use_specific_filters', False)
+        self.orchestrator = RuleFilteringOrchestrator()
         
         self.llm_config = LLMJudgeConfig(
             model=self.config.get("llm_model", "openai/gpt-4.1"),
@@ -108,11 +108,15 @@ class BenchmarkFilteringPipeline:
         diversity_dict = self._compute_diversity(all_responses)
         logger.info(f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}")
 
-        # Step 1: Rule-based filtering
+        # Step 0: Always apply comprehensive filtering first
         current_responses = all_responses
         if not skip_rule_based:
-            logger.info("Step 1: Comprehensive rule-based filtering")
-            step1_passed, step1_dropped = self._run_step1_rule_filtering(all_responses)
+            logger.info("Step 0: Comprehensive rule-based filtering (always applied)")
+            step0_passed, step0_dropped = self._run_comprehensive_filtering(all_responses)
+            current_responses = step0_passed
+            
+            # Step 1: Apply benchmark-specific filtering for benchmarks that have specific filters
+            step1_passed, step1_dropped = self._run_benchmark_specific_filtering(current_responses)
             current_responses = step1_passed
             
             # Update pipeline_outputs with step1 results
@@ -127,7 +131,7 @@ class BenchmarkFilteringPipeline:
             diversity_dict = self._compute_diversity(step1_passed)
             logger.info(f"Benchmark semantic diversity after Step 1: {json.dumps(diversity_dict, indent=2)}")
         else:
-            logger.info("Skipping Step 1: Rule-based filtering")
+            logger.info("Skipping Step 0 & 1: Rule-based filtering")
 
         # Step 2: LLM-as-Judge filtering  
         if not skip_llm_judge:
@@ -157,9 +161,8 @@ class BenchmarkFilteringPipeline:
         """Load benchmark data based on configuration."""
         logger.info("Loading benchmark data...")
         
-        target_benchmark = None
-        if self.use_specific_filters:
-            target_benchmark = self.config.get('target_benchmark')
+        target_benchmark = self.config.get('target_benchmark')
+        if target_benchmark:
             logger.info(f"Loading only target benchmark: {target_benchmark}")
         
         all_samples = self.data_loader.load_benchmark_data("benchmark", target_benchmark)
@@ -168,28 +171,52 @@ class BenchmarkFilteringPipeline:
         return all_samples
     
     
-    def _run_step1_rule_filtering(self, all_samples: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
-        """Run Step 1: Rule-based filtering (general or benchmark-specific)."""
-        target_benchmark = self.config.get('target_benchmark') if self.use_specific_filters else None
-        
+    def _run_comprehensive_filtering(self, all_samples: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+        """Run Step 0: Comprehensive rule-based filtering (always applied)."""
         # Save unified dataset before filtering
         self._save_unified_dataset(all_samples)
         
-        if self.use_specific_filters:
-            logger.info("Using benchmark-specific filtering...")
-            orchestrator = RuleFilteringOrchestrator()
-            passed_samples, dropped_samples = orchestrator.filter_samples(
-                all_samples, 
-                use_specific_filters=True,
-                target_benchmark=target_benchmark
-            )
-        else:
-            logger.info("Using general comprehensive filtering...")
-            rule_filter = ComprehensiveRuleFilter()
-            passed_samples, dropped_samples = rule_filter.filter_samples(all_samples)
+        logger.info("Applying comprehensive rule-based filtering...")
+        rule_filter = ComprehensiveRuleFilter()
+        passed_samples, dropped_samples = rule_filter.filter_samples(all_samples)
         
-        logger.info(f"Step 1 completed: {len(passed_samples):,} samples passed")
+        logger.info(f"Step 0 completed: {len(passed_samples):,} samples passed")
         return passed_samples, dropped_samples
+    
+    def _run_benchmark_specific_filtering(self, samples: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+        """Run Step 1: Benchmark-specific filtering (applied after comprehensive filtering)."""
+        logger.info("Step 1: Applying benchmark-specific filtering for benchmarks with specific filters...")
+        
+        # Group samples by benchmark
+        benchmark_groups = {}
+        for sample in samples:
+            benchmark_name = sample.get('benchmark_name', 'unknown')
+            if benchmark_name not in benchmark_groups:
+                benchmark_groups[benchmark_name] = []
+            benchmark_groups[benchmark_name].append(sample)
+        
+        all_passed_samples = []
+        all_dropped_samples = []
+        
+        # Process each benchmark
+        for benchmark_name, benchmark_samples in benchmark_groups.items():
+            if benchmark_name in self.orchestrator.benchmark_filters:
+                logger.info(f"Applying {benchmark_name}-specific filtering to {len(benchmark_samples)} samples")
+                passed_samples, dropped_samples = self.orchestrator.filter_samples(
+                    benchmark_samples, 
+                    use_specific_filters=True,
+                    target_benchmark=benchmark_name
+                )
+                all_passed_samples.extend(passed_samples)
+                all_dropped_samples.extend(dropped_samples)
+                logger.info(f"{benchmark_name}: {len(passed_samples)} passed, {len(dropped_samples)} dropped")
+            else:
+                # No specific filter available, keep all samples from this benchmark
+                logger.info(f"No specific filter for {benchmark_name}, keeping all {len(benchmark_samples)} samples")
+                all_passed_samples.extend(benchmark_samples)
+        
+        logger.info(f"Step 1 completed: {len(all_passed_samples):,} samples passed, {len(all_dropped_samples):,} samples dropped")
+        return all_passed_samples, all_dropped_samples
     
     def _save_step1_results(self, step1_passed: List[Dict], step1_dropped: List[Dict]):
         """Save all Step 1 results in various formats."""
@@ -213,12 +240,30 @@ class BenchmarkFilteringPipeline:
             score_dict[benchmark_name][model_name].append(score)
         
         for benchmark in score_dict:
-            score_matrix = np.array([score_dict[benchmark][model] for model in sorted(score_dict[benchmark].keys())])
+            # Calculate mean scores for each model
+            model_scores = []
+            for model in sorted(score_dict[benchmark].keys()):
+                scores = score_dict[benchmark][model]
+                if scores:  # Only include models with scores
+                    model_scores.append(np.mean(scores))
+                else:
+                    model_scores.append(0.0)  # Default score for models with no data
+            
+            score_matrix = np.array(model_scores)
             num_models = score_matrix.shape[0]
             intervals = []
 
             for i in range(num_models):
-                i_ci = self._bootstrap_confidence_interval(score_matrix[i], n_bootstrap=n_bootstrap, ci=ci)
+                # For single values, create a confidence interval around the mean
+                if len(score_dict[benchmark][sorted(score_dict[benchmark].keys())[i]]) > 1:
+                    i_ci = self._bootstrap_confidence_interval(
+                        score_dict[benchmark][sorted(score_dict[benchmark].keys())[i]], 
+                        n_bootstrap=n_bootstrap, ci=ci
+                    )
+                else:
+                    # For single values, use the value itself as both bounds
+                    val = score_matrix[i]
+                    i_ci = (val, val)
                 intervals.append(i_ci)
             intervals.sort(key=lambda x: x[0])
 
@@ -537,11 +582,6 @@ def main():
         help="Skip Step 1 (rule-based filtering) and run LLM judge on questions independently"
     )
     parser.add_argument(
-        "--specific-step1", 
-        action="store_true", 
-        help="Use benchmark-specific filtering for Step 1 instead of general filtering"
-    )
-    parser.add_argument(
         "--llm-model", 
         default="openai/gpt-4.1",
         help="LLM model to use for Step 2 (default: gpt-4.1)"
@@ -615,7 +655,6 @@ def main():
         "llm_retry_delay": args.llm_retry_delay,
         "num_proc": args.num_proc,
         "target_benchmark": args.target_benchmark,
-        "use_specific_filters": args.specific_step1,
         "llm_filter_only": args.llm_filter_only,
         "embedding_model": args.embedding_model,
         "embedding_batch_size": args.embedding_batch_size,

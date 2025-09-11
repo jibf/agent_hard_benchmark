@@ -9,7 +9,7 @@ This pipeline implements a two-stage filtering process for AgentHard evaluation 
 1. **Step 1: Rule-Based Filtering** - Removes problematic samples using comprehensive rules and benchmark-specific filtering
 2. **Step 2: LLM-as-Judge Filtering** - Evaluates benchmark quality and detects flaws using LLM assessment
 
-## 🚀 Quick Start
+## Quick Start
 
 1. **Download Data**: `python3 download_agenthard.py`
 2. **Run Pipeline**: `python main.py`

@@ -55,15 +55,18 @@ class ComprehensiveRuleFilter:
         logger.info(f"Discriminative questions: {len(discriminative_questions)}")
         logger.info(f"Non-discriminative questions: {len(non_discriminative_questions)}")
         
-        # Step 3: Apply filtering logic
+        # Step 3: Calculate original task type counts for retention logic
+        original_task_counts = self._calculate_original_task_counts(samples)
+        
+        # Step 4: Apply filtering logic
         # - Keep ALL samples for discriminative questions
         # - Keep ALL samples for too_hard questions (no filtering)
-        # - Keep only 10% of samples for too_easy questions per task type
+        # - Keep enough too_easy questions to ensure each task type retains at least 10% of original size
         # - Drop ALL samples for non-discriminative questions
         passed_samples = []
         dropped_samples = []
         
-        # Group too_easy questions by task type for 10% sampling
+        # Group too_easy questions by task type for retention sampling
         too_easy_by_task = self._group_questions_by_task_type(too_easy_questions, samples)
         
         for sample in samples:
@@ -76,9 +79,9 @@ class ComprehensiveRuleFilter:
                 # Keep all too_hard questions (no filtering)
                 passed_samples.append(sample)
             elif question_id in too_easy_questions:
-                # Keep only 10% of too_easy questions per task type
+                # Keep enough too_easy questions to ensure task type retention
                 task_type = self._extract_task_type(sample)
-                if self._should_keep_too_easy_sample(question_id, task_type, too_easy_by_task):
+                if self._should_keep_too_easy_sample(question_id, task_type, too_easy_by_task, original_task_counts):
                     passed_samples.append(sample)
                 else:
                     dropped_samples.append(sample)
@@ -266,10 +269,26 @@ class ComprehensiveRuleFilter:
         
         return dict(task_groups)
     
-    def _should_keep_too_easy_sample(self, question_id: str, task_type: str, too_easy_by_task: Dict[str, List[str]]) -> bool:
+    def _calculate_original_task_counts(self, samples: List[Dict]) -> Dict[str, int]:
+        """Calculate the original count of questions per task type before any filtering."""
+        task_counts = defaultdict(int)
+        
+        # Get all unique question IDs and their task types
+        seen_questions = set()
+        for sample in samples:
+            question_id = self._extract_question_id(sample)
+            if question_id not in seen_questions:
+                task_type = self._extract_task_type(sample)
+                task_counts[task_type] += 1
+                seen_questions.add(question_id)
+        
+        return dict(task_counts)
+    
+    def _should_keep_too_easy_sample(self, question_id: str, task_type: str, too_easy_by_task: Dict[str, List[str]], 
+                                   original_task_counts: Dict[str, int] = None) -> bool:
         """
-        Determine if a too_easy sample should be kept (10% per task type).
-        Uses deterministic sampling based on question_id hash for consistency.
+        Determine if a too_easy sample should be kept.
+        Updated logic: Keep enough too_easy samples to ensure each task type retains at least 10% of original size.
         """
         if task_type not in too_easy_by_task:
             return False
@@ -278,17 +297,20 @@ class ComprehensiveRuleFilter:
         if not questions_in_task:
             return False
         
+        # Calculate how many questions we need to keep for this task type
+        if original_task_counts and task_type in original_task_counts:
+            original_count = original_task_counts[task_type]
+            min_retention_count = max(1, int(original_count * 0.1))  # At least 10% of original
+        else:
+            # Fallback to original logic if no original counts provided
+            min_retention_count = max(1, int(len(questions_in_task) * 0.1))
+        
         # Use deterministic sampling based on question_id hash
-        # This ensures the same 10% is selected consistently across runs
+        # This ensures the same questions are selected consistently across runs
         hash_value = int(hashlib.md5(question_id.encode()).hexdigest(), 16)
-        sample_index = hash_value % len(questions_in_task)
         
-        # Keep 10% of questions per task type
-        keep_ratio = 0.1
-        keep_count = max(1, int(len(questions_in_task) * keep_ratio))
-        
-        # Sort questions deterministically and select the first keep_count
+        # Sort questions deterministically and select the first min_retention_count
         sorted_questions = sorted(questions_in_task)
-        questions_to_keep = sorted_questions[:keep_count]
+        questions_to_keep = sorted_questions[:min_retention_count]
         
         return question_id in questions_to_keep

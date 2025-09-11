@@ -26,10 +26,11 @@ class RuleFilteringOrchestrator:
     def filter_samples(self, samples: List[Dict], use_specific_filters: bool = False, 
                       target_benchmark: str = None) -> Tuple[List[Dict], List[Dict]]:
         """
-        Filter samples using either benchmark-specific or comprehensive filtering.
+        Filter samples using benchmark-specific filtering.
+        Note: This is now called AFTER comprehensive filtering has been applied.
         
         Args:
-            samples: List of samples to filter
+            samples: List of samples to filter (already filtered by comprehensive filter)
             use_specific_filters: Whether to use benchmark-specific filters
             target_benchmark: Specific benchmark to filter for
             
@@ -37,7 +38,7 @@ class RuleFilteringOrchestrator:
             Tuple of (passed_samples, dropped_samples)
         """
         if use_specific_filters and target_benchmark:
-            # Use benchmark-specific filter
+            # Use benchmark-specific filter (comprehensive filtering already applied)
             if target_benchmark in self.benchmark_filters:
                 filter_instance = self.benchmark_filters[target_benchmark]
                 passed_samples, dropped_samples = filter_instance.filter_samples(samples)
@@ -48,13 +49,12 @@ class RuleFilteringOrchestrator:
                 
                 return passed_samples, dropped_samples
             else:
-                print(f"Warning: No specific filter found for {target_benchmark}, using comprehensive filter")
-                passed_samples, dropped_samples = self.comprehensive_filter.filter_samples(samples)
-                return passed_samples, dropped_samples
+                print(f"Warning: No specific filter found for {target_benchmark}, returning samples as-is")
+                # Return samples unchanged since comprehensive filtering was already applied
+                return samples, []
         else:
-            # Use comprehensive filter
-            passed_samples, dropped_samples = self.comprehensive_filter.filter_samples(samples)
-            return passed_samples, dropped_samples
+            # Return samples unchanged since comprehensive filtering was already applied
+            return samples, []
     
     def _save_filtered_results(self, filtered_samples: List[Dict[str, Any]], 
                               filter_name: str, target_benchmark: str = None) -> Dict[str, str]:

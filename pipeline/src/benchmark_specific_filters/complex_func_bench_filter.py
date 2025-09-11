@@ -32,23 +32,24 @@ class ComplexFuncBenchFilter(BaseBenchmarkFilter):
     def filter_samples(self, samples: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
         """
         Apply ComplexFuncBench-specific filtering rules.
-        
-        TODO: Implement custom filtering logic for ComplexFuncBench
-        For now, using general discriminativeness filtering
+        Note: Comprehensive filtering has already been applied before this method is called.
         """
         logger.info(f"Applying ComplexFuncBench-specific filtering to {len(samples)} samples")
         # ['model_path', 'benchmark_name', 'sampling_params', 'messages', 'eval_result', 'user_model_path', 'task_name', 'user_sampling_params', 'meta', 'model_name'
 
         # Step 1: Filter out questions with invalid function calls
         qids_with_invalid_function_calls = self._get_qids_with_invalid_function_calls()
-        survived_samples = []
+        passed_samples = []
+        dropped_samples = []
+        
         for sample in samples:
             if sample['meta']['id'] not in qids_with_invalid_function_calls:
-                survived_samples.append(sample)
+                passed_samples.append(sample)
+            else:
+                dropped_samples.append(sample)
         
-        from ..comprehensive_rule_filtering import ComprehensiveRuleFilter
-        general_filter = ComprehensiveRuleFilter()
-        return general_filter.filter_samples(survived_samples)
+        logger.info(f"ComplexFuncBench filtering completed: {len(passed_samples)} passed, {len(dropped_samples)} dropped")
+        return passed_samples, dropped_samples
 
 
     def _get_qids_with_invalid_function_calls(self) -> List[ComplexFuncBenchQuestion]:

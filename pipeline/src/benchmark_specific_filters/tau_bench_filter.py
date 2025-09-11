@@ -29,9 +29,7 @@ class TAUBenchFilter(BaseBenchmarkFilter):
     def filter_samples(self, samples: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
         """
         Apply TAU Bench-specific filtering rules.
-        
-        TODO: Implement custom filtering logic for TAU Bench
-        For now, using general discriminativeness filtering
+        Note: Comprehensive filtering has already been applied before this method is called.
         """
         logger.info(f"Applying TAU Bench-specific filtering to {len(samples)} samples")
         
@@ -40,20 +38,22 @@ class TAUBenchFilter(BaseBenchmarkFilter):
         qids_to_filter = self._get_qids_solvable_by_do_nothing()
         question_groups = self._group_samples_by_question(samples)
         
-        surviving_samples = []
+        passed_samples = []
+        dropped_samples = []
+        
         for sample in samples:
             qid = f"{sample['task_name']}-{sample['meta']['id']}"
             mean_score = self._calculate_mean_score(question_groups[qid])
             if qid not in qids_to_filter or mean_score <= DO_NOTHING_SUCCESS_RATE_THRESHOLD:
-                surviving_samples.append(sample)
+                passed_samples.append(sample)
+            else:
+                dropped_samples.append(sample)
         
-        # STEP 2: Apply comprehensive rules
-        from ..comprehensive_rule_filtering import ComprehensiveRuleFilter
-        general_filter = ComprehensiveRuleFilter()
-        return general_filter.filter_samples(surviving_samples)
+        logger.info(f"TAU Bench filtering completed: {len(passed_samples)} passed, {len(dropped_samples)} dropped")
+        return passed_samples, dropped_samples
 
 
-    def _get_qids_solvable_by_do_nothing(self) -> Tuple[List[Dict], List[Dict]]:
+    def _get_qids_solvable_by_do_nothing(self) -> List[str]:
         function_names_modifying_database = {
             'retail': ['cancel_pending_order', "exchange_delivered_order_items", "modify_pending_order_address", "modify_pending_order_items", "modify_pending_order_payment", "modify_user_address", "return_delivered_order_items"],
             'airline': ["book_reservation", "cancel_reservation", "send_certificate", "update_reservation_baggages", "update_reservation_flights", "update_reservation_passengers"] 
