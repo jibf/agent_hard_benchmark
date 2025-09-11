@@ -638,7 +638,7 @@ def main():
     parser = argparse.ArgumentParser(description='Universal Benchmark Runner for AgentHard Suite')
     parser.add_argument('model_name', help='Name of the model (e.g., openai/gpt-4o-20240806)')
     parser.add_argument('--benchmark', help='Specific benchmark to run (default: all)', default='all')
-    parser.add_argument('--output-dir', help='Output directory for results')
+    parser.add_argument('--output-dir', default="./results", help='Output directory for results')
     parser.add_argument('--concurrent', action='store_true', help='Run benchmarks concurrently (use with caution for API limits)')
     parser.add_argument('--temperature', type=float, default=0.0, help='Temperature for model generation (default: 0.0)')
     parser.add_argument('--proc-num', type=int, default=4, help='Number of processes/threads for parallel execution (default: 4)')

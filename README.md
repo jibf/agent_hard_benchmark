@@ -2,6 +2,113 @@
 
 This repository serves as a comprehensive collection and evaluation suite for various Large Language Model (LLM) tool-use benchmarks. It provides a standardized environment and scripts to facilitate the evaluation of LLMs' capabilities in using external tools and APIs for complex task automation.
 
+## 🚀 Quick Start
+
+### 1. Environment Setup
+
+**⚠️ Note: The installation process may take 15-30 minutes depending on your internet connection and system.**
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd agent_hard_benchmark
+
+# Run the setup script (this will take some time)
+bash setup.sh
+```
+
+### 2. Configuration Setup
+
+Create your environment configuration file:
+
+```bash
+# Copy the example configuration
+cp .env.example .env
+
+# Edit the .env file with your API credentials
+nano .env  # or use your preferred editor
+```
+
+**Required Configuration in `.env`:**
+- `API_KEY`: Your main API key (e.g., OpenAI, Anthropic, etc.)
+- `BASE_URL`: Your API endpoint URL
+- `RAPID_API_KEY`: Required for CFBench and ToolSandbox (get from RapidAPI)
+
+**Example `.env` configuration:**
+```bash
+# Main API Configuration (Required)
+API_KEY=sk-your-api-key-here
+BASE_URL=https://api.openai.com/v1
+
+# RAPID_API Configuration (Required for some benchmarks)
+RAPID_API_KEY=your_rapid_api_key_here
+```
+
+### 3. Running Benchmarks
+
+#### Basic Usage
+
+```bash
+# Run all benchmarks with a specific model
+python run_benchmarks.py "openai/gpt-4o-20240806"
+
+# Run a specific benchmark
+python run_benchmarks.py "openai/gpt-4o-20240806" --benchmark drafterbench
+
+# List all available benchmarks
+python run_benchmarks.py --list-benchmarks
+```
+
+#### Advanced Usage
+
+```bash
+# Run with custom parameters
+python run_benchmarks.py "anthropic/claude-4-sonnet" \
+    --benchmark toolsandbox \
+    --temperature 0.1 \
+    --proc-num 8 \
+    --user-model "openai/gpt-4o-mini"
+
+# Run multiple benchmarks concurrently (use with caution for API limits)
+python run_benchmarks.py "your-model-name" \
+    --benchmark "drafterbench,toolsandbox,nexusbench" \
+    --concurrent
+```
+
+#### Parameter Reference
+
+- **`model_name`** (required): Name of the model to evaluate (e.g., "openai/gpt-4o-20240806")
+- **`--benchmark`**: Specific benchmark(s) to run. Options:
+  - `all` (default): Run all available benchmarks
+  - Single benchmark: `drafterbench`, `toolsandbox`, `nexusbench`, `cfbench`, `multichallenge`, `acebench`, `taubench`, `tau2bench`, `bfcl`
+  - Multiple benchmarks: `"drafterbench,toolsandbox,nexusbench"`
+- **`--temperature`**: Temperature for model generation (default: 0.0)
+- **`--proc-num`**: Number of parallel processes (default: 4)
+- **`--user-model`**: User model for benchmarks requiring user simulation (default: from .env or "openai/gpt-4o-20240806")
+- **`--output-dir`**: Custom output directory for results
+- **`--concurrent`**: Run benchmarks in parallel (⚠️ may hit API limits)
+- **`--list-benchmarks`**: Show all available benchmarks
+
+#### Available Benchmarks
+
+| Benchmark | Description | Special Requirements |
+|-----------|-------------|---------------------|
+| **drafterbench** | Technical drawing revision evaluation | None |
+| **toolsandbox** | Stateful tool use evaluation | RAPID_API_KEY |
+| **nexusbench** | Function calling capabilities | None |
+| **cfbench** | Complex function benchmarking | RAPID_API_KEY |
+| **multichallenge** | Multi-domain task evaluation | None |
+| **acebench** | Agent capability evaluation | Multiple provider keys |
+| **taubench** | User simulation (retail+airline) | USER_MODEL |
+| **tau2bench** | User simulation (retail+airline+telecom) | USER_MODEL |
+| **bfcl** | Berkeley Function Call Leaderboard | None |
+
+### 4. Results
+
+Results will be saved in the `results/` directory with timestamps. Each benchmark creates its own subdirectory with detailed logs and evaluation metrics.
+
+---
+
 ## Benchmarks
 
 This repository includes the following benchmarks:
