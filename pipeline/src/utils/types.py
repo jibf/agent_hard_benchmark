@@ -94,7 +94,7 @@ class ToolSandboxQuestion(FormattedQuestion):
     expected_output: Optional[str] = None
 
 class DrafterBenchQuestion(FormattedQuestion):
-    pass
+    agent_system_prompt: str 
 
 
 class BfclV2Question(FormattedQuestion):

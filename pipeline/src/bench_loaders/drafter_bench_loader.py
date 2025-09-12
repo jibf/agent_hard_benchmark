@@ -15,14 +15,7 @@ class DrafterBenchLoader(BaseLoader):
         self.data_dir = data_dir
         self.system_prompt_dir = system_prompt_dir
         self.system_prompts = dict()  # system prompt for each task type
-        
-        for prompt_filename in os.listdir(self.system_prompt_dir):
-            if not prompt_filename.endswith(".txt"):
-                continue
-            with open(os.path.join(self.system_prompt_dir, prompt_filename), "r") as f:
-                file_basename = re.match(r"([a-zA-z\_]+).txt", prompt_filename).group(1)
-                self.system_prompts[file_basename] = f.read()
-        
+        self._load_system_prompts()
         assert len(self.system_prompts) == 12
         
     def load_questions(self) -> List[DrafterBenchQuestion]:
@@ -49,35 +42,36 @@ class DrafterBenchLoader(BaseLoader):
         
         print(f"Loaded {len(all_questions)} DrafterBench questions")
         return all_questions
-
+    
+    def _load_system_prompts(self) -> None:
+        for prompt_filename in os.listdir(self.system_prompt_dir):
+            if not prompt_filename.endswith(".txt"):
+                continue
+            file_path = os.path.join(self.system_prompt_dir, prompt_filename)
+            with open(file_path, "r", encoding="utf-8") as f:
+                file_basename = re.match(r"([a-zA-Z_]+)\.txt", prompt_filename).group(1)
+                self.system_prompts[file_basename] = f.read()
+        
     def _format_sample(self, sample: Dict[str, Any]) -> DrafterBenchQuestion:
         """Format DrafterBench task to standard evaluation format"""
-        
-        # Extract task components
         task_type = sample.get('Tasktype', '')
         task_id = sample.get('Id', '')
         instruction = sample.get('Instruction', '').strip()
-        
-        # 
 
         # Construct conversations from ground-truth, which is a single string (code).
         groundtruth = sample.get('Groundtruth', '').strip()
         conversations = [
-            {
-                "role": "assistant",
-                "content": groundtruth
-            }
+            { "role": "user", "content": instruction },
+            { "role": "assistant", "content": groundtruth }
         ] 
 
-        # TODO: No available function call for DrafterBench
-        available_function_list = []
-        
         return DrafterBenchQuestion(
             question_id=f"{task_type}-{task_id}",
             instruction=instruction,
             gt_conv_traj=conversations,
-            available_function_list=available_function_list,
+            available_function_list=[],
             benchmark=Benchmark.DRAFTER_BENCH,
+            agent_system_prompt=self.system_prompts[task_type],
             meta={
                 'drafter_bench_context': {
                     'task_type': task_type,
@@ -88,7 +82,6 @@ class DrafterBenchLoader(BaseLoader):
                     'single_multiple_operations': sample.get('Single|Multiple_operations', ''),
                     'structured_unstructured': sample.get('Structured/Unstructured', ''),
                     'groundtruth': groundtruth,
-                    'system_prompt': self.system_prompts[task_type]
                 }
             }
         )

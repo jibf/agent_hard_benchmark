@@ -11,9 +11,10 @@ BENCHMARKS = [
     # Benchmark.NEXUS_BENCH,
     # Benchmark.TOOL_SANDBOX,
     # Benchmark.COMPLEX_FUNC_BENCH,
-    # Benchmark.DRAFTER_BENCH,
+    Benchmark.DRAFTER_BENCH,
     # Benchmark.BFCL,
-    Benchmark.MULTI_CHALLENGE]
+    # Benchmark.MULTI_CHALLENGE
+    ]
 
 def test_bench_loader(benchmark: Benchmark):
     loader = get_bench_loader(benchmark)
