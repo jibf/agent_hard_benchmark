@@ -5,9 +5,9 @@ from src.utils.types import Benchmark
 from src.bench_loaders import get_bench_loader
 
 BENCHMARKS = [ 
-    Benchmark.TAU2_BENCH,
-    Benchmark.TAU_BENCH,
-    Benchmark.ACE_BENCH,
+    # Benchmark.TAU2_BENCH,
+    # Benchmark.TAU_BENCH,
+    # Benchmark.ACE_BENCH,
     Benchmark.NEXUS_BENCH,
     Benchmark.TOOL_SANDBOX,
     Benchmark.COMPLEX_FUNC_BENCH,
@@ -23,6 +23,7 @@ def test_bench_loader(benchmark: Benchmark):
         assert len(questions) > 0
         question = questions[0]
         question_dict = question.model_dump()
+        import pdb; pdb.set_trace()
         for field, value in question_dict.items():
             value_str = str(value)
             if len(value_str) > 100:

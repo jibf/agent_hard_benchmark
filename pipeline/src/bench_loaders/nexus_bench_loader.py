@@ -12,11 +12,18 @@ from src.utils.types import NexusBenchQuestion, Benchmark
 
 # Import nexusbench components at module level
 try:
+    # First try local nexusbench in data directory
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'data'))
     from nexusbench.config import BENCHMARKS
     from nexusbench.benchmarks import BaseBenchmark
 except ImportError:
-    BENCHMARKS = None
-    BaseBenchmark = None
+    try:
+        # Fallback to installed nexusbench
+        from nexusbench.config import BENCHMARKS
+        from nexusbench.benchmarks import BaseBenchmark
+    except ImportError:
+        BENCHMARKS = None
+        BaseBenchmark = None
 
 
 @dataclass
