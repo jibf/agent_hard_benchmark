@@ -1,6 +1,6 @@
 from enum import Enum
 from pydantic import BaseModel
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 import re
 import json
 
@@ -93,10 +93,6 @@ class NexusBenchQuestion(FormattedQuestion):
 class ToolSandboxQuestion(FormattedQuestion):
     expected_output: Optional[str] = None
 
-
-
-
-
 class DrafterBenchQuestion(FormattedQuestion):
     pass
 
@@ -110,7 +106,8 @@ class BfclV3Question(FormattedQuestion):
 
 
 class MultiChallengeQuestion(FormattedQuestion):
-    pass
+    original_conversation: List[Dict[str, Any]]
+    evaluation_criteria: Dict
 
 
 ###

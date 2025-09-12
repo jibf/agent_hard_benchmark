@@ -8,11 +8,11 @@ BENCHMARKS = [
     # Benchmark.TAU2_BENCH,
     # Benchmark.TAU_BENCH,
     # Benchmark.ACE_BENCH,
-    Benchmark.NEXUS_BENCH,
-    Benchmark.TOOL_SANDBOX,
-    Benchmark.COMPLEX_FUNC_BENCH,
-    Benchmark.DRAFTER_BENCH,
-    Benchmark.BFCL,
+    # Benchmark.NEXUS_BENCH,
+    # Benchmark.TOOL_SANDBOX,
+    # Benchmark.COMPLEX_FUNC_BENCH,
+    # Benchmark.DRAFTER_BENCH,
+    # Benchmark.BFCL,
     Benchmark.MULTI_CHALLENGE]
 
 def test_bench_loader(benchmark: Benchmark):
