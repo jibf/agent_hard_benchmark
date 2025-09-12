@@ -63,7 +63,10 @@ class TauBenchQuestion(FormattedQuestion):
 
 
 class Tau2BenchQuestion(FormattedQuestion):
-    pass
+    agent_system_prompt: str                
+    user_context: str                       
+    available_user_function_list: list      # available functions that the user model can call (if any). This is only for telecom domain.
+    evaluation_criteria: Dict
 
 
 class AceBenchQuestion(FormattedQuestion):
