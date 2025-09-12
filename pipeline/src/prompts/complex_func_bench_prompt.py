@@ -162,7 +162,7 @@ User Input:
 ### User Prompt
 
 ```
-{user_prompt}
+{instruction}
 ```
 
 ### Available Function List
@@ -174,7 +174,7 @@ User Input:
 ### Ground-truth conversation
 
 ```json
-{conversations}
+{gt_conv_traj}
 ```
 
 

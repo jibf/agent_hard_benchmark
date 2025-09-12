@@ -16,8 +16,10 @@ class ComplexFuncBenchLoader(BaseLoader):
         question_id = line.get('id', 'unknown')
         conversations = line.get("conversations", [])
         user_prompt = conversations[0].get("content", "") if conversations else ""
+        
         return ComplexFuncBenchQuestion(
             question_id=question_id,
+            task_name='-'.join(question_id.split('-')[:-1]),
             instruction=user_prompt,
             gt_conv_traj=conversations,    
             available_function_list=line.get("functions", []),
