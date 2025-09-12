@@ -17,6 +17,7 @@ from tqdm import tqdm
 from src.bench_loaders import get_bench_loader
 from src.utils.types import Benchmark, FormattedQuestion, LLMJudgeOutput, LLMJudgeStep, UniqueQuestionID
 from src.utils.format_judge_prompt import format_judge_prompt
+import re
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ def _assess_question_worker(args):
     
     for attempt in range(max_retries):
         try:
-            response_format = {"type": "json_object"} if step == LLMJudgeStep.FILTER else None
+            response_format = {"type": "json_object"} 
             response = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": evaluation_prompt}],
@@ -59,17 +60,6 @@ def _assess_question_worker(args):
             if not response_content or response_content.strip() == "":
                 raise ValueError("Empty response from API")
             result = json.loads(response_content)
-            
-            if step == LLMJudgeStep.FILTER:
-                try:
-                    result = {
-                        "is_flawed": result["is_flawed"],
-                        "reasoning_summary": result["reasoning_summary"],
-                        **{k: v for k, v in result.items() if k not in ["is_flawed", "reasoning_summary"]}
-                    }
-                except KeyError as ke:
-                    raise ValueError(f"Missing key in response: {ke}")
-            
             return {"question": question, "assessment": result}
             
         except Exception as e:
@@ -81,24 +71,21 @@ def _assess_question_worker(args):
 class LLMJudge:
     """LLM-as-Judge filtering for benchmark quality assessment."""
     
-    def __init__(self, benchmark: Benchmark, config: LLMJudgeConfig = None):
+    def __init__(self, config: LLMJudgeConfig = None):
         self.config = config or LLMJudgeConfig()
         if self.config.steps is None:
             self.config.steps = [LLMJudgeStep.FILTER, LLMJudgeStep.SCORE]  # Default to both steps
-        self.benchmark = benchmark
     
     def _parse_task_name_from_question_id(self, question_id: str) -> str:
         """Parse task name from question_id by removing the last number part."""
-        import re
         match = re.match(r'^(.+)[-_](\d+)$', question_id)
-        return match.group(1) if match else question_id
+        return match.group(1) if match else "" 
 
-    def get_results(self) -> Dict[UniqueQuestionID,LLMJudgeOutput]:
-        """Load benchmark questions and run configured assessments."""
-        questions = self._load_benchmark_questions()
+    def get_results(self, question_ids: List[UniqueQuestionID]) -> Dict[UniqueQuestionID, LLMJudgeOutput]:
+        """Run configured assessments on the provided question IDs."""
+        questions = self._load_questions_by_ids(question_ids)
         if self.config.max_samples:
             questions = questions[:self.config.max_samples]
-
         
         if LLMJudgeStep.FILTER in self.config.steps:
             logger.info(f"Running FILTER assessment on {len(questions)} questions")
@@ -125,15 +112,19 @@ class LLMJudge:
 
             if LLMJudgeStep.SCORE in self.config.steps:
                 score_result = score_results[i].get("assessment", {})
+                total_score = 0
+                for score in score_result['scores']:
+                    total_score += score_result['scores'][score] 
+                score_result['total_score'] = total_score
                 result.scores = score_result
 
             results[unique_question_id] = result
             
         return results 
 
-    def load_benchmark_and_get_step_results(self, step: LLMJudgeStep = LLMJudgeStep.FILTER) -> List[Dict]:
-        """Run the LLM-as-Judge assessment."""
-        questions = self._load_benchmark_questions()
+    def assess_question_ids(self, question_ids: List[UniqueQuestionID], step: LLMJudgeStep = LLMJudgeStep.FILTER) -> List[Dict]:
+        """Run the LLM-as-Judge assessment on specific question IDs."""
+        questions = self._load_questions_by_ids(question_ids)
         
         if self.config.max_samples:
             questions = questions[:self.config.max_samples]
@@ -143,10 +134,29 @@ class LLMJudge:
         logger.info(f"Assessment completed. {len(results)} results generated.")
         return results
 
-    def _load_benchmark_questions(self) -> List[FormattedQuestion]:
-        loader_class = get_bench_loader(self.benchmark)
-        loader = loader_class()
-        return loader.load_questions()
+    def _load_questions_by_ids(self, question_ids: List[UniqueQuestionID]) -> List[FormattedQuestion]:
+        """Load questions by their unique IDs."""
+        # Group question IDs by benchmark
+        questions_by_benchmark = {}
+        for q_id in question_ids:
+            if q_id.benchmark not in questions_by_benchmark:
+                questions_by_benchmark[q_id.benchmark] = []
+            questions_by_benchmark[q_id.benchmark].append(q_id)
+        
+        # Load questions from each benchmark
+        all_questions = []
+        for benchmark, ids_in_benchmark in questions_by_benchmark.items():
+            loader_class = get_bench_loader(benchmark)
+            loader = loader_class()
+            benchmark_questions = loader.load_questions()
+            # Filter to only the requested question IDs
+            filtered_questions = [
+                q for q in benchmark_questions 
+                if q in ids_in_benchmark
+            ]
+            all_questions.extend(filtered_questions)
+        
+        return all_questions
 
     def _construct_judge_prompt(self, question: FormattedQuestion, step: LLMJudgeStep) -> str:
         prompt = format_judge_prompt(question, step)
@@ -167,7 +177,7 @@ class LLMJudge:
                        {"role": "user", "content": evaluation_prompt}
                     ],
                     temperature=0.0,
-                    response_format={"type": "json_object"} if (step == LLMJudgeStep.FILTER) else None
+                    response_format={"type": "json_object"}
                 )
 
                 response_content = response.choices[0].message.content
@@ -175,7 +185,6 @@ class LLMJudge:
                     raise ValueError("Empty response from API")
                     
                 result = json.loads(response_content)
-                print(result)
                 return result
             except Exception as e:
                 if attempt == self.config.max_retries - 1:  # Last attempt

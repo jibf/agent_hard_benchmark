@@ -574,7 +574,7 @@ class BenchmarkFilteringPipeline:
 
             logger.info(f"Processing {benchmark.value} benchmark: {len(benchmark_responses)} responses")
             judge = LLMJudge(benchmark, self.llm_config)
-            benchmark_results = judge.get_results()
+            benchmark_results = judge.assess_questions()
 
             # Create mapping from question ID to benchmark results
             result_map = {}

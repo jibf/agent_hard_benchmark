@@ -231,10 +231,11 @@ class BenchmarkFilteringPipeline:
             f"Benchmark separability before filtering: {json.dumps(separability_dict, indent=2)}"
         )
 
-        diversity_dict = self._compute_diversity(responses_by_question)
-        logger.info(
-            f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}"
-        )
+        if not self.config.get("skip_diversity_measurement", False):
+            diversity_dict = self._compute_diversity(responses_by_question)
+            logger.info(
+                f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}"
+            )
 
         # Calculate model ranking from original dataset for consistent ordering
         model_ranking = None
@@ -246,9 +247,10 @@ class BenchmarkFilteringPipeline:
                 "original_performance",
                 model_ranking=model_ranking,
             )
-            self._visualize_diversity(
-                responses_by_question, "Original Dataset", "original_diversity"
-            )
+            if not self.config.get("skip_diversity_measurement", False):
+                self._visualize_diversity(
+                    responses_by_question, "Original Dataset", "original_diversity"
+                )
 
         # Step 0: Always apply comprehensive filtering first
         current_responses = responses_by_question
@@ -289,11 +291,12 @@ class BenchmarkFilteringPipeline:
                     "step1_filtered_performance",
                     model_ranking=model_ranking,
                 )
-                self._visualize_diversity(
-                    step1_passed,
-                    "After Step 1 (Rule-based Filtering)",
-                    "step1_filtered_diversity",
-                )
+                if not self.config.get("skip_diversity_measurement", False):
+                    self._visualize_diversity(
+                        step1_passed,
+                        "After Step 1 (Rule-based Filtering)",
+                        "step1_filtered_diversity",
+                    )
 
             # Create baseline sample set by randomly sampling N tasks from original samples
             baseline_responses = self._create_task_wise_baseline_sample_set(
@@ -320,21 +323,23 @@ class BenchmarkFilteringPipeline:
                     "baseline_performance",
                     model_ranking=model_ranking,
                 )
-                self._visualize_diversity(
-                    baseline_responses,
-                    "Baseline (Random Sampling)",
-                    "baseline_diversity",
-                )
+                if not self.config.get("skip_diversity_measurement", False):
+                    self._visualize_diversity(
+                        baseline_responses,
+                        "Baseline (Random Sampling)",
+                        "baseline_diversity",
+                    )
 
             separability_dict = self._compute_separability(step1_passed)
             logger.info(
                 f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}"
             )
 
-            diversity_dict = self._compute_diversity(step1_passed)
-            logger.info(
-                f"Benchmark semantic diversity after Step 1: {json.dumps(diversity_dict, indent=2)}"
-            )
+            if not self.config.get("skip_diversity_measurement", False):
+                diversity_dict = self._compute_diversity(step1_passed)
+                logger.info(
+                    f"Benchmark semantic diversity after Step 1: {json.dumps(diversity_dict, indent=2)}"
+                )
         else:
             logger.info("Skipping Step 0 & 1: Rule-based filtering")
 
@@ -386,10 +391,11 @@ class BenchmarkFilteringPipeline:
                 f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}"
             )
 
-            diversity_dict = self._compute_diversity(step2_passed)
-            logger.info(
-                f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}"
-            )
+            if not self.config.get("skip_diversity_measurement", False):
+                diversity_dict = self._compute_diversity(step2_passed)
+                logger.info(
+                    f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}"
+                )
 
             # Visualize Step 2 filtered performance
             if not self.config.get("skip_visualization", False):
@@ -399,11 +405,12 @@ class BenchmarkFilteringPipeline:
                     "step2_filtered_performance",
                     model_ranking=model_ranking,
                 )
-                self._visualize_diversity(
-                    step2_passed,
-                    "After Step 2 (LLM-as-Judge Filtering)",
-                    "step2_filtered_diversity",
-                )
+                if not self.config.get("skip_diversity_measurement", False):
+                    self._visualize_diversity(
+                        step2_passed,
+                        "After Step 2 (LLM-as-Judge Filtering)",
+                        "step2_filtered_diversity",
+                    )
 
             # Step 3: Top-K selection based on scores
             if LLMJudgeStep.SCORE in self.llm_config.steps:
@@ -456,11 +463,12 @@ class BenchmarkFilteringPipeline:
                         "step3_filtered_performance",
                         model_ranking=model_ranking,
                     )
-                    self._visualize_diversity(
-                        step3_passed,
-                        "After Step 3 (Top-K Selection)",
-                        "step3_filtered_diversity",
-                    )
+                    if not self.config.get("skip_diversity_measurement", False):
+                        self._visualize_diversity(
+                            step3_passed,
+                            "After Step 3 (Top-K Selection)",
+                            "step3_filtered_diversity",
+                        )
             else:
                 logger.info("Skipping Step 3: Scoring not enabled")
         else:
@@ -1315,22 +1323,8 @@ class BenchmarkFilteringPipeline:
     ) -> Dict[UniqueQuestionID, LLMJudgeOutput]:
         """Run LLM judge independently on questions from benchmark datasets."""
         # Determine which benchmarks to process based on target_benchmark config
-        results = dict()
-
-        for benchmark in Benchmark:
-            benchmark_responses = self._filter_questions_by_benchmark(
-                questions, benchmark
-            )
-            if len(benchmark_responses) == 0:
-                continue
-            logger.info(
-                f"Processing {benchmark.value} benchmark: {len(benchmark_responses)} responses"
-            )
-            judge = LLMJudge(benchmark, self.llm_config)
-            benchmark_results = judge.get_results()
-            results.update(benchmark_results)
-
-        return results
+        judge = LLMJudge(self.llm_config)
+        return judge.get_results(questions)
 
     def _run_step3_top_k_selection(
         self,
@@ -1457,6 +1451,11 @@ def main():
         action="store_true",
         help="Diversity calculation: If set, embed the concatenation of all initial (system & user) prompts before the first assistant call instead of only the last user prompt.",
     )
+    parser.add_argument(
+        "--skip-diversity-measurement",
+        action="store_true",
+        help="Skip diversity measurement calculation to speed up processing",
+    )
 
     args = parser.parse_args()
 
@@ -1474,6 +1473,7 @@ def main():
         "embedding_model": args.embedding_model,
         "embedding_batch_size": args.embedding_batch_size,
         "embed_all_initial_prompts": args.embed_all_initial_prompts,
+        "skip_diversity_measurement": args.skip_diversity_measurement,
     }
 
     # Validate arguments
