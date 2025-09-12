@@ -2,236 +2,150 @@ import json
 import os
 import sys
 from typing import Dict, Any, List, Optional
+from pathlib import Path
 
 # Add the src directory to the path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from src.utils.types import AceBenchQuestion, Benchmark
-from .base_loader import BaseLoader
+from src.bench_loaders.base_loader import BaseLoader
 
 
 class AceBenchLoader(BaseLoader):
     """Loader for ACEBench benchmark data."""
     
-    def __init__(self):
-        self.benchmark_name = "acebench"
-        self.evaluation_dir = "benchmark/ACEBench-evaluation"
+    def __init__(self, data_dir: str = "data/ACEBench"):
+        self.data_dir = data_dir
+        
+    def _get_ground_truth(self, question_id: str, task_name: str) -> List[Dict[str, Any]]:
+        """Load ground truth from possible_answer files if available."""
+        ground_truth_path = os.path.join(self.possible_answers_dir, task_name + '.json')
+        ground_truths_within_task = []
+        with open(ground_truth_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                ground_truths_within_task.append(json.loads(line))
+        
+        for answer in ground_truths_within_task:
+            if answer.get('id') == question_id:
+                ground_truth = answer.get('ground_truth')
+                if isinstance(ground_truth, dict):
+                    ground_truth = [ground_truth]
+                elif isinstance(ground_truth, str):
+                    assert "I cannot solve this problem" in ground_truth  # ground_truth is str only if the sample is erronous
+                    ground_truth = [{"error": ground_truth}]
+                return ground_truth
+        return None
+
+    
+    def _get_system_prompts(self, question_id: str, question_text: str, functions: list, time_info: str, profile: str, lang: str) -> tuple[Optional[str], Optional[str]]:
+        """Get system prompts based on data type and language."""
+        prompt_file = os.path.join(self.data_dir, "model_inference", f"prompt_{lang}.py")
+        if not os.path.exists(prompt_file):
+            return None, None
+            
+        sys.path.insert(0, os.path.dirname(prompt_file))
+        
+        # Extract category from question_id (similar to original implementation)
+        category = question_id.rsplit("_", 1)[0] if question_id else ""
+        
+        if lang == 'en':
+            from prompt_en import (SYSTEM_PROMPT_FOR_NORMAL_DATA_EN, SYSTEM_PROMPT_FOR_PREFERENCE_DATA_EN,
+                                   SYSTEM_PROMPT_FOR_SPECIAL_DATA_EN, USER_PROMPT_EN)
+            
+            if "special" in category:
+                agent_prompt = SYSTEM_PROMPT_FOR_SPECIAL_DATA_EN.format(time=time_info, function=functions)
+            elif "preference" in category:
+                agent_prompt = SYSTEM_PROMPT_FOR_PREFERENCE_DATA_EN.format(profile=profile, function=functions)
+            else:
+                agent_prompt = SYSTEM_PROMPT_FOR_NORMAL_DATA_EN.format(time=time_info, function=functions)
+            
+            user_prompt = USER_PROMPT_EN.format(question=question_text)
+            
+        else:
+            from prompt_zh import (SYSTEM_PROMPT_FOR_NORMAL_DATA_ZH, SYSTEM_PROMPT_FOR_PREFERENCE_DATA_ZH,
+                                   SYSTEM_PROMPT_FOR_SPECIAL_DATA_ZH, USER_PROMPT_ZH)
+            
+            if "special" in category:
+                agent_prompt = SYSTEM_PROMPT_FOR_SPECIAL_DATA_ZH.format(time=time_info or "", function=functions)
+            elif "preference" in category:
+                agent_prompt = SYSTEM_PROMPT_FOR_PREFERENCE_DATA_ZH.format(profile=profile or "", function=functions)
+            else:
+                agent_prompt = SYSTEM_PROMPT_FOR_NORMAL_DATA_ZH.format(time=time_info or "", function=functions)
+            
+            user_prompt = USER_PROMPT_ZH.format(question=question_text)
+        
+        return agent_prompt, user_prompt
+    
+    def _load_questions_from_file(self, question_file_path: str, lang: str) -> List[AceBenchQuestion]:
+        """Load questions from a single JSON file."""
+        results = []
+        task_file_name = Path(question_file_path).stem
+        task_name = task_file_name.replace("data_", "").replace(".json", "")
+        
+        raw_questions = []
+        with open(question_file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                raw_questions.append(json.loads(line))
+            
+        # We'll get prompts per question since they depend on question-specific data
+            
+        for raw_question in raw_questions:
+            question_id = raw_question.get('id', '')
+            question_text = raw_question.get('question', '')
+            functions = raw_question.get('function', [])
+            time_info = raw_question.get('time', '')
+            profile = raw_question.get('profile', '')  # Extract profile for preference data
+            
+            # Multi-turn specific fields
+            initial_config = raw_question.get('initial_config')
+            path = raw_question.get('path')
+            involved_classes = raw_question.get('involved_classes')
+            
+            ground_truth = self._get_ground_truth(question_id, task_file_name)
+            
+            # Get prompts for this specific question
+            agent_prompt, user_prompt = self._get_system_prompts(question_id, question_text, functions, time_info, profile, lang)
+            
+            # Create the question object
+            question = AceBenchQuestion(
+                benchmark=Benchmark.ACE_BENCH,
+                task_name=task_name,
+                question_id=question_id,
+                instruction=question_text,
+                available_function_list=functions,
+                gt_conv_traj=ground_truth, 
+                time=time_info if time_info else None,
+                initial_config=initial_config,
+                path=path,
+                involved_classes=involved_classes,
+                agent_system_prompt=agent_prompt,
+                user_system_prompt=user_prompt,
+                meta={
+                    'data_type': task_file_name,
+                    'file_path': question_file_path
+                }
+            )
+            
+            results.append(question)
+        
+        return results
     
     def load_questions(self) -> List[AceBenchQuestion]:
         """Load all questions from ACEBench evaluation files."""
         questions = []
         
-        if not os.path.exists(self.evaluation_dir):
-            print(f"Warning: ACEBench evaluation directory {self.evaluation_dir} not found")
-            return questions
-        
-        # Look for .jsonl files in the evaluation directory
-        for filename in os.listdir(self.evaluation_dir):
-            if filename.endswith('.jsonl'):
-                file_path = os.path.join(self.evaluation_dir, filename)
-                file_questions = self._load_questions_from_file(file_path)
-                questions.extend(file_questions)
-        
-        print(f"Loaded {len(questions)} questions from ACEBench")
-        return questions
-    
-    def _load_questions_from_file(self, file_path: str) -> List[AceBenchQuestion]:
-        """Load questions from a single .jsonl file."""
-        questions = []
-        
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                for line_num, line in enumerate(f, 1):
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    try:
-                        sample = json.loads(line)
-                        question = self._format_sample(sample, line_num)
-                        if question:
-                            questions.append(question)
-                    except json.JSONDecodeError as e:
-                        print(f"Error parsing JSON at line {line_num}: {e}")
-                        continue
-        except Exception as e:
-            print(f"Error reading file {file_path}: {e}")
+        for lang in ['data_en']: # not using 'data_zh'
+            lang_dir = os.path.join(self.data_dir, 'data_all', lang)
+            self.possible_answers_dir = os.path.join(lang_dir, 'possible_answer')
+            
+            if not os.path.exists(lang_dir):
+                continue
+                
+            # Load all JSON files in the language directory
+            for file_name in os.listdir(lang_dir):
+                if file_name.endswith('.json'):
+                    file_path = os.path.join(lang_dir, file_name)
+                    lang_code = lang.split('_')[1]  # 'data_en' -> 'en', 'data_zh' -> 'zh'
+                    file_questions = self._load_questions_from_file(file_path, lang_code)
+                    questions.extend(file_questions)
         
         return questions
-    
-    def _format_sample(self, sample: Dict[str, Any], line_num: int) -> AceBenchQuestion:
-        """Format a raw sample into an AceBenchQuestion."""
-        try:
-            question_id = sample.get('meta', {}).get('id', f"acebench_{line_num}")
-            task_name = sample.get('task_name', 'unknown')
-            benchmark_name = sample.get('benchmark_name', 'acebench')
-            
-            instruction = self._extract_instruction(sample)
-            available_function_list = self._extract_functions(sample)
-            gt_conv_traj = self._extract_ground_truth(sample)
-            
-            meta = {
-                'acebench_context': {
-                    'task_name': task_name,
-                    'benchmark_name': benchmark_name,
-                    'model_path': sample.get('model_path', ''),
-                    'sampling_params': sample.get('sampling_params', {}),
-                    'eval_result': sample.get('eval_result', {}),
-                    'source_file': sample.get('meta', {}).get('source_file', ''),
-                    'acebench_result': sample.get('meta', {}).get('acebench_result', ''),
-                    'is_correct': sample.get('meta', {}).get('is_correct', False),
-                    'error_type': sample.get('meta', {}).get('error_type', ''),
-                    'possible_answer': sample.get('meta', {}).get('possible_answer', ''),
-                    'finish_reason': sample.get('meta', {}).get('finish_reason', ''),
-                    'turn_idx': sample.get('messages', [{}])[0].get('turn_idx', 0) if sample.get('messages') else 0
-                }
-            }
-            
-            # Convert complex data to JSON strings for string fields
-            acebench_result = sample.get('meta', {}).get('acebench_result', '')
-            if not isinstance(acebench_result, str):
-                acebench_result = json.dumps(acebench_result) if acebench_result else ''
-            
-            possible_answer = sample.get('meta', {}).get('possible_answer', '')
-            if not isinstance(possible_answer, str):
-                possible_answer = json.dumps(possible_answer) if possible_answer else ''
-            
-            return AceBenchQuestion(
-                question_id=question_id,
-                instruction=instruction,
-                available_function_list=available_function_list,
-                gt_conv_traj=gt_conv_traj,
-                benchmark=Benchmark.ACE_BENCH,
-                task_name=task_name,
-                benchmark_name=benchmark_name,
-                model_path=sample.get('model_path', ''),
-                sampling_params=sample.get('sampling_params', {}),
-                eval_result=sample.get('eval_result', {}),
-                source_file=sample.get('meta', {}).get('source_file', ''),
-                acebench_result=acebench_result,
-                is_correct=sample.get('meta', {}).get('is_correct', False),
-                error_type=sample.get('meta', {}).get('error_type', ''),
-                possible_answer=possible_answer,
-                finish_reason=sample.get('meta', {}).get('finish_reason', ''),
-                turn_idx=sample.get('messages', [{}])[0].get('turn_idx', 0) if sample.get('messages') else 0,
-                meta=meta
-            )
-        except Exception as e:
-            print(f"Error formatting sample {line_num}: {e}")
-            return None
-    
-    def _extract_instruction(self, sample: Dict[str, Any]) -> str:
-        """Extract instruction from sample messages."""
-        messages = sample.get('messages', [])
-        if messages:
-            for msg in messages:
-                if msg.get('role') == 'user':
-                    return msg.get('content', '')
-                elif msg.get('role') == 'system':
-                    return msg.get('content', '')
-        
-        # Fallback: create instruction based on task name and category
-        task_name = sample.get('task_name', 'unknown')
-        task_category = self._extract_task_category(task_name)
-        return f"Complete the ACEBench {task_category} task: {task_name}"
-    
-    def _extract_task_category(self, task_name: str) -> str:
-        """Extract task category from task name."""
-        if task_name.startswith('normal_'):
-            return 'Normal'
-        elif task_name.startswith('special_'):
-            return 'Special'
-        elif task_name.startswith('agent_'):
-            return 'Agent'
-        else:
-            return 'Unknown'
-    
-    def _extract_functions(self, sample: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Extract available functions from sample."""
-        # ACEBench typically doesn't have explicit function schemas in evaluation files
-        # However, we can try to extract function calls from the assistant messages
-        messages = sample.get('messages', [])
-        functions = []
-        
-        for msg in messages:
-            if msg.get('role') == 'assistant':
-                content = msg.get('content', '')
-                # Try to extract function calls from the content
-                extracted_functions = self._extract_function_calls_from_content(content)
-                if extracted_functions:
-                    functions.extend(extracted_functions)
-        
-        return functions
-    
-    def _extract_function_calls_from_content(self, content: str) -> List[Dict[str, Any]]:
-        """Extract function calls from assistant message content."""
-        functions = []
-        
-        try:
-            # Check if content contains function calls (usually in list format)
-            if content.startswith('[') and content.endswith(']'):
-                # Try to parse as JSON
-                try:
-                    function_calls = json.loads(content)
-                    if isinstance(function_calls, list):
-                        for call in function_calls:
-                            if isinstance(call, str):
-                                # Extract function name from string representation
-                                func_name = self._extract_function_name(call)
-                                if func_name:
-                                    functions.append({
-                                        'name': func_name,
-                                        'description': f'Function call: {call}',
-                                        'parameters': {}
-                                    })
-                except json.JSONDecodeError:
-                    # If not valid JSON, try to extract function names manually
-                    func_names = self._extract_function_names_manually(content)
-                    for func_name in func_names:
-                        functions.append({
-                            'name': func_name,
-                            'description': f'Function call: {func_name}',
-                            'parameters': {}
-                        })
-        except Exception:
-            pass
-        
-        return functions
-    
-    def _extract_function_name(self, call_str: str) -> str:
-        """Extract function name from function call string."""
-        # Look for function name pattern: function_name(...)
-        import re
-        match = re.search(r'(\w+)\s*\(', call_str)
-        if match:
-            return match.group(1)
-        return ""
-    
-    def _extract_function_names_manually(self, content: str) -> List[str]:
-        """Extract function names manually from content."""
-        import re
-        # Look for patterns like function_name(...)
-        function_patterns = re.findall(r'(\w+)\s*\([^)]*\)', content)
-        return list(set(function_patterns))  # Remove duplicates
-    
-    def _extract_ground_truth(self, sample: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Extract ground truth conversation trajectory."""
-        # ACEBench evaluation files contain model responses, not ground truth
-        # However, we can extract the conversation structure for context
-        messages = sample.get('messages', [])
-        if messages:
-            # Convert messages to conversation format
-            conversation = []
-            for msg in messages:
-                if msg.get('role') == 'user':
-                    conversation.append({
-                        'role': 'user',
-                        'content': msg.get('content', '')
-                    })
-                elif msg.get('role') == 'assistant':
-                    conversation.append({
-                        'role': 'assistant', 
-                        'content': msg.get('content', '')
-                    })
-            return conversation
-        
-        return []
