@@ -27,7 +27,6 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("openai._base_client").setLevel(logging.WARNING)
 
 
-
 @dataclass
 class LLMJudgeConfig:
     model: str = "openai/gpt-4.1"       # Default model
@@ -39,49 +38,43 @@ class LLMJudgeConfig:
     steps: List[LLMJudgeStep] = None            # Which steps to run (default: both FILTER and SCORE)
 
 
-def _assess_question_worker(args):
-    """Worker function for multiprocessing question assessment."""
-    question, step, model, api_key, base_url, max_retries, retry_delay = args
-    
-    client = OpenAI(api_key=api_key, base_url=base_url)
-    evaluation_prompt = format_judge_prompt(question, step)
-    
-    for attempt in range(max_retries):
-        try:
-            response_format = {"type": "json_object"} 
-            response = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": evaluation_prompt}],
-                temperature=0.0,
-                response_format=response_format
-            )
-            
-            response_content = response.choices[0].message.content
-            if not response_content or response_content.strip() == "":
-                raise ValueError("Empty response from API")
-            result = json.loads(response_content)
-            return {"question": question, "assessment": result}
-            
-        except Exception as e:
-            if attempt == max_retries - 1:  # Last attempt
-                return {"question": question, "assessment": {"error": str(e)}}
-            time.sleep(retry_delay)
-
-
 class LLMJudge:
     """LLM-as-Judge filtering for benchmark quality assessment."""
-    
+
     def __init__(self, config: LLMJudgeConfig = None):
         self.config = config or LLMJudgeConfig()
         if self.config.steps is None:
             self.config.steps = [LLMJudgeStep.FILTER, LLMJudgeStep.SCORE]  # Default to both steps
+
+    @staticmethod
+    def _make_api_call(client: OpenAI, model: str, evaluation_prompt: str, max_retries: int, retry_delay: float) -> Dict:
+        for attempt in range(max_retries):
+            try:
+                response_format = {"type": "json_object"}
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": evaluation_prompt}],
+                    temperature=0.0,
+                    response_format=response_format
+                )
+
+                response_content = response.choices[0].message.content
+                if not response_content or response_content.strip() == "":
+                    raise ValueError("Empty response from API")
+                result = json.loads(response_content)
+                return result
+
+            except Exception as e:
+                if attempt == max_retries - 1:  # Last attempt
+                    return {"error": str(e)}
+                time.sleep(retry_delay)
     
     def _parse_task_name_from_question_id(self, question_id: str) -> str:
         """Parse task name from question_id by removing the last number part."""
         match = re.match(r'^(.+)[-_](\d+)$', question_id)
         return match.group(1) if match else "" 
 
-    def get_results(self, question_ids: List[UniqueQuestionID]) -> Dict[UniqueQuestionID, LLMJudgeOutput]:
+    def judge_questions(self, question_ids: List[UniqueQuestionID]) -> Dict[UniqueQuestionID, LLMJudgeOutput]:
         """Run configured assessments on the provided question IDs."""
         questions = self._load_questions_by_ids(question_ids)
         if self.config.max_samples:
@@ -89,11 +82,11 @@ class LLMJudge:
         
         if LLMJudgeStep.FILTER in self.config.steps:
             logger.info(f"Running FILTER assessment on {len(questions)} questions")
-            filter_results = self.assess_questions(questions, LLMJudgeStep.FILTER)
+            filter_results = self.assess_questions_single_step(questions, LLMJudgeStep.FILTER)
         
         if LLMJudgeStep.SCORE in self.config.steps:
             logger.info(f"Running SCORE assessment on {len(questions)} questions")  
-            score_results = self.assess_questions(questions, LLMJudgeStep.SCORE)
+            score_results = self.assess_questions_single_step(questions, LLMJudgeStep.SCORE)
 
         results = dict()
         for i, question in enumerate(questions):
@@ -113,26 +106,17 @@ class LLMJudge:
             if LLMJudgeStep.SCORE in self.config.steps:
                 score_result = score_results[i].get("assessment", {})
                 total_score = 0
-                for score in score_result['scores']:
-                    total_score += score_result['scores'][score] 
-                score_result['total_score'] = total_score
+                try:
+                    for score in score_result['scores']:
+                        total_score += score_result['scores'][score] 
+                    score_result['total_score'] = total_score
+                except:
+                    score_result['total_score'] = 0
                 result.scores = score_result
 
             results[unique_question_id] = result
             
         return results 
-
-    def assess_question_ids(self, question_ids: List[UniqueQuestionID], step: LLMJudgeStep = LLMJudgeStep.FILTER) -> List[Dict]:
-        """Run the LLM-as-Judge assessment on specific question IDs."""
-        questions = self._load_questions_by_ids(question_ids)
-        
-        if self.config.max_samples:
-            questions = questions[:self.config.max_samples]
-            
-        logger.info(f"Assessing {len(questions)} questions using {self.config.num_proc} processes")
-        results = self.assess_questions(questions, step)
-        logger.info(f"Assessment completed. {len(results)} results generated.")
-        return results
 
     def _load_questions_by_ids(self, question_ids: List[UniqueQuestionID]) -> List[FormattedQuestion]:
         """Load questions by their unique IDs."""
@@ -158,40 +142,19 @@ class LLMJudge:
         
         return all_questions
 
-    def _construct_judge_prompt(self, question: FormattedQuestion, step: LLMJudgeStep) -> str:
-        prompt = format_judge_prompt(question, step)
-        return prompt
-
     def _assess_question(self, question: FormattedQuestion, step: LLMJudgeStep) -> Dict:
         client = OpenAI(
             api_key=os.getenv("API_KEY"),
             base_url=os.getenv("BASE_URL")
         )
-        evaluation_prompt = self._construct_judge_prompt(question, step)
+        evaluation_prompt = format_judge_prompt(question, step)
 
-        for attempt in range(self.config.max_retries):  # Retry logic
-            try:
-                response = client.chat.completions.create(
-                    model=self.config.model,
-                    messages=[
-                       {"role": "user", "content": evaluation_prompt}
-                    ],
-                    temperature=0.0,
-                    response_format={"type": "json_object"}
-                )
-
-                response_content = response.choices[0].message.content
-                if not response_content or response_content.strip() == "":
-                    raise ValueError("Empty response from API")
-                    
-                result = json.loads(response_content)
-                return result
-            except Exception as e:
-                if attempt == self.config.max_retries - 1:  # Last attempt
-                    return {"error": str(e)}
-                time.sleep(self.config.retry_delay)
+        return self._make_api_call(
+            client, self.config.model, evaluation_prompt,
+            self.config.max_retries, self.config.retry_delay
+        )
     
-    def assess_questions(self, questions: List[FormattedQuestion], step: LLMJudgeStep) -> List[Dict]:
+    def assess_questions_single_step(self, questions: List[FormattedQuestion], step: LLMJudgeStep) -> List[Dict]:
         """Assess questions using multiprocessing."""
         if self.config.num_proc == 1:   # Single process
             results = []
@@ -226,3 +189,13 @@ class LLMJudge:
                         pbar.update(1)
             
             return results
+
+
+def _assess_question_worker(args):
+    """Worker function for multiprocessing question assessment."""
+    question, step, model, api_key, base_url, max_retries, retry_delay = args
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    evaluation_prompt = format_judge_prompt(question, step)
+
+    result = LLMJudge._make_api_call(client, model, evaluation_prompt, max_retries, retry_delay)
+    return {"question": question, "assessment": result}

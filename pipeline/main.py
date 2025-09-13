@@ -1324,7 +1324,7 @@ class BenchmarkFilteringPipeline:
         """Run LLM judge independently on questions from benchmark datasets."""
         # Determine which benchmarks to process based on target_benchmark config
         judge = LLMJudge(self.llm_config)
-        return judge.get_results(questions)
+        return judge.judge_questions(questions)
 
     def _run_step3_top_k_selection(
         self,
