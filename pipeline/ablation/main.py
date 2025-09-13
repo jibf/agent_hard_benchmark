@@ -51,7 +51,7 @@ class BenchmarkFilteringPipeline:
             max_retries=self.config.get("llm_max_retries", 3),
             retry_delay=self.config.get("llm_retry_delay", 1.0),
             num_proc=self.config.get("num_proc", 1),
-            steps=[LLMJudgeStep.FILTER] if self.config.get("llm_filter_only", False) else [LLMJudgeStep.FILTER, LLMJudgeStep.SCORE]
+            steps=[LLMJudgeStep.SPECIFIC_FILTER] if self.config.get("llm_filter_only", False) else [LLMJudgeStep.SPECIFIC_FILTER, LLMJudgeStep.SCORE]
         )
     
     def _make_json_serializable(self, obj):
@@ -574,7 +574,7 @@ class BenchmarkFilteringPipeline:
 
             logger.info(f"Processing {benchmark.value} benchmark: {len(benchmark_responses)} responses")
             judge = LLMJudge(benchmark, self.llm_config)
-            benchmark_results = judge.assess_questions()
+            benchmark_results = judge.assess_questions_single_step()
 
             # Create mapping from question ID to benchmark results
             result_map = {}

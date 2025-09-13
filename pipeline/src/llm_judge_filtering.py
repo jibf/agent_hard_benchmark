@@ -44,7 +44,7 @@ class LLMJudge:
     def __init__(self, config: LLMJudgeConfig = None):
         self.config = config or LLMJudgeConfig()
         if self.config.steps is None:
-            self.config.steps = [LLMJudgeStep.FILTER, LLMJudgeStep.SCORE]  # Default to both steps
+            self.config.steps = [LLMJudgeStep.UNIVERSAL_FILTER, LLMJudgeStep.SPECIFIC_FILTER, LLMJudgeStep.SCORE]
 
     @staticmethod
     def _make_api_call(client: OpenAI, model: str, evaluation_prompt: str, max_retries: int, retry_delay: float) -> Dict:
@@ -80,13 +80,15 @@ class LLMJudge:
         if self.config.max_samples:
             questions = questions[:self.config.max_samples]
         
-        if LLMJudgeStep.FILTER in self.config.steps:
-            logger.info(f"Running FILTER assessment on {len(questions)} questions")
-            filter_results = self.assess_questions_single_step(questions, LLMJudgeStep.FILTER)
-        
+        if LLMJudgeStep.UNIVERSAL_FILTER in self.config.steps:
+            logger.info(f"Running universal LLM-judge filtering on {len(questions)} questions")
+            filter_results = self.assess_questions(questions, LLMJudgeStep.UNIVERSAL_FILTER)
+        if LLMJudgeStep.SPECIFIC_FILTER in self.config.steps:
+            logger.info(f"Running benchmark-specific LLM-judge filtering on {len(questions)} questions")
+            filter_results = self.assess_questions(questions, LLMJudgeStep.SPECIFIC_FILTER)
         if LLMJudgeStep.SCORE in self.config.steps:
             logger.info(f"Running SCORE assessment on {len(questions)} questions")  
-            score_results = self.assess_questions_single_step(questions, LLMJudgeStep.SCORE)
+            score_results = self.assess_questions(questions, LLMJudgeStep.SCORE)
 
         results = dict()
         for i, question in enumerate(questions):
@@ -154,7 +156,7 @@ class LLMJudge:
             self.config.max_retries, self.config.retry_delay
         )
     
-    def assess_questions_single_step(self, questions: List[FormattedQuestion], step: LLMJudgeStep) -> List[Dict]:
+    def assess_questions(self, questions: List[FormattedQuestion], step: LLMJudgeStep) -> List[Dict]:
         """Assess questions using multiprocessing."""
         if self.config.num_proc == 1:   # Single process
             results = []

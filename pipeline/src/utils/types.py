@@ -63,10 +63,11 @@ class TauBenchQuestion(FormattedQuestion):
 
 
 class Tau2BenchQuestion(FormattedQuestion):
-    agent_system_prompt: str                
-    user_context: str                       
+    agent_system_prompt: str
+    user_context: str
     available_user_function_list: list      # available functions that the user model can call (if any). This is only for telecom domain.
-    evaluation_criteria: Dict
+    initial_state: Optional[Dict[str, Any]] = None  # Initial state setup for the test environment
+    evaluation_criteria: Optional[Dict[str, Any]] = None  # Complete evaluation criteria including nl_assertions and env_assertions 
 
 
 class AceBenchQuestion(FormattedQuestion):
@@ -123,7 +124,8 @@ class PipelineOutput(BaseModel):
     llm_judge_output: Optional[LLMJudgeOutput] = None
 
 class LLMJudgeStep(Enum):
-    FILTER = "filter"
+    UNIVERSAL_FILTER = "universal_filter"
+    SPECIFIC_FILTER = "specific_filter"
     SCORE = "score"
 
 

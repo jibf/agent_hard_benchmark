@@ -5,9 +5,9 @@ from src.utils.types import Benchmark
 from src.bench_loaders import get_bench_loader
 
 BENCHMARKS = [ 
-    # Benchmark.TAU2_BENCH,
+    Benchmark.TAU2_BENCH,
     # Benchmark.TAU_BENCH,
-    Benchmark.ACE_BENCH,
+    # Benchmark.ACE_BENCH,
     # Benchmark.NEXUS_BENCH,
     # Benchmark.TOOL_SANDBOX,
     # Benchmark.COMPLEX_FUNC_BENCH,
@@ -32,19 +32,12 @@ def test_bench_loader(benchmark: Benchmark):
                 question_dict = question.model_dump()
                 for field, value in question_dict.items():
                     value_str = str(value)
-                    print(f"=== {field} ===:\n {value_str}")
+                    print(f"\033[91m=== {field} ===\033[0m:\n {value_str[:100]}")
                 prev_task_name = task_name
                 input()
             else:
                 continue
         question = questions[100]
-        question_dict = question.model_dump()
-        for field, value in question_dict.items():
-            value_str = str(value)
-            if len(value_str) > 100:
-                print(f"=== {field} ===:\n {value_str[:500]}...")
-            else:
-                print(f"=== {field} ===:\n {value_str}")
 
     except NotImplementedError:
         print(f"Loader for {benchmark} is not implemented.")

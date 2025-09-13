@@ -31,7 +31,7 @@ class AceBenchLoader(BaseLoader):
                     ground_truth = [ground_truth]
                 elif isinstance(ground_truth, str):
                     assert "I cannot solve this problem" in ground_truth  # ground_truth is str only if the sample is erronous
-                    ground_truth = [{"error": ground_truth}]
+                    ground_truth = []
                 return ground_truth
         return None
 

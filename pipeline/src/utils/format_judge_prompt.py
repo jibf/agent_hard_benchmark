@@ -8,7 +8,7 @@ from src.utils.types import FormattedQuestion, Benchmark, LLMJudgeStep
 from src.prompts import (
     tau_bench_prompt, tau2_bench_prompt, ace_bench_prompt,
     nexus_bench_prompt, tool_sandbox_prompt, complex_func_bench_prompt,
-    drafter_bench_prompt, bfcl_prompt, multi_challenge_prompt
+    drafter_bench_prompt, bfcl_prompt, multi_challenge_prompt, universal_prompt
 )
 
 
@@ -26,21 +26,25 @@ PROMPT_MODULES = {
 
 
 def format_judge_prompt(question: FormattedQuestion, step: LLMJudgeStep) -> str:
-    prompt_module = PROMPT_MODULES.get(question.benchmark)
-    if not prompt_module:
-        raise ValueError(f"Unknown benchmark: {question.benchmark.value}")
-    
-    prompt_template = _get_prompt_template(prompt_module, step)
-    required_fields = _extract_format_fields(prompt_template)
-    format_args = _build_format_args(question, required_fields)
-    
-    formatted_prompt = prompt_template.format(**format_args)
-    return formatted_prompt
+    if step == LLMJudgeStep.UNIVERSAL_FILTER:
+        # Use PromptBuilder for universal filtering
+        return universal_prompt.build_filtering_prompt(question)
+    else:
+        prompt_module = PROMPT_MODULES.get(question.benchmark)
+        if not prompt_module:
+            raise ValueError(f"Unknown benchmark: {question.benchmark.value}")
+
+        prompt_template = _get_prompt_template(prompt_module, step)
+        required_fields = _extract_format_fields(prompt_template)
+        format_args = _build_format_args(question, required_fields)
+
+        formatted_prompt = prompt_template.format(**format_args)
+        return formatted_prompt
 
 
 def _get_prompt_template(prompt_module, step: LLMJudgeStep) -> str:
     try:
-        if step == LLMJudgeStep.FILTER:
+        if step == LLMJudgeStep.SPECIFIC_FILTER or step == LLMJudgeStep.UNIVERSAL_FILTER:
             template = prompt_module.FILTERING_PROMPT
         elif step == LLMJudgeStep.SCORE:
             template = prompt_module.SCORING_PROMPT

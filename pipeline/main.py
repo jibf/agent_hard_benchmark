@@ -56,6 +56,14 @@ class BenchmarkFilteringPipeline:
         self.orchestrator = RuleFilteringOrchestrator()
         self.use_specific_filters = self.config.get("use_specific_filters", False)
 
+        # Determine which LLM judge steps to run
+        if self.config.get("universal_filter_only", False):
+            llm_steps = [LLMJudgeStep.UNIVERSAL_FILTER]
+        elif self.config.get("llm_filter_only", False):
+            llm_steps = [LLMJudgeStep.SPECIFIC_FILTER]
+        else:
+            llm_steps = [LLMJudgeStep.SPECIFIC_FILTER, LLMJudgeStep.SCORE]
+
         self.llm_config = LLMJudgeConfig(
             model=self.config.get("llm_model", "openai/gpt-4.1"),
             max_samples=self.config.get("llm_max_samples", None),
@@ -63,9 +71,7 @@ class BenchmarkFilteringPipeline:
             max_retries=self.config.get("llm_max_retries", 3),
             retry_delay=self.config.get("llm_retry_delay", 1.0),
             num_proc=self.config.get("num_proc", 1),
-            steps=[LLMJudgeStep.FILTER]
-            if self.config.get("llm_filter_only", False)
-            else [LLMJudgeStep.FILTER, LLMJudgeStep.SCORE],
+            steps=llm_steps,
         )
 
         # ----- Embedding model for semantic diversity -----
@@ -1456,6 +1462,11 @@ def main():
         action="store_true",
         help="Skip diversity measurement calculation to speed up processing",
     )
+    parser.add_argument(
+        "--universal-filter-only",
+        action="store_true",
+        help="Run only universal filter evaluation, skip all other filtering, scoring, separability, and diversity measurements",
+    )
 
     args = parser.parse_args()
 
@@ -1474,6 +1485,7 @@ def main():
         "embedding_batch_size": args.embedding_batch_size,
         "embed_all_initial_prompts": args.embed_all_initial_prompts,
         "skip_diversity_measurement": args.skip_diversity_measurement,
+        "universal_filter_only": args.universal_filter_only,
     }
 
     # Validate arguments
