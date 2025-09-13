@@ -30,6 +30,8 @@ model_path_to_name = {
     "openai/gpt-4o-20240806": "gpt-4o-20240806",
     "openai/gpt-4o-mini": "gpt-4o-mini",
     "openai/gpt-4.1": "gpt-4.1",
+    "openai/gpt-4.1-mini": "gpt-4.1-mini",
+    "openai/gpt-4.1-nano": "gpt-4.1-nano",
     "deepseek-ai/DeepSeek-V3-0324": "DeepSeek-V3-0324",
     "deepseek-ai/DeepSeek-R1-0528": "DeepSeek-R1-0528",
     "anthropic/claude-4-sonnet-thinking-on-10k": "claude-4-sonnet-thinking-on-10k",
@@ -62,9 +64,23 @@ def extract_model_path_from_filename(filename: str) -> str:
             'openai-o4-mini-high': 'openai/o4-mini-high',
             'openai-gpt-4o-20240806': 'openai/gpt-4o-20240806',
             'openai-gpt-4.1': 'openai/gpt-4.1',
+            'openai-gpt-4.1-mini': 'openai/gpt-4.1-mini',
+            'openai-gpt-4.1-nano': 'openai/gpt-4.1-nano',
         }
-        
-        return model_mapping.get(model_part, model_part)
+        # Return mapped value if explicitly provided above
+        if model_part in model_mapping:
+            return model_mapping[model_part]
+
+        # Generic handling: convert provider-prefixed strings like
+        #   "openai-gpt-4.1-mini"  -> "openai/gpt-4.1-mini"
+        #   "anthropic-claude-4-sonnet-thinking-off" -> "anthropic/claude-4-sonnet-thinking-off"
+        for provider in ("openai", "anthropic", "deepseek-ai", "togetherai"):
+            prefix = f"{provider}-"
+            if model_part.startswith(prefix):
+                return f"{provider}/" + model_part[len(prefix):]
+
+        # Fallback: return as-is
+        return model_part
     
     return "unknown"
 
