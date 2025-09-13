@@ -53,6 +53,7 @@ class MultiChallengeLoader(BaseLoader):
             
             return MultiChallengeQuestion(
                 question_id=question_id,
+                task_name=axis,
                 instruction=user_instruction,
                 gt_conv_traj=[],             # No ground-truth trajectory provided
                 available_function_list=[],  # MultiChallenge doesn't use function calling

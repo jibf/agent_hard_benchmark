@@ -67,6 +67,7 @@ class DrafterBenchLoader(BaseLoader):
 
         return DrafterBenchQuestion(
             question_id=f"{task_type}-{task_id}",
+            task_name=task_type,
             instruction=instruction,
             gt_conv_traj=conversations,
             available_function_list=[],
