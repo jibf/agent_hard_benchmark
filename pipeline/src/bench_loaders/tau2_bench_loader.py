@@ -51,13 +51,17 @@ class Tau2BenchLoader(BaseLoader):
         # Build instruction from user scenario (remove all newlines)
         instruction_parts = []
         if instructions.get('reason_for_call'):
-            instruction_parts.append(f"* Reason for call: {instructions['reason_for_call'].replace('\n', ' ')}")
+            reason_for_call = instructions['reason_for_call'].replace('\n', ' ')
+            instruction_parts.append(f"* Reason for call: {reason_for_call}")
         if instructions.get('task_instructions'):
-            instruction_parts.append(f"* Task instructions: {instructions['task_instructions'].replace('\n', ' ')}")
+            task_instructions = instructions['task_instructions'].replace('\n', ' ')
+            instruction_parts.append(f"* Task instructions: {task_instructions}")
         if instructions.get('known_info'):
-            instruction_parts.append(f"* Known info: {instructions['known_info'].replace('\n', ' ')}")
+            known_info = instructions['known_info'].replace('\n', ' ')
+            instruction_parts.append(f"* Known info: {known_info}")
         if instructions.get('unknown_info'):
-            instruction_parts.append(f"* Unknown info: {instructions['unknown_info'].replace('\n', ' ')}")
+            unknown_info = instructions['unknown_info'].replace('\n', ' ')
+            instruction_parts.append(f"* Unknown info: {unknown_info}")
         
         instruction = "\n\n".join(instruction_parts)
         
