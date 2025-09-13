@@ -180,8 +180,7 @@ class NexusBenchLoader(BaseLoader):
 
                 sample = Sample(query=query, reference=reference)
                 # Store original data for special handling (e.g., TMIHallucination json_tools)
-                if hasattr(sample, '__dict__'):
-                    sample.__dict__['_original_data'] = data
+                sample._original_data = data
                 samples.append(sample)
 
             # Create benchmark config dynamically
@@ -236,6 +235,7 @@ class NexusBenchLoader(BaseLoader):
             # Build the formatted question first so we can attach extra helper fields
             formatted_question = NexusBenchQuestion(
                 question_id=sample_id,
+                task_name='_'.join(sample_id.split('_')[:-1]),
                 instruction=user_prompt,
                 gt_conv_traj=conversations,
                 available_function_list=tool_schemas,

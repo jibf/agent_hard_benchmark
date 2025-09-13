@@ -61,7 +61,7 @@ Your task is to identify if the sample has a fundamental flaw in its ground-trut
         if hasattr(question, 'user_system_prompt') and question.user_system_prompt:
             overview_parts.append("- System Prompt Given to the User: This is a system prompt provided to the model simulating the user. It may contain instructions, context, or previous conversation trajectory that the user-simulating model can use as a context.")
 
-        if hasattr(question, 'initial_config') and question.initial_config: # For ACEBench
+        if hasattr(question, 'initial_config') and question.initial_config:                             # For ACEBench
             overview_parts.append("- Initial Configuration: The initial setup or configuration provided to the agent at the start of the task")
 
         if hasattr(question, 'available_user_function_list') and question.available_user_function_list: # For Tau2Bench
@@ -70,8 +70,8 @@ Your task is to identify if the sample has a fundamental flaw in its ground-trut
         if hasattr(question, 'initial_state') and question.initial_state:                               # For Tau2Bench
             overview_parts.append("- Initial State: The initial environment setup and conditions before the task begins. This defines the starting state of the system.")
 
-        if hasattr(question, 'evaluation_criteria') and question.evaluation_criteria:                  # For Tau2Bench
-            overview_parts.append("- Evaluation Criteria: The complete evaluation criteria including milestone ground-truth actions (function calls), natural language assertions, and final environment state assertion to validate. You need to validate if this criteria is achievable.")
+        if hasattr(question, 'evaluation_criteria') and question.evaluation_criteria:                   # For Tau2Bench
+            overview_parts.append("- Complete Evaluation Criteria: The complete evaluation criteria including milestone ground-truth actions (function calls), natural language assertions, and final environment state assertion to validate. The sample is considered to be flawed if one or more of these criteria is unachievable.")
 
         # Ground-Truth Trajectory needs to be at the end
         if hasattr(question, 'gt_conv_traj'):
@@ -89,6 +89,7 @@ Your task is to identify if the sample has a fundamental flaw in its ground-trut
 
     def add_instruction_and_error_categories(self, question: FormattedQuestion):
         is_gt_milestone_only = BENCHMARK_PROPERTIES.get(question.benchmark, {}).get('milestone_only_gt', False)
+        has_separate_evaluation_criteria = hasattr(question, 'evaluation_criteria') and question.evaluation_criteria    # True if the benchmark has separate evaluation criteria other than function call
 
 
         INSTRUCTION = f"""## Instruction for Evaluation\n
@@ -110,10 +111,16 @@ Third, determine if the function call sequence is a single, unambiguous correct 
 If the trajectory is not subject to ambiguity, proceed to the final check.\n"""
 
         if not is_gt_milestone_only:        # Add section D only for benchmarks that provide the full trajectory
-            INSTRUCTION += """ **D. Redundant/Incomplete Function Call Trajectory**
+            INSTRUCTION += """**D. Redundant/Incomplete Function Call Trajectory**
 Finally, check if the trajectory is efficient and complete. The sample is flawed if the sequence is either too long or missing crucial steps.\n
 - Redundant Function Calls: The trajectory includes unnecessary function calls that do not contribute to solving the task.
 - Incomplete Function Calls: The trajectory is missing crucial function calls needed to properly solve the task.\n"""
+
+        if has_separate_evaluation_criteria and question.evaluation_criteria: 
+            INSTRUCTION += "**E. Unachievable Evaluation Criteria**\n"
+            INSTRUCTION += "For this sample, you are also provided with a complete set of evaluation criteria that includes natural language assertions and/or final environment state assertions in addition to the milestone function calls. Carefully check if these criteria is actually achievable by the agent.\n"
+            INSTRUCTION += "If there are specific values of amounts mentioned in the criteria, you need to verify how those values are deduced. If any of these values cannot be logically inferred from the plausible conversation trajectory consistent with the ground-truth, then it is a flaw.\n"
+
 
         if is_gt_milestone_only:            # Add important notes for milestone-only benchmarks
             INSTRUCTION += "### CRUCIAL RULE: Make plausible assumptions\n"
@@ -121,7 +128,6 @@ Finally, check if the trajectory is efficient and complete. The sample is flawed
             INSTRUCTION += "Imagine possible conversation history that would justify the ground truth milestone function call trajectory."
             INSTRUCTION += "If a sequence of function calls can be justified by a sequence of plausible, un-shown conversation and tool calls that does not contradict the user scenario or system prompts, then it is NOT a flaw. "
             INSTRUCTION += "Flag a sample as flawed ONLY if a function call is impossible to justify, even with a hypothetical conversation.)\n"
-
 
         self.sections.append(INSTRUCTION)
         return self
@@ -134,7 +140,7 @@ Your final output must be a JSON object with the following structure, with NO ad
 {
   "reasoning": "Provide a clear, step-by-step explanation for your decision. If the sample is flawed, specify what is incorrect and why it violates the criteria above. If it is not flawed, briefly explain why the sample is valid and reliable for evaluation.",
   "reasoning_summary": "A concise summary of your decision. If not flawed, state 'Sample is valid for evaluation.' If flawed, provide a brief description of the main issue.",
-  "error_category": "A, B, C, or D (choose the first applicable error category from the hierarchical evaluation). If no errors are found, state 'None'.",
+  "error_category": "The error category identifier (e.g., 'B'). If no errors are found, state 'None'.",
   "is_flawed": <true or false>
 }
 ```"""
@@ -201,7 +207,7 @@ Your final output must be a JSON object with the following structure, with NO ad
         # Evaluation Criteria (For Tau2Bench)
         evaluation_criteria = getattr(question, 'evaluation_criteria', None)
         if evaluation_criteria:
-            sample_section.append("\n### Evaluation Criteria")
+            sample_section.append("\n### Complete Evaluation Criteria")
             sample_section.append("```json")
             sample_section.append(json.dumps(evaluation_criteria, indent=2))
             sample_section.append("```")
@@ -238,33 +244,33 @@ if __name__ == "__main__":
     from src.utils.types import Benchmark
     from src.bench_loaders import get_bench_loader
 
-    # Test CFB
-    cfb_loader = get_bench_loader(Benchmark.COMPLEX_FUNC_BENCH)()
-    cfb_questions = cfb_loader.load_questions()
-    cfb_sample = cfb_questions[0]
+    # # Test CFB
+    # cfb_loader = get_bench_loader(Benchmark.COMPLEX_FUNC_BENCH)()
+    # cfb_questions = cfb_loader.load_questions()
+    # cfb_sample = cfb_questions[0]
 
-    # Generate and save CFB prompt
-    cfb_prompt = build_filtering_prompt(cfb_sample)
-    with open("cfb_universal_prompt.txt", "w", encoding="utf-8") as f:
-        f.write("==== Prompt for CFB ====\n")
-        f.write(cfb_prompt)
+    # # Generate and save CFB prompt
+    # cfb_prompt = build_filtering_prompt(cfb_sample)
+    # with open("cfb_universal_prompt.txt", "w", encoding="utf-8") as f:
+    #     f.write("==== Prompt for CFB ====\n")
+    #     f.write(cfb_prompt)
 
-    # Test Tau Bench
-    tau_loader = get_bench_loader(Benchmark.TAU_BENCH)()
-    tau_questions = tau_loader.load_questions()
-    tau_sample = tau_questions[34]
-    print(tau_sample.question_id)
+    # # Test Tau Bench
+    # tau_loader = get_bench_loader(Benchmark.TAU_BENCH)()
+    # tau_questions = tau_loader.load_questions()
+    # tau_sample = tau_questions[34]
+    # print(tau_sample.question_id)
 
-    # Generate and save Tau Bench prompt
-    tau_prompt = build_filtering_prompt(tau_sample)
-    with open("tau_bench_universal_prompt.txt", "w", encoding="utf-8") as f:
-        f.write("==== Prompt for TAU_BENCH ====\n")
-        f.write(tau_prompt)
+    # # Generate and save Tau Bench prompt
+    # tau_prompt = build_filtering_prompt(tau_sample)
+    # with open("tau_bench_universal_prompt.txt", "w", encoding="utf-8") as f:
+    #     f.write("==== Prompt for TAU_BENCH ====\n")
+    #     f.write(tau_prompt)
     
     # Test Tau2 Bench
     tau2_loader = get_bench_loader(Benchmark.TAU2_BENCH)()
     tau2_questions = tau2_loader.load_questions()
-    tau2_sample = tau2_questions[200]
+    tau2_sample = tau2_questions[14]
     print(tau2_sample.question_id)
 
     # Generate and save Tau2 Bench prompt
@@ -273,15 +279,15 @@ if __name__ == "__main__":
         f.write("==== Prompt for TAU2_BENCH ====\n")
         f.write(tau2_prompt)
 
-    # Test ACE Bench
-    ace_loader = get_bench_loader(Benchmark.ACE_BENCH)()
-    ace_questions = ace_loader.load_questions()
-    ace_sample = ace_questions[0]
-    print(ace_sample.question_id)
-    # Generate and save ACE Bench prompt
-    ace_prompt = build_filtering_prompt(ace_sample)
-    with open("ace_bench_universal_prompt.txt", "w", encoding="utf-8") as f:
-        f.write("==== Prompt for ACE_BENCH ====\n")
-        f.write(ace_prompt)
+    # # Test ACE Bench
+    # ace_loader = get_bench_loader(Benchmark.ACE_BENCH)()
+    # ace_questions = ace_loader.load_questions()
+    # ace_sample = ace_questions[0]
+    # print(ace_sample.question_id)
+    # # Generate and save ACE Bench prompt
+    # ace_prompt = build_filtering_prompt(ace_sample)
+    # with open("ace_bench_universal_prompt.txt", "w", encoding="utf-8") as f:
+    #     f.write("==== Prompt for ACE_BENCH ====\n")
+    #     f.write(ace_prompt)
 
     print("Prompts saved")

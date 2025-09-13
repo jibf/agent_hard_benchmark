@@ -353,11 +353,13 @@ class BenchmarkFilteringPipeline:
         if not skip_llm_judge:
             logger.info("Step 2: LLM-as-Judge filtering")
             current_questions = list(current_responses.keys())
+
             step2_result = self._run_llm_judge(current_questions)
 
             # Update pipeline_outputs with step2 results
             for question_id, llm_output in step2_result.items():
                 pipeline_outputs[question_id].llm_judge_output = llm_output
+            
 
             step2_passed = {
                 qid: responses_by_question[qid]
@@ -564,7 +566,7 @@ class BenchmarkFilteringPipeline:
                     f"No specific filter for {benchmark_name}, keeping all {len(benchmark_samples)} samples"
                 )
                 all_passed_samples.extend(benchmark_samples)
-
+        
         # Convert back to responses_by_question format
         from src.utils import group_responses_by_question
 

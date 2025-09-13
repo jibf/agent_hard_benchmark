@@ -99,7 +99,10 @@ class Tau2BenchLoader(BaseLoader):
         
         # Extract conversation trajectory and evaluation criteria
         gt_conv_traj = task["evaluation_criteria"]["actions"]
+
+        # combine task purpose to the evaluation_criteria 
         evaluation_criteria = task.get("evaluation_criteria", {})
+        evaluation_criteria["task_purpose"] = task["description"]["purpose"]
         initial_state = task.get("initial_state")
 
         return Tau2BenchQuestion(
