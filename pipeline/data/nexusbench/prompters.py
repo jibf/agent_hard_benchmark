@@ -344,24 +344,31 @@ class AtheneV2Prompter(OpenAIFCPrompter):
         else:
             original_system = ""
 
+        # Extract textual content from original_system if present
+        if isinstance(original_system, dict):
+            original_system_content = original_system.get("content", "").strip()
+        else:
+            original_system_content = str(original_system).strip()
+
+        # Helper to build system message with inlined original content (if any)
+        def _build_system_msg(include_header: bool = True) -> str:
+            header = "SYSTEM MSG:" if include_header else ""
+            return (
+                f"\n    {header}\n    In this task, you are given a bunch of tools and a user query. "
+                "The user role message is the user query.\n    Issue tool calls that will address the user query.\n\n"
+                "    Note that some calls might have already been already issued and the results are presented as tool results.\n"
+                "    If you think all calls are executed, do not issue another call. Otherwise,\n"
+                "    please issue a single tool call.\n\n"
+                "    Do not chat. Do not say anything. You will have to issue a tool call ONLY.\n\n"
+                f"    {original_system_content}\n    END SYSTEM MSG"
+            )
+
         if num_assistant_steps == 0:
             result["messages"].insert(
                 0,
                 {
                     "role": "system",
-                    "content": """
-    SYSTEM MSG:
-    In this task, you are given a bunch of tools and a user query. The user role message is the user query.
-    Issue tool calls that will address the user query.
-
-    Note that some calls might have already been already issued and the results are presented as tool results.
-    If you think all calls are executed, do not issue another call. Otherwise,
-    please issue a single tool call.
-
-    Do not chat. Do not say anything. You will have to issue a tool call ONLY.
-
-    {original_system}
-    END SYSTEM MSG""",
+                    "content": _build_system_msg(),
                 },
             )
         else:
@@ -369,17 +376,7 @@ class AtheneV2Prompter(OpenAIFCPrompter):
                 0,
                 {
                     "role": "system",
-                    "content": """
-    SYSTEM MSG:
-    In this task, you are given a bunch of tools and a user query. The user role message is the user query.
-    Issue tool calls that will address the user query.
-
-    Note that some calls might have already been already issued and the results are presented as tool results.
-    If you think all calls are executed, do not issue another call. Otherwise,
-    please issue a single tool call.
-
-    {original_system}
-    END SYSTEM MSG""",
+                    "content": _build_system_msg(),
                 },
             )
 
