@@ -79,7 +79,7 @@ class NexusBenchLoader(BaseLoader):
         'TicketTracking': {'query': 'Input', 'reference': 'Output'},
         'ClimateBenchmark': {'query': 'Input', 'reference': 'Output'},
         'CVECPEBenchmark': {'query': 'Input', 'reference': 'Output'},
-        'VirusTotalAgentic': {'query': 'Input', 'reference': 'Output'},
+        'VirusTotalAgentic': {'query': 'generated_question', 'reference': 'fncall'},
         'LangChainMath': {'query': ('inputs', 'question'), 'reference': ('outputs', 'reference')},
         'LangChainMultitoolTypeWriterHard': {'query': 'answer', 'reference': 'answer'},
         'LangChainTypeWriterHard': {'query': 'answer', 'reference': 'answer'},
@@ -149,6 +149,7 @@ class NexusBenchLoader(BaseLoader):
         for benchmark_name in benchmark_names:
             # Load dataset directly from HuggingFace
             dataset_name = self._get_dataset_name(benchmark_name)
+            dataset = None  # type: ignore
             try:
                 dataset = load_dataset(dataset_name, split="train", trust_remote_code=True)
             except Exception as e:
@@ -159,7 +160,20 @@ class NexusBenchLoader(BaseLoader):
                     dataset = load_dataset(dataset_name, split="train")
                 except Exception as e2:
                     print(f"Alternative approach also failed: {e2}")
-                    # Skip this dataset for now but continue with others
+                    # -----------------------------------------------------
+                    # Final fallback: attempt to load via the NexusBench
+                    # python package directly (if available).  This path
+                    # ensures that benchmarks which are *not* published on
+                    # HuggingFace but *are* shipped inside the nexusbench
+                    # package – such as VirusTotalAgentic – are still
+                    # included when running the generic `load_questions()`
+                    # method used by the main pipeline.
+                    # -----------------------------------------------------
+                    formatted_questions = self.load_specific_benchmark(benchmark_name)
+                    if formatted_questions:
+                        all_questions.extend(formatted_questions)
+                    # Proceed to next benchmark (skip the remainder of the
+                    # current loop since we've already handled it).
                     continue
             samples = []
 
