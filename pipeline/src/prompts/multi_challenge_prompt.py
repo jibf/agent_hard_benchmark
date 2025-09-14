@@ -1,55 +1,56 @@
 
 FILTERING_PROMPT = """You are an expert evaluator for MultiChallenge, a benchmark designed to assess an agent's ability to maintain context and coherence across multi-turn conversations.
 
-Your task is to identify if a sample in the benchmark has a fundamental flaw in its ground-truth, which would make it an unreliable sample for evaluation.
+Your task is to identify if a sample in the benchmark has a fundamental flaw that would make it an unreliable sample for evaluation.
 
 You will be provided with the following information:
-* User Scenario: the prompt given to the model that simulates user interactions.
+* User Scenario: the final user prompt in the conversation
 * Available Function List: a list of functions available for the agents and their schema
-* Ground-Truth Conversation: the provided ground-truth trajectory containing the multi-turn conversation flow.
+* Original Conversation: the complete multi-turn conversation flow
+* Evaluation Criteria: the target question and pass criteria for assessment
 
-A sample is considered flawed if at least one of the following issues is present in the ground-truth conversation.
+A sample is considered flawed if at least one of the following issues is present:
 
 ## Flaw Categories
 
 1. Ambiguous Ground Truth - Memory Failure
 
-This occurs when the ground-truth conversation has missing facts, broken turn structure, or vague thresholds without numeric data that make it impossible for models to maintain proper context. The issue might be:
+This occurs when the conversation has fundamental structural issues that make evaluation impossible:
 
-* Missing Essential Facts: Critical information needed for context maintenance is absent from the conversation flow.
-* Broken Turn Structure: The conversation flow has abrupt context shifts or disconnected turns that break logical progression.
-* Vague Thresholds: Instructions contain subjective criteria without clear, measurable standards (e.g., "make it better" without specific improvement criteria).
+* Missing Conversation: The conversation is completely empty or missing entirely
+* Broken Turn Structure: The conversation flow has abrupt context shifts or disconnected turns that break logical progression
+* Incomplete Context: Critical information needed for evaluation is missing from the conversation
 
 2. Bad Evaluation - Instruction Issues
 
-This occurs when the ground-truth contains vague, subjective, or conflicting instructions that cannot be objectively evaluated. The issue might be:
+This occurs when the evaluation criteria are vague, subjective, or impossible to apply objectively:
 
-* Vague Instructions: Unclear scope, priorities, or definitions that allow for multiple valid interpretations.
-* Subjective Criteria: Evaluation depends on personal preferences or opinions rather than objective measures.
-* Conflicting Requirements: Instructions that contradict each other or create impossible constraints.
+* Vague Target Question: The target question is unclear or allows for multiple valid interpretations
+* Subjective Pass Criteria: The pass criteria depend on personal preferences rather than objective measures
+* Impossible Evaluation: The target question cannot be answered based on the conversation content
 
 3. Bad Evaluation - Self-Contradiction
 
-This occurs when the ground-truth contains embedded conflicts, contradictory facts, or competing requirements that pressure models into contradictions. The issue might be:
+This occurs when the conversation contains embedded conflicts or contradictory information:
 
-* Embedded Conflicts: The conversation contains inherent contradictions that cannot be resolved.
-* Competing Requirements: Multiple valid but mutually exclusive approaches are presented without clear prioritization.
-* Factual Contradictions: The ground-truth contains demonstrably false or contradictory information.
+* Embedded Conflicts: The conversation contains inherent contradictions that cannot be resolved
+* Factual Contradictions: The conversation contains demonstrably false or contradictory information
+* Competing Requirements: Multiple valid but mutually exclusive approaches are presented without clear prioritization
 
 4. Ambiguous Ground Truth - Ungrounded Versions
 
-This occurs when the ground-truth lacks clear authoritative state or has unclear change specifications that make evaluation ambiguous. The issue might be:
+This occurs when the evaluation lacks clear criteria or reference points:
 
-* Missing Authoritative State: No clear baseline or reference point for evaluating changes.
-* Unclear Change Specifications: Edit instructions are ambiguous about what should be modified.
-* Competing Final Versions: Multiple valid end states without clear criteria for selection.
+* Missing Evaluation Context: No clear baseline or reference point for evaluation
+* Unclear Success Criteria: The pass criteria are ambiguous about what constitutes success
+* Competing Interpretations: Multiple valid interpretations of the target question without clear criteria
 
-## Crucial Rule: Assume Plausible Conversation
+## Crucial Rule: Focus on Evaluation Feasibility
 
-The ground-truth conversation represents a realistic multi-turn interaction. Your task is to find undeniable flaws in the conversation design, not in individual model responses.
+MultiChallenge is designed to test multi-turn conversation capabilities. Your task is to identify samples where evaluation is fundamentally impossible, not to judge conversation quality.
 
-* If a conversation flow can be justified by realistic user behavior and natural dialogue progression, then it is NOT a flaw.
-* Flag a sample as flawed ONLY if the conversation structure itself is fundamentally broken or the evaluation criteria are impossible to apply objectively.
+* If the conversation provides sufficient context to answer the target question objectively, then it is NOT flawed
+* Flag a sample as flawed ONLY if the evaluation criteria cannot be applied objectively or the conversation structure makes assessment impossible
 
 -----
 
@@ -71,7 +72,7 @@ Your final output must be a JSON object with the following structure, with no ad
 
 ## Target Sample
 
-### User Scenario
+### User Scenario (Final User Prompt)
 
 ```
 {instruction}
@@ -83,10 +84,16 @@ Your final output must be a JSON object with the following structure, with no ad
 {available_function_list}
 ```
 
-### Ground-Truth Conversation
+### Original Conversation
 
 ```json
-{gt_conv_traj}
+{original_conversation}
+```
+
+### Evaluation Criteria
+
+```json
+{evaluation_criteria}
 ```
 
 ### Metadata
