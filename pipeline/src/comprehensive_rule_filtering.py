@@ -194,7 +194,14 @@ class ComprehensiveRuleFilter:
 
         # Question is discriminative if there's sufficient variance in scores
         # This means different models perform differently on this question
-        return variance > 0.01  # Threshold for meaningful variation
+        var_th = 0.1
+        # Check if numeric_scores are binary (all close to 0 or 1) or continuous (0~1)
+        is_binary = all(np.isclose(score, 0.0) or np.isclose(score, 1.0) for score in numeric_scores)
+        if is_binary:
+            var_th = 0.1
+        else:
+            var_th = 0.01
+        return variance > var_th  # Threshold for meaningful variation
 
     def _classify_question_difficulty(self, question_samples: List[Dict]) -> str:
         """
