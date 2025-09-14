@@ -32,7 +32,6 @@ class LLMJudgeConfig:
     model: str = "openai/gpt-4.1"       # Default model
     max_retries: int = 3
     retry_delay: float = 1.0
-    batch_size: int = 10                # TODO: Implement batching
     num_proc: int = 32
     max_samples: Optional[int] = None   # Limit for testing
     steps: List[LLMJudgeStep] = None            # Which steps to run (default: both FILTER and SCORE)

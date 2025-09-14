@@ -67,7 +67,6 @@ class BenchmarkFilteringPipeline:
         self.llm_config = LLMJudgeConfig(
             model=self.config.get("llm_model", "openai/gpt-4.1"),
             max_samples=self.config.get("llm_max_samples", None),
-            batch_size=self.config.get("llm_batch_size", 10),
             max_retries=self.config.get("llm_max_retries", 3),
             retry_delay=self.config.get("llm_retry_delay", 1.0),
             num_proc=self.config.get("num_proc", 1),
@@ -77,11 +76,14 @@ class BenchmarkFilteringPipeline:
         # ----- Embedding model for semantic diversity -----
         model_name = self.config.get("embedding_model", "Qwen/Qwen3-Embedding-8B")
         self.embedder = None
-        self.embedder = SentenceTransformer(
-            model_name,
-            device="cuda" if torch.cuda.is_available() else "cpu",
-            model_kwargs={"torch_dtype": torch.float16},
-        )
+        if self.config.get("skip_diversity_measurement", False):
+            pass
+        else:
+            self.embedder = SentenceTransformer(
+                model_name,
+                device="cuda" if torch.cuda.is_available() else "cpu",
+                model_kwargs={"torch_dtype": torch.float16},
+            )
         self.embedding_batch_size = self.config.get("embedding_batch_size", 8)
 
         # Whether to embed the concatenation of all initial prompts (system & user)
@@ -232,10 +234,11 @@ class BenchmarkFilteringPipeline:
 
         pipeline_outputs = {k: PipelineOutput() for k in responses_by_question.keys()}
 
-        separability_dict = self._compute_separability(responses_by_question)
-        logger.info(
-            f"Benchmark separability before filtering: {json.dumps(separability_dict, indent=2)}"
-        )
+        for i in range(3):
+            separability_dict = self._compute_separability(responses_by_question)
+            logger.info(
+                f"Benchmark separability before filtering: {json.dumps(separability_dict, indent=2)}"
+            )
 
         if not self.config.get("skip_diversity_measurement", False):
             diversity_dict = self._compute_diversity(responses_by_question)
@@ -305,6 +308,7 @@ class BenchmarkFilteringPipeline:
                     )
 
             # Create baseline sample set by randomly sampling N tasks from original samples
+            logger.info(f"Step 1 BASELINE...")
             baseline_responses = self._create_task_wise_baseline_sample_set(
                 responses_by_question, step1_unique_tasks
             )
@@ -316,10 +320,12 @@ class BenchmarkFilteringPipeline:
             )
 
             # Compute separability for baseline for comparison
-            baseline_separability = self._compute_separability(baseline_responses)
-            print(
-                f"Benchmark separability for baseline (sample size same as post-step1): {json.dumps(baseline_separability)}"
-            )
+            for i in range(3):
+                baseline_separability = self._compute_separability(baseline_responses)
+                logger.info(
+                    f"Benchmark separability baseline (vs. step1): {json.dumps(baseline_separability, indent=2)}"
+                )
+            
 
             # Visualize baseline performance
             if not self.config.get("skip_visualization", False):
@@ -336,10 +342,11 @@ class BenchmarkFilteringPipeline:
                         "baseline_diversity",
                     )
 
-            separability_dict = self._compute_separability(step1_passed)
-            logger.info(
-                f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}"
-            )
+            for i in range(3):
+                separability_dict = self._compute_separability(step1_passed)
+                logger.info(
+                    f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}"
+                )
 
             if not self.config.get("skip_diversity_measurement", False):
                 diversity_dict = self._compute_diversity(step1_passed)
@@ -377,21 +384,24 @@ class BenchmarkFilteringPipeline:
             )
 
             # Create baseline sample set by randomly sampling N tasks from step1_passed
+            logger.info(f"Step 2 BASELINE (vs. Step 1 from step1_passed)...")
             baseline_from_step1 = self._create_task_wise_baseline_sample_set(
                 step1_passed, step2_unique_tasks
             )
             baseline_separability = self._compute_separability(baseline_from_step1)
-            print(
-                f"Benchmark separability for baseline (from step1_passed, sample size same as post-step2): {json.dumps(baseline_separability)}"
+            
+            logger.info(
+                f"Benchmark separability baseline (vs. Step 2 from step1_passed): {json.dumps(baseline_separability, indent=2)}"
             )
 
             # Create baseline sample set by randomly sampling N tasks from all_samples
+            logger.info(f"Step 2 BASELINE (vs. Step 1 from all_samples)...")
             baseline_from_all = self._create_task_wise_baseline_sample_set(
                 responses_by_question, step2_unique_tasks
             )
             baseline_separability = self._compute_separability(baseline_from_all)
-            print(
-                f"Benchmark separability for baseline (from all_samples, sample size same as post-step2): {json.dumps(baseline_separability)}"
+            logger.info(
+                f"Benchmark separability baseline (vs. Step 2 from all_samples): {json.dumps(baseline_separability, indent=2)}"
             )
 
             separability_dict = self._compute_separability(step2_passed)
@@ -437,30 +447,32 @@ class BenchmarkFilteringPipeline:
                 )
 
                 # Create baseline sample sets for step3 comparison
+                logger.info(f"Step 3 BASELINE (vs Step 2 from step2_passed)...")
                 baseline_from_step2 = self._create_task_wise_baseline_sample_set(
                     step2_passed, step3_unique_tasks
                 )
                 baseline_separability_step2 = self._compute_separability(
                     baseline_from_step2
                 )
-                print(
-                    f"Benchmark separability for baseline (from step2_passed, sample size same as post-step3): {json.dumps(baseline_separability_step2)}"
+                logger.info(
+                    f"Benchmark separability for baseline (vs Step 3 from step2_passed): {json.dumps(baseline_separability_step2, indent=2)}"
                 )
 
+                logger.info(f"Step 3 BASELINE (vs Step 2 from all_samples)...")
                 baseline_from_all_step3 = self._create_task_wise_baseline_sample_set(
                     responses_by_question, step3_unique_tasks
                 )
                 baseline_separability_all_step3 = self._compute_separability(
                     baseline_from_all_step3
                 )
-                print(
-                    f"Benchmark separability for baseline (from all_samples, sample size same as post-step3): {json.dumps(baseline_separability_all_step3)}"
+                logger.info(
+                    f"Benchmark separability for baseline (vs Step 3 from all_samples): {json.dumps(baseline_separability_all_step3, indent=2)}"
                 )
 
                 # Compute separability for step3 results
                 separability_dict_step3 = self._compute_separability(step3_passed)
-                print(
-                    f"Benchmark separability after Step 3: {json.dumps(separability_dict_step3)}"
+                logger.info(
+                    f"Benchmark separability after Step 3: {json.dumps(separability_dict_step3, indent=2)}"
                 )
 
                 # Visualize Step 3 filtered performance
@@ -1050,15 +1062,155 @@ class BenchmarkFilteringPipeline:
 
             logger.info(f"Saved plot: {plot_filename}")
 
+            # Create model agreement heatmap
+            self._create_model_agreement_heatmap(
+                responses_by_question, benchmark_name, title, filename, model_order
+            )
+
             # Print summary statistics
-            logger.info(f"\n{benchmark_name} - Model Performance Summary:")
-            logger.info("=" * 60)
-            for model_name, mean, ci_low, ci_high in zip(
-                model_names, means, ci_lowers, ci_uppers
-            ):
-                logger.info(
-                    f"{model_name:30} | Mean: {mean:.4f} | CI: [{ci_low:.4f}, {ci_high:.4f}]"
-                )
+            # logger.info(f"\n{benchmark_name} - Model Performance Summary:")
+            # logger.info("=" * 60)
+            # for model_name, mean, ci_low, ci_high in zip(
+            #     model_names, means, ci_lowers, ci_uppers
+            # ):
+            #     logger.info(
+            #         f"{model_name:30} | Mean: {mean:.4f} | CI: [{ci_low:.4f}, {ci_high:.4f}]"
+            #     )
+
+    def _create_model_agreement_heatmap(
+        self,
+        responses_by_question: Dict[str, List[Dict]],
+        benchmark_name: str,
+        title: str,
+        filename: str,
+        model_order: List[str],
+    ):
+        """Create a heatmap showing model agreement based on task correctness."""
+        logger.info(f"Creating model agreement heatmap for {benchmark_name}")
+
+        # Create output directory for plots
+        plots_dir = "pipeline_results/plots"
+        os.makedirs(plots_dir, exist_ok=True)
+
+        # Group responses by question ID and model
+        question_model_scores = {}
+        for question_id, responses in responses_by_question.items():
+            for response in responses:
+                if str(response["benchmark_name"]) == benchmark_name:
+                    model_name = response["model_path"]
+                    score = response["eval_result"]["score"]
+                    
+                    if question_id not in question_model_scores:
+                        question_model_scores[question_id] = {}
+                    question_model_scores[question_id][model_name] = score
+
+        # Filter to only include models that are in model_order and have data
+        available_models = set()
+        for question_id, model_scores in question_model_scores.items():
+            available_models.update(model_scores.keys())
+        
+        # Use only models that exist in both model_order and available_models
+        filtered_model_order = [model for model in model_order if model in available_models]
+        
+        if len(filtered_model_order) < 2:
+            logger.warning(f"Not enough models ({len(filtered_model_order)}) to create agreement heatmap for {benchmark_name}")
+            return
+
+        # Calculate agreement matrix
+        n_models = len(filtered_model_order)
+        agreement_matrix = np.zeros((n_models, n_models))
+        
+        # For each pair of models, calculate agreement
+        for i, model1 in enumerate(filtered_model_order):
+            for j, model2 in enumerate(filtered_model_order):
+                if i == j:
+                    agreement_matrix[i, j] = 1.0  # Perfect agreement with self
+                else:
+                    agreements = 0
+                    total_comparisons = 0
+                    
+                    # Compare on each question where both models have responses
+                    for question_id, model_scores in question_model_scores.items():
+                        if model1 in model_scores and model2 in model_scores:
+                            score1 = model_scores[model1]
+                            score2 = model_scores[model2]
+                            
+                            # Convert scores to binary correctness (assuming score > 0.5 means correct)
+                            correct1 = 1 if score1 > 0.5 else 0
+                            correct2 = 1 if score2 > 0.5 else 0
+                            
+                            # Agreement if both correct or both incorrect
+                            if correct1 == correct2:
+                                agreements += 1
+                            total_comparisons += 1
+                    
+                    if total_comparisons > 0:
+                        agreement_matrix[i, j] = agreements / total_comparisons
+                    else:
+                        agreement_matrix[i, j] = 0.0
+
+        # Create the heatmap
+        plt.figure(figsize=(max(8, n_models * 0.8), max(6, n_models * 0.6)))
+        
+        # Create heatmap with custom colormap
+        sns.heatmap(
+            agreement_matrix,
+            xticklabels=filtered_model_order,
+            yticklabels=filtered_model_order,
+            annot=True,
+            fmt='.3f',
+            cmap='RdYlBu_r',
+            vmin=0,
+            vmax=1,
+            cbar_kws={'label': 'Agreement Rate'},
+            square=True,
+            linewidths=0.5,
+            annot_kws={'fontsize': 8}
+        )
+        
+        plt.title(
+            f"{title} - {benchmark_name}\nModel Agreement Heatmap",
+            fontsize=12,
+            fontweight="bold",
+            pad=15,
+        )
+        plt.xlabel("Model", fontsize=10, fontweight="bold")
+        plt.ylabel("Model", fontsize=10, fontweight="bold")
+        
+        # Rotate x-axis labels for better readability
+        plt.xticks(rotation=45, ha="right", fontsize=9)
+        plt.yticks(rotation=0, fontsize=9)
+        
+        plt.tight_layout()
+        
+        # Save the heatmap
+        safe_benchmark_name = benchmark_name.replace("/", "_").replace(" ", "_")
+        heatmap_filename = os.path.join(
+            plots_dir, f"{filename}_{safe_benchmark_name}_agreement_heatmap.png"
+        )
+        plt.savefig(
+            heatmap_filename,
+            dpi=150,
+            bbox_inches="tight",
+            facecolor="white",
+            edgecolor="none",
+            format="png",
+        )
+        plt.close()
+        
+        logger.info(f"Saved agreement heatmap: {heatmap_filename}")
+        
+        # Log some summary statistics
+        # Calculate average agreement (excluding diagonal)
+        mask = ~np.eye(n_models, dtype=bool)
+        avg_agreement = np.mean(agreement_matrix[mask])
+        min_agreement = np.min(agreement_matrix[mask])
+        max_agreement = np.max(agreement_matrix[mask])
+        
+        logger.info(f"Agreement statistics for {benchmark_name}:")
+        logger.info(f"  Average agreement: {avg_agreement:.3f}")
+        logger.info(f"  Min agreement: {min_agreement:.3f}")
+        logger.info(f"  Max agreement: {max_agreement:.3f}")
 
     def _count_unique_tasks(self, samples: List[Dict]) -> int:
         """Count unique tasks in samples."""
@@ -1106,7 +1258,7 @@ class BenchmarkFilteringPipeline:
         logger.info(
             f"Creating task-wise baseline: sampling {target_task_count} tasks from {total_samples} total samples ({total_tasks} unique tasks)"
         )
-
+        print("Total tasks for BASELINE: ", target_task_count)
         if target_task_count >= total_tasks:
             logger.info("Target task count >= total tasks, returning all samples")
             return responses_by_question.copy()
@@ -1117,7 +1269,7 @@ class BenchmarkFilteringPipeline:
             list(responses_by_question.keys()), target_task_count
         )
         random.seed()  # Reset seed
-
+        # print("Selected task ids for BASELINE: ", [(task_id.task_name, task_id.question_id) for task_id in selected_task_ids])
         # Create baseline using dict comprehension
         baseline = {
             task_id: responses_by_question[task_id] for task_id in selected_task_ids
@@ -1402,24 +1554,6 @@ def main():
         help="Maximum samples to process in Step 2 (default: all)",
     )
     parser.add_argument(
-        "--llm-batch-size",
-        type=int,
-        default=10,
-        help="Batch size for LLM processing (default: 10)",
-    )
-    parser.add_argument(
-        "--llm-max-retries",
-        type=int,
-        default=3,
-        help="Maximum retries for LLM calls (default: 3)",
-    )
-    parser.add_argument(
-        "--llm-retry-delay",
-        type=float,
-        default=1.0,
-        help="Delay between retries in seconds (default: 1.0)",
-    )
-    parser.add_argument(
         "--num-proc",
         type=int,
         default=1,
@@ -1476,9 +1610,6 @@ def main():
     config = {
         "llm_model": args.llm_model,
         "llm_max_samples": args.llm_max_samples,
-        "llm_batch_size": args.llm_batch_size,
-        "llm_max_retries": args.llm_max_retries,
-        "llm_retry_delay": args.llm_retry_delay,
         "num_proc": args.num_proc,
         "target_benchmark": args.target_benchmark,
         "llm_filter_only": args.llm_filter_only,
