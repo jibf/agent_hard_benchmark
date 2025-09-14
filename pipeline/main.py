@@ -1560,10 +1560,10 @@ def main():
         help="Number of processes for multiprocessing (default: 1)",
     )
     parser.add_argument(
-        "--target_benchmark",
         "--target-benchmark",
+        nargs='+',
         choices=list(benchmark.value for benchmark in Benchmark),
-        help="Target benchmark to process (default: all available benchmarks)",
+        help="Target benchmark(s) to process (default: all available benchmarks)",
     )
     parser.add_argument(
         "--llm-filter-only",

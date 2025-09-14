@@ -20,12 +20,12 @@ class BenchmarkDataLoader:
     def __init__(self):
         self.loaded_samples = []
     
-    def load_benchmark_data(self, benchmarks_dir: str, target_benchmark: Optional[str] = None) -> List[Dict]:
+    def load_benchmark_data(self, benchmarks_dir: str, target_benchmark: Optional[List[str]] = None) -> List[Dict]:
         """Load benchmark data from the specified directory.
-        
+
         Args:
             benchmarks_dir: Directory containing benchmark data
-            target_benchmark: If specified, only load this specific benchmark
+            target_benchmark: If specified, only load these specific benchmarks
         """
         logger.info(f"Loading benchmark data from {benchmarks_dir}")
         
@@ -36,14 +36,17 @@ class BenchmarkDataLoader:
         all_samples = []
         
         if target_benchmark:
-            # Load only the target benchmark
-            target_dir = benchmarks_path / f"{target_benchmark}-evaluation"
-            if target_dir.exists() and target_dir.is_dir():
-                logger.info(f"Loading only target benchmark: {target_benchmark}")
-                benchmark_samples = self._load_benchmark_directory(target_dir, target_benchmark)
-                all_samples.extend(benchmark_samples)
-            else:
-                logger.warning(f"Target benchmark directory not found: {target_dir}")
+            # Load only the target benchmarks
+            logger.info(f"Loading target benchmarks: {target_benchmark}")
+            for benchmark in target_benchmark:
+                target_dir = benchmarks_path / f"{benchmark}-evaluation"
+                if target_dir.exists() and target_dir.is_dir():
+                    logger.info(f"Loading benchmark: {benchmark}")
+                    benchmark_samples = self._load_benchmark_directory(target_dir, benchmark)
+                    all_samples.extend(benchmark_samples)
+                else:
+                    logger.warning(f"Target benchmark directory not found: {target_dir}")
+            if not all_samples:
                 return []
         else:
             # Process each benchmark directory (original behavior)
