@@ -47,7 +47,6 @@ class BenchmarkFilteringPipeline:
         self.llm_config = LLMJudgeConfig(
             model=self.config.get("llm_model", "openai/gpt-4.1"),
             max_samples=self.config.get("llm_max_samples", None),
-            batch_size=self.config.get("llm_batch_size", 10),
             max_retries=self.config.get("llm_max_retries", 3),
             retry_delay=self.config.get("llm_retry_delay", 1.0),
             num_proc=self.config.get("num_proc", 1),
@@ -726,24 +725,6 @@ def main():
         help="Maximum samples to process in Step 2 (default: all)"
     )
     parser.add_argument(
-        "--llm-batch-size", 
-        type=int,
-        default=10,
-        help="Batch size for LLM processing (default: 10)"
-    )
-    parser.add_argument(
-        "--llm-max-retries", 
-        type=int,
-        default=3,
-        help="Maximum retries for LLM calls (default: 3)"
-    )
-    parser.add_argument(
-        "--llm-retry-delay", 
-        type=float,
-        default=1.0,
-        help="Delay between retries in seconds (default: 1.0)"
-    )
-    parser.add_argument(
         "--num-proc", 
         type=int,
         default=1,
@@ -772,9 +753,6 @@ def main():
     config = {
         "llm_model": args.llm_model,
         "llm_max_samples": args.llm_max_samples,
-        "llm_batch_size": args.llm_batch_size,
-        "llm_max_retries": args.llm_max_retries,
-        "llm_retry_delay": args.llm_retry_delay,
         "num_proc": args.num_proc,
         "target_benchmark": args.target_benchmark,
         "use_specific_filters": args.specific_step1,

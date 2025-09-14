@@ -121,7 +121,7 @@ Pipeline Control:
   --target-benchmark BENCHMARK        Target benchmark(s) to process
 
 LLM Judge Filtering Configuration (Step 2):
-  --llm-filtering-scheme SCHEME       Choose filtering approach (default: both)
+  --llm-filter-mode SCHEME       Choose filtering approach (default: both)
                                       • common: Universal filter only
                                       • specific: Benchmark-specific filter only
                                       • both: Universal + benchmark-specific filters
@@ -165,19 +165,19 @@ python main.py --target-benchmark tau-bench tau2-bench ACEBench
 
 ```bash
 # Universal filtering only (fast, general quality checks)
-python main.py --llm-filtering-scheme common --num-proc 32
+python main.py --llm-filter-mode common --num-proc 32
 
 # Benchmark-specific filtering only (specialized rules per benchmark)
-python main.py --llm-filtering-scheme specific --num-proc 32
+python main.py --llm-filter-mode specific --num-proc 32
 
 # Both universal and benchmark-specific filtering (default, most thorough)
-python main.py --llm-filtering-scheme both --num-proc 32
+python main.py --llm-filter-mode both --num-proc 32
 
 # Universal filter + scoring
-python main.py --llm-filtering-scheme common --num-proc 32
+python main.py --llm-filter-mode common --num-proc 32
 
 # Both universal and benchmark-specific filter without scoring
-python main.py --llm-filtering-scheme both --skip-scoring --num-proc 32
+python main.py --llm-filter-mode both --skip-scoring --num-proc 32
 ```
 
 ## Benchmark-Specific Features

@@ -57,19 +57,19 @@ class BenchmarkFilteringPipeline:
         self.use_specific_filters = self.config.get("use_specific_filters", False)
 
         # Determine which LLM judge steps to run based on filtering scheme
-        filtering_scheme = self.config.get("llm_filtering_scheme", "both")
+        filter_mode = self.config.get("llm_filter_mode", "both")
         skip_scoring = self.config.get("skip_scoring", False)
 
-        if filtering_scheme == "common":
+        if filter_mode == "common":
             llm_steps = [LLMJudgeStep.UNIVERSAL_FILTER]
-        elif filtering_scheme == "specific":
+        elif filter_mode == "specific":
             llm_steps = [LLMJudgeStep.SPECIFIC_FILTER]
-        elif filtering_scheme == "both":
+        elif filter_mode == "both":
             llm_steps = [LLMJudgeStep.UNIVERSAL_FILTER, LLMJudgeStep.SPECIFIC_FILTER]
             if not skip_scoring:
                 llm_steps.append(LLMJudgeStep.SCORE)
         else:
-            raise ValueError(f"Invalid llm_filtering_scheme: {filtering_scheme}. Must be 'common', 'specific', or 'both'")
+            raise ValueError(f"Invalid llm_filter_mode: {filter_mode}. Must be 'common', 'specific', or 'both'")
 
         self.llm_config = LLMJudgeConfig(
             model=self.config.get("llm_model", "openai/gpt-4.1"),
@@ -1581,7 +1581,7 @@ def main():
         help="Target benchmark(s) to process (default: all available benchmarks)",
     )
     parser.add_argument(
-        "--llm-filtering-scheme",
+        "--llm-filter-mode",
         choices=["common", "specific", "both"],
         default="both",
         help="LLM filtering scheme: 'common' (universal filter only), 'specific' (benchmark-specific filter only), 'both' (universal + specific filters + scoring by default)",
@@ -1627,7 +1627,7 @@ def main():
         "llm_max_samples": args.llm_max_samples,
         "num_proc": args.num_proc,
         "target_benchmark": args.target_benchmark,
-        "llm_filtering_scheme": args.llm_filtering_scheme,
+        "llm_filter_mode": args.llm_filter_mode,
         "skip_scoring": args.skip_scoring,
         "skip_visualization": args.skip_visualization,
         "embedding_model": args.embedding_model,
