@@ -130,7 +130,8 @@ class ComprehensiveRuleFilter:
         """Extract a unique identifier for the question/task."""
         # Try different possible fields for question identification
         if "task_name" in sample and "meta" in sample and "id" in sample["meta"]:
-            return sample["task_name"] + "_" + sample["meta"]["id"]
+            # For ACEBench, the id field already contains the full question ID
+            return sample["meta"]["id"]
         elif "task_name" in sample:
             return sample["task_name"]
         elif "question" in sample:
@@ -280,16 +281,32 @@ class ComprehensiveRuleFilter:
 
         # Create a mapping from question_id to task_type
         question_to_task = {}
+        # Convert question_ids to strings for comparison
+        question_id_strings = set()
+        for qid in question_ids:
+            if hasattr(qid, 'question_id'):
+                question_id_strings.add(qid.question_id)
+            else:
+                question_id_strings.add(str(qid))
+        
         for sample in samples:
             question_id = self._extract_question_id(sample)
-            if question_id in question_ids:
+            if question_id in question_id_strings:
                 task_type = self._extract_task_type(sample)
                 question_to_task[question_id] = task_type
 
         # Group questions by task type
         for question_id in question_ids:
-            task_type = question_to_task.get(question_id, "unknown")
-            task_groups[task_type].append(question_id)
+            # Handle both string and UniqueQuestionID objects
+            if hasattr(question_id, 'question_id'):
+                # It's a UniqueQuestionID object, use the question_id field directly
+                question_id_str = question_id.question_id
+            else:
+                # It's already a string
+                question_id_str = str(question_id)
+            
+            task_type = question_to_task.get(question_id_str, "unknown")
+            task_groups[task_type].append(question_id_str)
 
         return dict(task_groups)
 
@@ -343,4 +360,12 @@ class ComprehensiveRuleFilter:
         sorted_questions = sorted(questions_in_task)
         questions_to_keep = sorted_questions[:min_retention_count]
 
-        return question_id in questions_to_keep
+        # Handle both string and UniqueQuestionID objects
+        if hasattr(question_id, 'question_id'):
+            # It's a UniqueQuestionID object, use the question_id field directly
+            question_id_str = question_id.question_id
+        else:
+            # It's already a string
+            question_id_str = str(question_id)
+
+        return question_id_str in questions_to_keep

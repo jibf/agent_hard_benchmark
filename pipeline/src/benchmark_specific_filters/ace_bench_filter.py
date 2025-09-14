@@ -284,6 +284,9 @@ class ACEBenchFilter(BaseBenchmarkFilter):
         for msg in messages:
             if msg.get('role') == 'assistant':
                 content = msg.get('content', '')
+                # Handle both string and list content
+                if isinstance(content, list):
+                    content = str(content)
                 if content and content.startswith('[') and content.endswith(']'):
                     return content
         return ""
