@@ -4,7 +4,7 @@ from typing import Dict, List, Any, Tuple
 from .comprehensive_rule_filtering import ComprehensiveRuleFilter
 from .benchmark_specific_filters import (
     DrafterBenchFilter, MultiChallengeFilter, ACEBenchFilter,
-    ComplexFuncBenchFilter, BFCLFilter, NexusBenchFilter, TAUBenchFilter
+    ComplexFuncBenchFilter, BFCLFilter, NexusBenchFilter, TAUBenchFilter, TAU2BenchFilter
 )
 from .utils import normalize_benchmark_name, EnumJSONEncoder
 from .utils.types import Benchmark
@@ -22,7 +22,8 @@ class RuleFilteringOrchestrator:
             Benchmark.COMPLEX_FUNC_BENCH: ComplexFuncBenchFilter(),
             Benchmark.BFCL: BFCLFilter(),
             Benchmark.NEXUS_BENCH: NexusBenchFilter(),
-            Benchmark.TAU_BENCH: TAUBenchFilter()
+            Benchmark.TAU_BENCH: TAUBenchFilter(),
+            Benchmark.TAU2_BENCH: TAU2BenchFilter()
         }
     
     def filter_samples(self, samples: List[Dict], use_specific_filters: bool = False, 

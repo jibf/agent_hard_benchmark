@@ -11,6 +11,7 @@ from .complex_func_bench_filter import ComplexFuncBenchFilter
 from .bfcl_filter import BFCLFilter
 from .nexus_bench_filter import NexusBenchFilter
 from .tau_bench_filter import TAUBenchFilter
+from .tau2_bench_filter import TAU2BenchFilter
 
 __all__ = [
     'BaseBenchmarkFilter',
@@ -20,5 +21,6 @@ __all__ = [
     'ComplexFuncBenchFilter',
     'BFCLFilter',
     'NexusBenchFilter',
-    'TAUBenchFilter'
+    'TAUBenchFilter',
+    'TAU2BenchFilter'
 ]

@@ -37,7 +37,7 @@ class TAU2BenchFilter(BaseBenchmarkFilter):
         DO_NOTHING_SUCCESS_RATE_THRESHOLD = 0.5
         qids_to_filter = self._get_qids_solvable_by_do_nothing()
         question_groups = self._group_samples_by_question(samples)
-        
+        print("filter target: ", qids_to_filter)
         passed_samples = []
         dropped_samples = []
         
@@ -60,8 +60,19 @@ class TAU2BenchFilter(BaseBenchmarkFilter):
             'telecom': ["make_payment", "resume_line", "refuel_data", "send_payment_request"]
         }
         
+
+        # no action evaluation_criteria.actions == []
+
+        # action but no db impact
         result = []
         questions = Tau2BenchLoader().load_questions() # only the questions, not responses
+        print("sample question", questions[0])
+
+        # question : question_id = '0', task_name = 'airline'
+        # gt_conv_traj = actions
+        # evaluation_criteria.communicate_info
+        # reward_basis isn't included in the loader
+
         for question in questions:
             qid = question.question_id
             
