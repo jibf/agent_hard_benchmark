@@ -56,13 +56,20 @@ class BenchmarkFilteringPipeline:
         self.orchestrator = RuleFilteringOrchestrator()
         self.use_specific_filters = self.config.get("use_specific_filters", False)
 
-        # Determine which LLM judge steps to run
-        if self.config.get("universal_filter_only", False):
+        # Determine which LLM judge steps to run based on filtering scheme
+        filtering_scheme = self.config.get("llm_filtering_scheme", "both")
+        skip_scoring = self.config.get("skip_scoring", False)
+
+        if filtering_scheme == "common":
             llm_steps = [LLMJudgeStep.UNIVERSAL_FILTER]
-        elif self.config.get("llm_filter_only", False):
+        elif filtering_scheme == "specific":
             llm_steps = [LLMJudgeStep.SPECIFIC_FILTER]
+        elif filtering_scheme == "both":
+            llm_steps = [LLMJudgeStep.UNIVERSAL_FILTER, LLMJudgeStep.SPECIFIC_FILTER]
+            if not skip_scoring:
+                llm_steps.append(LLMJudgeStep.SCORE)
         else:
-            llm_steps = [LLMJudgeStep.SPECIFIC_FILTER, LLMJudgeStep.SCORE]
+            raise ValueError(f"Invalid llm_filtering_scheme: {filtering_scheme}. Must be 'common', 'specific', or 'both'")
 
         self.llm_config = LLMJudgeConfig(
             model=self.config.get("llm_model", "openai/gpt-4.1"),
@@ -1425,13 +1432,21 @@ class BenchmarkFilteringPipeline:
             if not output.rule_based_output or output.rule_based_output.passed
         ]
 
+        def _is_question_flawed(llm_output):
+            """Check if question is flawed based on any available filter results"""
+            if not llm_output:
+                return False
+            # Check specific filter first, then universal filter
+            if llm_output.specific_filter:
+                return llm_output.specific_filter.is_flawed
+            elif llm_output.universal_filter:
+                return llm_output.universal_filter.is_flawed
+            return False
+
         step2_passed = [
             qid
             for qid in step1_passed
-            if (
-                not pipeline_outputs[qid].llm_judge_output
-                or not pipeline_outputs[qid].llm_judge_output.is_flawed
-            )
+            if not _is_question_flawed(pipeline_outputs[qid].llm_judge_output)
         ]
 
         step1_benchmarks = Counter(qid.benchmark.value for qid in step1_passed)
@@ -1562,14 +1577,19 @@ def main():
     parser.add_argument(
         "--target-benchmark",
         nargs='+',
-        choices=list(benchmark.value for benchmark in Benchmark),
+        choices=[benchmark.value for benchmark in Benchmark],
         help="Target benchmark(s) to process (default: all available benchmarks)",
     )
     parser.add_argument(
-        "--llm-filter-only",
+        "--llm-filtering-scheme",
+        choices=["common", "specific", "both"],
+        default="both",
+        help="LLM filtering scheme: 'common' (universal filter only), 'specific' (benchmark-specific filter only), 'both' (universal + specific filters + scoring by default)",
+    )
+    parser.add_argument(
+        "--skip-scoring",
         action="store_true",
-        default=False,
-        help="Run only LLM filtering step, skip scoring step",
+        help="Skip scoring step even when using 'both' filtering scheme",
     )
     parser.add_argument(
         "--skip-visualization",
@@ -1598,11 +1618,6 @@ def main():
         action="store_true",
         help="Skip diversity measurement calculation to speed up processing",
     )
-    parser.add_argument(
-        "--universal-filter-only",
-        action="store_true",
-        help="Run only universal filter evaluation, skip all other filtering, scoring, separability, and diversity measurements",
-    )
 
     args = parser.parse_args()
 
@@ -1612,13 +1627,13 @@ def main():
         "llm_max_samples": args.llm_max_samples,
         "num_proc": args.num_proc,
         "target_benchmark": args.target_benchmark,
-        "llm_filter_only": args.llm_filter_only,
+        "llm_filtering_scheme": args.llm_filtering_scheme,
+        "skip_scoring": args.skip_scoring,
         "skip_visualization": args.skip_visualization,
         "embedding_model": args.embedding_model,
         "embedding_batch_size": args.embedding_batch_size,
         "embed_all_initial_prompts": args.embed_all_initial_prompts,
         "skip_diversity_measurement": args.skip_diversity_measurement,
-        "universal_filter_only": args.universal_filter_only,
     }
 
     # Validate arguments

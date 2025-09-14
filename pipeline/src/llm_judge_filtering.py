@@ -15,7 +15,7 @@ from multiprocessing import Pool
 from dotenv import load_dotenv
 from tqdm import tqdm
 from src.bench_loaders import get_bench_loader
-from src.utils.types import Benchmark, FormattedQuestion, LLMJudgeOutput, LLMJudgeStep, UniqueQuestionID
+from src.utils.types import Benchmark, FormattedQuestion, LLMJudgeOutput, LLMJudgeStep, UniqueQuestionID, FilterResult
 from src.utils.format_judge_prompt import format_judge_prompt
 import re
 
@@ -78,45 +78,72 @@ class LLMJudge:
         questions = self._load_questions_by_ids(question_ids)
         if self.config.max_samples:
             questions = questions[:self.config.max_samples]
-        
+
+        # Run filtering steps and collect results
+        universal_results = None
+        specific_results = None
+        score_results = None
+
         if LLMJudgeStep.UNIVERSAL_FILTER in self.config.steps:
             logger.info(f"Running universal LLM-judge filtering on {len(questions)} questions")
-            filter_results = self.assess_questions(questions, LLMJudgeStep.UNIVERSAL_FILTER)
+            universal_results = self.assess_questions(questions, LLMJudgeStep.UNIVERSAL_FILTER)
+
         if LLMJudgeStep.SPECIFIC_FILTER in self.config.steps:
             logger.info(f"Running benchmark-specific LLM-judge filtering on {len(questions)} questions")
-            filter_results = self.assess_questions(questions, LLMJudgeStep.SPECIFIC_FILTER)
+            specific_results = self.assess_questions(questions, LLMJudgeStep.SPECIFIC_FILTER)
+
         if LLMJudgeStep.SCORE in self.config.steps:
-            logger.info(f"Running SCORE assessment on {len(questions)} questions")  
+            logger.info(f"Running SCORE assessment on {len(questions)} questions")
             score_results = self.assess_questions(questions, LLMJudgeStep.SCORE)
 
+        # Combine results
         results = dict()
         for i, question in enumerate(questions):
-            filter_result = filter_results[i].get("assessment", {})
             unique_question_id = UniqueQuestionID(
                 benchmark=question.benchmark,
                 task_name=question.task_name or self._parse_task_name_from_question_id(question.question_id),
                 question_id=question.question_id
             )
-            result = LLMJudgeOutput(
-                is_flawed=filter_result['is_flawed'],
-                error_category=filter_result['error_category'],
-                reasoning=filter_result['reasoning'],
-                reasoning_summary=filter_result['reasoning_summary']
-            )
 
-            if LLMJudgeStep.SCORE in self.config.steps:
+            result = LLMJudgeOutput()
+
+            # Add universal filter result
+            if universal_results:
+                universal_assessment = universal_results[i].get("assessment", {})
+                if universal_assessment:
+                    result.universal_filter = FilterResult(
+                        is_flawed=universal_assessment['is_flawed'],
+                        error_category=universal_assessment['error_category'],
+                        reasoning=universal_assessment['reasoning'],
+                        reasoning_summary=universal_assessment['reasoning_summary']
+                    )
+
+            # Add specific filter result
+            if specific_results:
+                specific_assessment = specific_results[i].get("assessment", {})
+                if specific_assessment:
+                    result.specific_filter = FilterResult(
+                        is_flawed=specific_assessment['is_flawed'],
+                        error_category=specific_assessment['error_category'],
+                        reasoning=specific_assessment['reasoning'],
+                        reasoning_summary=specific_assessment['reasoning_summary']
+                    )
+
+            # Add scoring result
+            if score_results:
                 score_result = score_results[i].get("assessment", {})
-                total_score = 0
-                try:
-                    for score in score_result['scores']:
-                        total_score += score_result['scores'][score] 
-                    score_result['total_score'] = total_score
-                except:
-                    score_result['total_score'] = 0
-                result.scores = score_result
+                if score_result:
+                    total_score = 0
+                    try:
+                        for score in score_result['scores']:
+                            total_score += score_result['scores'][score]
+                        score_result['total_score'] = total_score
+                    except:
+                        score_result['total_score'] = 0
+                    result.scores = score_result
 
             results[unique_question_id] = result
-            
+
         return results 
 
     def _load_questions_by_ids(self, question_ids: List[UniqueQuestionID]) -> List[FormattedQuestion]:

@@ -44,7 +44,7 @@ BENCHMARK_PROPERTIES = {
         'has_db': False,
         'is_multi_turn': False,
         'provides_function_call_results': False
-    }   # avilable_function_list is empty, and and the list of available functions is in the agent system prompt
+    }   # avilable_function_list is empty, and the list of available functions is in the agent system prompt
 }
 
 

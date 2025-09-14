@@ -108,12 +108,17 @@ class RuleBasedOutput(BaseModel):
     passed: bool
     reason: Optional[str] = None
 
-class LLMJudgeOutput(BaseModel):
-    # filtering
+class FilterResult(BaseModel):
+    """Individual filter result (universal or specific)"""
     is_flawed: bool
     error_category: Optional[str]
     reasoning: Optional[str]
     reasoning_summary: Optional[str]
+
+class LLMJudgeOutput(BaseModel):
+    # filtering results (separated by filter type)
+    universal_filter: Optional[FilterResult] = None
+    specific_filter: Optional[FilterResult] = None
     # scoring
     scores: Optional[Dict] = None
     # meta

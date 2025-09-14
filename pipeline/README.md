@@ -113,16 +113,71 @@ python3 main.py --target_benchmark [BENCHMARK_NAME] --skip-rule-based --num-proc
 ```bash
 python3 main.py [OPTIONS]
 
-Options:
-  --target_benchmark BENCHMARK    Target benchmark name (required)
-  --specific-step1               Use benchmark-specific filtering rules
-  --skip-rule-based              Skip Step 1 (rule-based filtering)
-  --skip-llm-judge               Skip Step 2 (LLM-as-Judge filtering)
-  --num-proc N                   Number of processes for LLM evaluation (default: 1)
-  --llm-model MODEL              LLM model to use (default: gpt-4o)
-  --llm-max-samples N            Maximum samples for Step 2 (default: all)
-  --llm-batch-size N             Batch size for LLM processing (default: 10)
-  -h, --help                     Show help message
+Pipeline Control:
+  --skip-rule-based                   Skip Step 1 (rule-based filtering)
+  --skip-llm-judge                    Skip Step 2 (LLM-as-Judge filtering)
+  --skip-scoring                      Skip Step 3 (LLM-as-Judge scoring) 
+
+  --target-benchmark BENCHMARK        Target benchmark(s) to process
+
+LLM Judge Filtering Configuration (Step 2):
+  --llm-filtering-scheme SCHEME       Choose filtering approach (default: both)
+                                      • common: Universal filter only
+                                      • specific: Benchmark-specific filter only
+                                      • both: Universal + benchmark-specific filters
+  --llm-model MODEL                   LLM model to use (default: openai/gpt-4.1)
+  --llm-max-samples N                 Maximum samples for LLM steps (default: all)
+  --num-proc N                        Number of processes for LLM evaluation (default: 1)
+
+Visualization & Analysis:
+  --skip-visualization               Skip creating performance plots
+  --embedding-model MODEL            SentenceTransformer model for diversity computation
+  --embedding-batch-size N           Batch size for text encoding (default: 8)
+  --embed-all-initial-prompts        Use all initial prompts for diversity calculation
+  --skip-diversity-measurement       Skip diversity calculation to speed up processing
+
+  -h, --help                         Show help message and exit
+```
+
+## Pipeline Steps Overview
+
+The pipeline consists of three main steps:
+
+1. **Step 1: Rule-based filtering** - Removes problematic samples using comprehensive rules
+2. **Step 2: LLM filtering** - Quality assessment using LLM judges (universal/specific/both)
+3. **Step 3: Scoring** - Assigns quality scores to remaining samples using LLM judge
+
+## Usage Examples
+
+### Basic Usage
+```bash
+# Run complete pipeline with all steps
+python main.py
+
+# Target specific benchmark
+python main.py --target-benchmark complex-func-bench
+
+# Target multiple benchmarks
+python main.py --target-benchmark tau-bench tau2-bench ACEBench
+```
+
+### LLM Filtering Schemes
+
+```bash
+# Universal filtering only (fast, general quality checks)
+python main.py --llm-filtering-scheme common --num-proc 32
+
+# Benchmark-specific filtering only (specialized rules per benchmark)
+python main.py --llm-filtering-scheme specific --num-proc 32
+
+# Both universal and benchmark-specific filtering (default, most thorough)
+python main.py --llm-filtering-scheme both --num-proc 32
+
+# Universal filter + scoring
+python main.py --llm-filtering-scheme common --num-proc 32
+
+# Both universal and benchmark-specific filter without scoring
+python main.py --llm-filtering-scheme both --skip-scoring --num-proc 32
 ```
 
 ## Benchmark-Specific Features
