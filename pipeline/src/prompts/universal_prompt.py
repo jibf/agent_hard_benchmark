@@ -30,8 +30,21 @@ BENCHMARK_PROPERTIES = {
         'has_db': False,
         'is_multi_turn': True,
         'provides_function_call_results': False,
-    }
-    # TODO: fill in for all benchmarks
+    },
+    Benchmark.NEXUS_BENCH: {
+        'provides_gt': True,
+        'milestone_only_gt': True,
+        'has_db': False,
+        'is_multi_turn': True,
+        'provides_function_call_results': False,
+    },  # many fields are duplicate in NexusBenchQuestion; only three fields: instruction, gt_conv_traj, and available_function_list are actually used 
+    Benchmark.DRAFTER_BENCH: {
+        'provides_gt': True,
+        'milestone_only_gt': False,
+        'has_db': False,
+        'is_multi_turn': False,
+        'provides_function_call_results': False
+    }   # avilable_function_list is empty, and and the list of available functions is in the agent system prompt
 }
 
 
@@ -267,17 +280,17 @@ if __name__ == "__main__":
     #     f.write("==== Prompt for TAU_BENCH ====\n")
     #     f.write(tau_prompt)
     
-    # Test Tau2 Bench
-    tau2_loader = get_bench_loader(Benchmark.TAU2_BENCH)()
-    tau2_questions = tau2_loader.load_questions()
-    tau2_sample = tau2_questions[14]
-    print(tau2_sample.question_id)
+    # # Test Tau2 Bench
+    # tau2_loader = get_bench_loader(Benchmark.TAU2_BENCH)()
+    # tau2_questions = tau2_loader.load_questions()
+    # tau2_sample = tau2_questions[14]
+    # print(tau2_sample.question_id)
 
-    # Generate and save Tau2 Bench prompt
-    tau2_prompt = build_filtering_prompt(tau2_sample)
-    with open("tau2_bench_universal_prompt.txt", "w", encoding="utf-8") as f:
-        f.write("==== Prompt for TAU2_BENCH ====\n")
-        f.write(tau2_prompt)
+    # # Generate and save Tau2 Bench prompt
+    # tau2_prompt = build_filtering_prompt(tau2_sample)
+    # with open("tau2_bench_universal_prompt.txt", "w", encoding="utf-8") as f:
+    #     f.write("==== Prompt for TAU2_BENCH ====\n")
+    #     f.write(tau2_prompt)
 
     # # Test ACE Bench
     # ace_loader = get_bench_loader(Benchmark.ACE_BENCH)()
@@ -289,5 +302,16 @@ if __name__ == "__main__":
     # with open("ace_bench_universal_prompt.txt", "w", encoding="utf-8") as f:
     #     f.write("==== Prompt for ACE_BENCH ====\n")
     #     f.write(ace_prompt)
+
+    # Test DrafterBench
+    drafter_loader = get_bench_loader(Benchmark.DRAFTER_BENCH)()
+    drafter_questions = drafter_loader.load_questions()
+    drafter_sample = drafter_questions[0]
+    print(drafter_sample.question_id)
+    # Generate and save Drafter Bench prompt
+    drafter_prompt = build_filtering_prompt(drafter_sample)
+    with open("drafter_bench_universal_prompt.txt", "w", encoding="utf-8") as f:
+        f.write("==== Prompt for DRAFTER_BENCH ====\n")
+        f.write(drafter_prompt)
 
     print("Prompts saved")

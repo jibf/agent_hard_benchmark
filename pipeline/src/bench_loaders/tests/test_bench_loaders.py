@@ -5,13 +5,13 @@ from src.utils.types import Benchmark
 from src.bench_loaders import get_bench_loader
 
 BENCHMARKS = [ 
-    Benchmark.TAU2_BENCH,
+    # Benchmark.TAU2_BENCH,
     # Benchmark.TAU_BENCH,
     # Benchmark.ACE_BENCH,
     # Benchmark.NEXUS_BENCH,
     # Benchmark.TOOL_SANDBOX,
     # Benchmark.COMPLEX_FUNC_BENCH,
-    # Benchmark.DRAFTER_BENCH,
+    Benchmark.DRAFTER_BENCH,
     # Benchmark.BFCL,
     # Benchmark.MULTI_CHALLENGE
     ]
