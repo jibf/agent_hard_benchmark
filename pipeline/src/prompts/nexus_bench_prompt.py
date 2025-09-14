@@ -44,24 +44,30 @@
 
 FILTERING_PROMPT = """
 You are an expert evaluator for **NexusBench**, a benchmark designed to assess precise tool-use across diverse tool-use tasks.
-Your task is to decide whether the *ground-truth* conversation trajectory of a sample is **flawed** such that a correct agent would be penalised.
+Your task is to decide whether the *ground-truth* answer of a benchmark task is **flawed** such that a correct agent would be unfairly penalized.
 
-You will be provided with:
-* **User Prompt** – the original request from the human.
-* **Available Function List** – JSON schema of all tools.
-* **Ground-Truth Conversation** – assistant messages including function calls followed by their `"role": "observation"` results.
+You will be provided with the following context for each sample:
+* **System Prompts** – the system-level instructions supplied to the model.
+* **Query** – the user’s original instruction.
+* **Expected Output** – the benchmark’s reference answer.
+* **Benchmark Name** – the specific NexusBench sub-benchmark the sample belongs to.
+* **Tool Schemas** – complete JSON definitions for every callable tool.
 
 A sample is flawed if at least one ground-truth function call violates one of the criteria below.
 
 1. **Argument / Parameter Type Mismatch**  
-   – A GT function call uses a parameter value whose type clearly contradicts the schema or function name.  
+   – A ground-truth function call uses a parameter value whose type clearly contradicts the schema or function name.  
    – Example: Function `vt_get_votes_on_ip_address` called with `ip="example.com"` (a domain, not an IP).  
    – Such mismatches reflect mis-specified tools, not model reasoning, so they must be flagged.
 
-2. **Invalid or Irrelevant Ground Truth Value**  
-   – The GT tool call or value is incoherent with the user’s request and does not actually address the prompt.  
-   – Example: User asks about storm forecasting, but GT call is `match_values(['Female'])`, which is unrelated.  
-   – If the GT provides values or tool outputs that do not semantically connect to the prompt, mark as flawed.
+2. Ambiguous or Invalid Ground Truth
+   - Example: User query '1+2+3+4+5' and the ground-truth result is '19.8', which is correct according to the given tools, but the system prompt and initial query and system instructionsdo not provide enough information to justify the need to override the model's default (+) calculationfunctionality and instead always use the special add() function.
+   – Such mismatches reflect overriden model functionality, not model reasoning, so they must be flagged.
+
+3. Ambiguous or Poorly Written User Query
+   - Example: User query 'E. coli doubles every 20m, 120m from 5 cells'. It is unclear exactly what the user is asking for.
+   - Such mismatches reflect ambiguous user queries, not model reasoning, so they must be flagged.
+   - However, ONLY flag this if the user query cannot be reasonably inferred from the available tools and system instructions.
 
 -----
 
@@ -72,27 +78,36 @@ Think step-by-step.  Output **exactly** the JSON object below—no extra keys or
 {{
   "reasoning": "Provide a clear, step-by-step justification.  If flawed, specify the first flaw and why it violates the prompt, schema, or context.",
   "reasoning_summary": "One-sentence summary of the verdict.",
-  "error_category": "<Argument Value Mismatch | Argument Type Mismatch | Unjustified Assumption | Misspelling | Dataset Integrity Issue | Not Flawed>",
+  "error_category": "<Argument Type Mismatch | Ambiguous or Invalid Ground Truth Value | Ambiguous or Poorly Written User Query | Not Flawed>",
   "is_flawed": <true_or_false>
 }}
 ```
 
+### System Prompts & Initial Instructions Sent to the Model:
+```
+{system_prompts}
+```
+
 ## Target Sample
 
-### User Prompt
+### Query:
 ```
-{user_prompt}
-```
-
-### List of available functions and their schema
-```json
-{available_function_list}
+{instruction}
 ```
 
-### Ground-Truth Conversation
-*Messages with `"role": "observation"` are the results of the function call immediately before them.*
-```json
-{conversations}
+### Expected Output:
+```
+{reference}
+```
+
+### Benchmark Name:
+```
+{benchmark_name}
+```
+
+### Available Tools (JSON Schemas):
+```
+{tool_definitions}
 ```
 """
 
@@ -101,68 +116,4 @@ Think step-by-step.  Output **exactly** the JSON object below—no extra keys or
 #                             SCORING PROMPT
 # ---------------------------------------------------------------------------
 
-SCORING_PROMPT = """
-You are an expert evaluator for **NexusBench**.  Assess how *difficult* each sample is for an intelligent tool-using agent across the five dimensions below.  Use an **integer 1-5** scale and provide concise, critical reasoning for every score.
-
-Dimensions (fixed order):
-1. tool necessity – Does solving the task fundamentally require the provided tools?
-2. planning and context depth – Complexity of reasoning across turns (state tracking, dependencies).
-3. parameter generation – Difficulty of deriving correct parameters (e.g., converting “tomorrow” to ISO date, extracting hashes, etc.).
-4. tool selection difficulty – How challenging is it to pick the correct tool among plausible distractors?  (VirusTotal endpoints are notorious here.)
-5. real-world applicability – How representative is the task of genuine user scenarios?
-
------
-You will receive:
-• **User Prompt**
-• **Available Function List**
-• **Ground-Truth Conversation**
-
------
-Output a JSON **array** (no commentary) exactly in this template and order:
-```json
-[
-  {{
-    "dimension": "tool necessity",
-    "reasoning": "...",
-    "score": <1-5>
-  }},
-  {{
-    "dimension": "planning and context depth",
-    "reasoning": "...",
-    "score": <1-5>
-  }},
-  {{
-    "dimension": "parameter generation",
-    "reasoning": "...",
-    "score": <1-5>
-  }},
-  {{
-    "dimension": "tool selection difficulty",
-    "reasoning": "...",
-    "score": <1-5>
-  }},
-  {{
-    "dimension": "real-world applicability",
-    "reasoning": "...",
-    "score": <1-5>
-  }}
-]
-```
-
------
-
-### User Prompt
-```
-{user_prompt}
-```
-
-### Available Function List
-```json
-{available_function_list}
-```
-
-### Ground-Truth Conversation
-```json
-{conversations}
-```
-"""
+SCORING_PROMPT = ""

@@ -79,8 +79,10 @@ class AceBenchQuestion(FormattedQuestion):
     user_system_prompt: Optional[str] = None         # System prompt for user simulation (if applicable)
     
 class NexusBenchQuestion(FormattedQuestion):
-    user_prompt: Optional[str] = None
-    conversations: Optional[List[Dict]] = None
+    benchmark_name: str
+    reference: str
+    system_prompts: Optional[Any] = None  # Captured system prompts/instructions sent to model
+    tool_definitions: Optional[str] = None  # JSON of tool schemas for prompt rendering
 
 
 class ToolSandboxQuestion(FormattedQuestion):

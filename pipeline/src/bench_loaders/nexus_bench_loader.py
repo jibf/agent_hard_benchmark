@@ -7,23 +7,27 @@ from dataclasses import dataclass
 from datasets import load_dataset
 from . import BaseLoader
 
+# -----------------------------------------------------------------------------
+# Additional imports
+# -----------------------------------------------------------------------------
+from typing import Dict, Any, List, Optional
+
+# Import the generic FC API prompter to generate the exact prompt that will be
+# shown to the underlying model.  We purposefully *do not* rely on any
+# concrete cloud-client implementation here – we only need the prompt
+# construction logic which is contained entirely in the base class.
+from data.nexusbench.prompters import FCAPIPrompter  # type: ignore
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.utils.types import NexusBenchQuestion, Benchmark
 
 # Import nexusbench components at module level
 try:
-    # First try local nexusbench in data directory
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'data'))
-    from nexusbench.config import BENCHMARKS
-    from nexusbench.benchmarks import BaseBenchmark
+    from data.nexusbench.config import BENCHMARKS  # type: ignore
+    from data.nexusbench.benchmarks import BaseBenchmark  # type: ignore
 except ImportError:
-    try:
-        # Fallback to installed nexusbench
-        from nexusbench.config import BENCHMARKS
-        from nexusbench.benchmarks import BaseBenchmark
-    except ImportError:
-        BENCHMARKS = None
-        BaseBenchmark = None
+    BENCHMARKS = None
+    BaseBenchmark = None
 
 
 @dataclass
@@ -219,6 +223,9 @@ class NexusBenchLoader(BaseLoader):
             query = sample.query
             reference = sample.reference
 
+            # Get tool schemas for this benchmark
+            tool_schemas = self._get_tool_schemas_from_config(config, sample)
+
             # Handle different query types
             if isinstance(query, list):
                 # For agent benchmarks with multiple turns
@@ -226,44 +233,70 @@ class NexusBenchLoader(BaseLoader):
             else:
                 user_prompt = str(query)
 
-            # Get tool schemas - handle special cases
-            tool_schemas = self._get_tool_schemas_from_config(config, sample)
+            # -----------------------------------------------------------------
+            # Build the *exact* prompt that is ultimately fed to the model using
+            # the same helper employed during real benchmark runs.  We rely on
+            # the fact that `FCAPIPrompter.create_prompt` is entirely
+            # self-contained and does **not** require an instantiated LLM
+            # client.
+            # -----------------------------------------------------------------
 
-            # Create conversations based on benchmark type
-            conversations = self._create_conversations(sample, config)
+            try:
+                # Prefer AtheneV2Prompter which automatically injects a robust system prompt
+                try:
+                    from data.nexusbench.prompters import AtheneV2Prompter  # type: ignore
+                    prompter = AtheneV2Prompter()
+                except Exception:
+                    # Fallback to generic FC prompter to avoid hard dependency
+                    prompter = FCAPIPrompter()
 
-            # Build the formatted question first so we can attach extra helper fields
-            formatted_question = NexusBenchQuestion(
+                # Convert the list-of-schemas into the dictionary format that
+                # `create_prompt` expects (name -> schema).
+                tool_descriptions: Dict[str, Dict[str, Any]] = {
+                    schema["function"]["name"]: schema["function"] for schema in tool_schemas
+                }
+                import json as _json
+                tool_definitions_json = _json.dumps(tool_schemas, indent=2, ensure_ascii=False)
+
+                prompt_dict = prompter.create_prompt(
+                    tool_descriptions=tool_descriptions,
+                    query=user_prompt,
+                    additional_instructions=None,
+                    contextual_history=None,
+                )
+
+                # Extract all system messages so that downstream evaluation has
+                # full visibility into the *exact* instructions the model
+                # receives.
+                system_prompts = [
+                    msg["content"] for msg in prompt_dict["messages"] if msg["role"] == "system"
+                ]
+
+                meta: Dict[str, Any] = {
+                    "system_prompts": system_prompts,
+                    "full_prompt_messages": prompt_dict["messages"],
+                }
+
+            except Exception as e:
+                # Fallback to an empty meta field if, for whatever reason, the
+                # prompt construction fails (this should be extremely rare and
+                # not fatal for loading the remainder of the dataset).
+                print(f"Warning: Failed to build prompt for sample {sample_id}: {e}")
+                meta = None
+
+            return NexusBenchQuestion(
                 question_id=sample_id,
                 task_name='_'.join(sample_id.split('_')[:-1]),
                 instruction=user_prompt,
-                gt_conv_traj=conversations,
+                gt_conv_traj=[],  # simplified – NexusBench is single-turn here
                 available_function_list=tool_schemas,
+                tool_definitions=tool_definitions_json,
                 benchmark=Benchmark.NEXUS_BENCH,
-                meta={
-                    'nexus_bench_context': {
-                        'benchmark_name': config['name'],
-                        'reference': str(reference),
-                        'sample_type': type(sample).__name__,
-                        'tools': config['tools']
-                    },
-                    # Expose user_prompt and conversations for downstream prompt formatting
-                    'user_prompt': user_prompt,
-                    'conversations': conversations
-                }
+                benchmark_name=config["name"],
+                reference=str(reference),
+                meta=meta,
+                system_prompts=system_prompts if meta else None,
             )
-
-            # ------------------------------------------------------------------
-            # Attach helper attributes expected by the judge prompt templates.
-            # We do this *after* construction to avoid pydantic validation errors
-            # for unexpected fields.
-            # These attributes are dynamically added so that format_judge_prompt
-            # can access them via ``hasattr(question, field)``.
-            # ------------------------------------------------------------------
-            formatted_question.user_prompt = user_prompt
-            formatted_question.conversations = conversations
-
-            return formatted_question
 
         except Exception as e:
             print(f"Error formatting sample {sample_id}: {e}")
@@ -271,7 +304,7 @@ class NexusBenchLoader(BaseLoader):
 
     def _get_tool_schemas_from_config(self, config, sample=None) -> List[Dict[str, Any]]:
         """Create tool schemas from configuration using benchmark's get_json_representation"""
-        
+
         # Special handling for TMIHallucination - use sample's json_tools
         if config['name'] == 'TMIHallucination' and sample:
             try:
@@ -279,19 +312,19 @@ class NexusBenchLoader(BaseLoader):
                 # Try to get json_tools from original data
                 original_data = getattr(sample, '_original_data', None)
                 json_tools_raw = None
-                
+
                 if original_data and 'json_tools' in original_data:
                     json_tools_raw = original_data['json_tools']
                 elif hasattr(sample, 'json_tools'):
                     json_tools_raw = sample.json_tools
-                    
+
                 if json_tools_raw:
                     # Parse JSON if it's a string
                     if isinstance(json_tools_raw, str):
                         json_tools = json.loads(json_tools_raw)
                     else:
                         json_tools = json_tools_raw
-                        
+
                     if isinstance(json_tools, list) and len(json_tools) > 0:
                         tool_schemas = []
                         for func_spec in json_tools:
@@ -305,14 +338,14 @@ class NexusBenchLoader(BaseLoader):
                 print(f"Error getting json_tools from TMIHallucination sample: {e}")
                 import traceback
                 traceback.print_exc()
-        
+
         # Special handling for VirusTotal - use get_all_json_specs
         if config['name'] == 'VirusTotal':
             try:
                 from data.nexusbench.tools.virustotal import get_all_json_specs
                 json_schemas = get_all_json_specs()
                 tool_schemas = []
-                
+
                 if json_schemas:
                     for _, func_schema in json_schemas.items():
                         tool_schemas.append({
@@ -322,7 +355,7 @@ class NexusBenchLoader(BaseLoader):
                 return tool_schemas
             except Exception as e:
                 print(f"Error getting VirusTotal json specs: {e}")
-        
+
         # Standard handling using benchmark instance
         benchmark_instance = self._get_benchmark_instance(config['name'])
         if benchmark_instance:
@@ -330,7 +363,7 @@ class NexusBenchLoader(BaseLoader):
                 # Use get_json_representation to get proper function schemas
                 json_schemas = benchmark_instance.get_json_representation
                 tool_schemas = []
-                
+
                 if json_schemas:  # Check if json_schemas is not empty
                     for _, func_schema in json_schemas.items():
                         tool_schemas.append({
@@ -339,12 +372,17 @@ class NexusBenchLoader(BaseLoader):
                         })
                 else:
                     print(f"Warning: {config['name']} has empty get_json_representation")
-                
+
                 return tool_schemas
             except Exception as e:
                 print(f"Error getting json representation from benchmark instance: {e}")
 
         # Fallback to basic schema creation if benchmark instance not available
+        # Try dynamic import from data.nexusbench.tools first
+        dynamic_schemas = self._load_tool_schemas_by_module_name(config['name'])
+        if dynamic_schemas:
+            return dynamic_schemas
+
         tool_schemas = []
         for tool_name in config['tools']:
             tool_schemas.append({
@@ -403,6 +441,84 @@ class NexusBenchLoader(BaseLoader):
             except Exception as e:
                 print(f"Error creating schema for tool {tool.__name__}: {e}")
                 continue
+
+        return schemas
+
+    # ---------------------------------------------------------------------
+    # Dynamic loading helpers
+    # ---------------------------------------------------------------------
+    _BENCH_TO_MODULE = {
+        'LangChainMath': 'langchain_math',
+        'LangChainMultitoolTypeWriterHard': 'multitool_typewriter_hard',
+        'LangChainTypeWriterHard': 'typewriter_hard',
+        'TicketTracking': 'ticket_tracking',
+        'ClimateBenchmark': 'climate',
+        'CVECPEBenchmark': 'cvecpe',
+        'NVDLibraryBenchmark': 'nvdlib',
+        'ITType0Benchmark': 'it_hard_0',
+        'ITType1Benchmark': 'it_hard_1',
+        'LangChainRelational': 'relational',
+        'VirusTotal': 'virustotal',
+        'VirusTotalAgentic': 'virustotal_nested',
+    }
+
+    def _load_tool_schemas_by_module_name(self, benchmark_name: str):
+        """Attempt to import the tool module and extract JSON schemas automatically."""
+        import importlib
+        module_name = self._BENCH_TO_MODULE.get(benchmark_name)
+        if not module_name:
+            return []
+
+        try:
+            full_module_path = f"data.nexusbench.tools.{module_name}"
+            module = importlib.import_module(full_module_path)
+        except Exception:
+            # Fallback: load module by file location if package import fails
+            try:
+                import importlib.util, pathlib
+                # Compute project root (two levels up from src/bench_loaders)
+                project_root = pathlib.Path(__file__).resolve().parents[2]
+                base_dir = project_root / 'data' / 'nexusbench' / 'tools'
+                module_file = base_dir / f"{module_name}.py"
+                if not module_file.exists():
+                    return []
+                spec = importlib.util.spec_from_file_location(f"nb_tools_{module_name}", module_file)
+                if spec and spec.loader:
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                else:
+                    return []
+            except Exception:
+                return []
+
+        # If module exposes a helper to return all specs, use it.
+        if hasattr(module, 'get_all_functions_json'):
+            try:
+                json_schemas = module.get_all_functions_json()
+                return [
+                    {"type": "function", "function": func_schema}
+                    for func_schema in json_schemas.values()
+                ]
+            except Exception:
+                pass
+
+        if hasattr(module, 'get_all_json_specs'):
+            try:
+                json_schemas = module.get_all_json_specs()
+                return [
+                    {"type": "function", "function": func_schema}
+                    for func_schema in json_schemas.values()
+                ]
+            except Exception:
+                pass
+
+        # Fallback: iterate over vars ending with _json
+        schemas = []
+        for attr_name in dir(module):
+            if attr_name.endswith('_json'):
+                obj = getattr(module, attr_name)
+                if isinstance(obj, dict) and 'name' in obj and 'parameters' in obj:
+                    schemas.append({"type": "function", "function": obj})
 
         return schemas
 
