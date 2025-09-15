@@ -410,9 +410,8 @@ class BenchmarkFilteringPipeline:
         # Step 2: LLM-as-Judge filtering
         if not skip_llm_judge:
             logger.info("Step 2: LLM-as-Judge filtering")
-            current_questions = list(current_responses.keys())
 
-            step2_result = self._run_llm_judge(current_questions)
+            step2_result = self._run_llm_judge(current_responses)
 
             # Update pipeline_outputs with step2 results
             for question_id, llm_output in step2_result.items():
@@ -1659,12 +1658,12 @@ class BenchmarkFilteringPipeline:
         return result
 
     def _run_llm_judge(
-        self, questions: List[UniqueQuestionID]
+        self, responses_by_question: Dict[UniqueQuestionID, List[Dict]]
     ) -> Dict[UniqueQuestionID, LLMJudgeOutput]:
         """Run LLM judge independently on questions from benchmark datasets."""
         # Determine which benchmarks to process based on target_benchmark config
         judge = LLMJudge(self.llm_config)
-        return judge.judge_questions(questions)
+        return judge.judge_questions(responses_by_question)
 
     def _run_step3_top_k_selection(
         self,

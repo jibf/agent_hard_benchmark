@@ -49,6 +49,7 @@ class FormattedQuestion(UniqueQuestionID):
     available_function_list: list           # List of functions schemas that are available to the agent. This corresponds to the `tools` property in the OpenAI API endpoint. You can refer to https://platform.openai.com/docs/guides/function-calling.
     gt_conv_traj: list                      # Ground-truth conversation trajectory (if provided). If the benchmark does not provide one, leave this as an empty list.
     meta: Optional[dict] = None             # Other information of the question in dictionary type.
+    model_responses: Optional[list] = None
 
 
 
@@ -90,6 +91,7 @@ class ToolSandboxQuestion(FormattedQuestion):
 
 class DrafterBenchQuestion(FormattedQuestion):
     agent_system_prompt: str    # system prompt for the agent
+    groundtruth: str
 
 class BfclV2Question(FormattedQuestion):
     pass

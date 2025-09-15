@@ -73,9 +73,10 @@ class LLMJudge:
         match = re.match(r'^(.+)[-_](\d+)$', question_id)
         return match.group(1) if match else "" 
 
-    def judge_questions(self, question_ids: List[UniqueQuestionID]) -> Dict[UniqueQuestionID, LLMJudgeOutput]:
-        """Run configured assessments on the provided question IDs."""
-        questions = self._load_questions_by_ids(question_ids)
+    def judge_questions(self, responses_by_question: Dict[UniqueQuestionID, List[Dict]]) -> Dict[UniqueQuestionID, LLMJudgeOutput]:
+        """Run configured assessments on questions enriched with model responses from step1."""
+        # Load questions and enrich them with model responses
+        questions = self._load_questions_by_responses(responses_by_question)
         if self.config.max_samples:
             questions = questions[:self.config.max_samples]
 
@@ -146,11 +147,11 @@ class LLMJudge:
 
         return results 
 
-    def _load_questions_by_ids(self, question_ids: List[UniqueQuestionID]) -> List[FormattedQuestion]:
-        """Load questions by their unique IDs."""
+    def _load_questions_by_responses(self, responses_by_question: Dict[UniqueQuestionID, List[Dict]]) -> List[FormattedQuestion]:
+        """Load questions by responses_by_question and enrich them with model responses."""
         # Group question IDs by benchmark
         questions_by_benchmark = {}
-        for q_id in question_ids:
+        for q_id in responses_by_question.keys():
             if q_id.benchmark not in questions_by_benchmark:
                 questions_by_benchmark[q_id.benchmark] = []
             questions_by_benchmark[q_id.benchmark].append(q_id)
@@ -163,9 +164,12 @@ class LLMJudge:
             benchmark_questions = loader.load_questions()
             # Filter to only the requested question IDs
             filtered_questions = [
-                q for q in benchmark_questions 
+                q for q in benchmark_questions
                 if q in ids_in_benchmark
             ]
+
+            loader.load_responses_for_questions(filtered_questions, responses_by_question)
+
             all_questions.extend(filtered_questions)
         
         return all_questions
