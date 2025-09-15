@@ -55,19 +55,23 @@ You will be provided with the following context for each sample:
 
 A sample is flawed if at least one ground-truth function call violates one of the criteria below.
 
-1. **Argument / Parameter Type Mismatch**  
+1. **Argument / Parameter Type Mismatch**
    – A ground-truth function call uses a parameter value whose type clearly contradicts the schema or function name.  
    – Example: Function `vt_get_votes_on_ip_address` called with `ip="example.com"` (a domain, not an IP).  
    – Such mismatches reflect mis-specified tools, not model reasoning, so they must be flagged.
+   - NOTE: All functions are Python functions, which do not need the parameter names to be passed in the queries. If the ground truth function call passes by argument without the parameter name, then it is not a mismatch.
 
-2. Ambiguous or Invalid Ground Truth
-   - Example: User query '1+2+3+4+5' and the ground-truth result is '19.8', which is correct according to the given tools, but the system prompt and initial query and system instructionsdo not provide enough information to justify the need to override the model's default (+) calculationfunctionality and instead always use the special add() function.
-   – Such mismatches reflect overriden model functionality, not model reasoning, so they must be flagged.
+3. **Ambiguous or Invalid Ground Truth**
+   - Example: is the user query is 'time in chicago', and the available functions suggest the agent needs to get the current time using a function call, but the ground truth is '2025-09-11 02:00:00', then the ground-truth is invalid.
+   – Such mismatches reflect the output of non-deterministic function outputs, not model reasoning, so they must be flagged.
+   - However, the defined functions can exist in an alternate universe and the query could be valid. For example, if the question asks to add 5 and 7 and the ground truth is -2, and defines the add() function to return the difference of two numbers, then the ground-truth is valid because the provided function call (add(5, 7)) is valid and would return -2.
 
-3. Ambiguous or Poorly Written User Query
-   - Example: User query 'E. coli doubles every 20m, 120m from 5 cells'. It is unclear exactly what the user is asking for.
+3. **Ambiguous or Poorly Written User Query**
+   - Example: User query 'E. coli doubles every 20m, 120m from 5 cells' or 'what's the clock? in London, Paris and Kiev, dude?'. It is unclear exactly what the user is asking for.
    - Such mismatches reflect ambiguous user queries, not model reasoning, so they must be flagged.
    - However, ONLY flag this if the user query cannot be reasonably inferred from the available tools and system instructions.
+
+NOTE: for TypeWriter tasks (LangChainTypeWriterHard, LangChainMultitoolTypeWriterHard), the ground truth is often the final output of the agent, not the result of a single function call. So it is not a mismatch if the ground truth is the query repeated IF the query can be typed with the available tools.
 
 -----
 

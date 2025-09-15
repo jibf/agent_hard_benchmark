@@ -414,47 +414,45 @@ class NexusBenchLoader(BaseLoader):
         return tool_schemas
 
     def _create_schemas_from_tools(self, tools) -> List[Dict[str, Any]]:
-        """Create basic schemas from tool functions"""
-        schemas = []
-        for tool in tools:
-            try:
-                sig = inspect.signature(tool)
-                parameters = {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
+        """Return tool schemas by reading <function_name>_json variables from tool modules.
 
-                for param_name, param in sig.parameters.items():
-                    param_type = "string"  # Default type
-                    if param.annotation != inspect.Parameter.empty:
-                        if param.annotation == int:
-                            param_type = "integer"
-                        elif param.annotation == float:
-                            param_type = "number"
-                        elif param.annotation == bool:
-                            param_type = "boolean"
-                        elif param.annotation == list:
-                            param_type = "array"
-                        elif param.annotation == dict:
-                            param_type = "object"
+        This implementation assumes that *every* NexusBench tool module declares
+        JSON schema dictionaries for each exported function following the
+        conventional ``<function_name>_json`` naming pattern (e.g.
+        ``get_latitude_longitude_json``).  We simply import the module and
+        collect all top-level variables that:
 
-                    parameters["properties"][param_name] = {"type": param_type}
+        1.   End with the suffix ``_json``.
+        2.   Are dictionaries and contain at least the keys ``name`` and
+             ``parameters`` – matching the OpenAI function-calling schema.
 
-                    if param.default == inspect.Parameter.empty:
-                        parameters["required"].append(param_name)
+        The result is returned in the format expected by the benchmark runner:
 
-                schemas.append({
-                    "type": "function",
-                    "function": {
-                        "name": tool.__name__,
-                        "description": tool.__doc__ or f"Function {tool.__name__}",
-                        "parameters": parameters
-                    }
-                })
-            except Exception as e:
-                print(f"Error creating schema for tool {tool.__name__}: {e}")
-                continue
+        ``[{"type": "function", "function": <schema_dict>}, ...]``
+        """
+
+        import importlib
+        schemas: List[Dict[str, Any]] = []
+
+        # The *tools* argument can be either a list of modules or plain module
+        # names.  Normalise to a list of module objects first.
+        module_objs = []
+        for mod in tools:
+            if isinstance(mod, str):
+                try:
+                    module_objs.append(importlib.import_module(mod))
+                except Exception as exc:  # pragma: no cover
+                    print(f"[WARN] Could not import tool module '{mod}': {exc}")
+            else:
+                module_objs.append(mod)
+
+        for module in module_objs:
+            for attr_name in dir(module):
+                if not attr_name.endswith("_json"):
+                    continue
+                obj = getattr(module, attr_name)
+                if isinstance(obj, dict) and {"name", "parameters"}.issubset(obj.keys()):
+                    schemas.append({"type": "function", "function": obj})
 
         return schemas
 
