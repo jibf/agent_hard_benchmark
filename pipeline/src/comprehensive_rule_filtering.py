@@ -98,11 +98,14 @@ class ComprehensiveRuleFilter:
                     0
                 ]  # Use first sample to determine task type
                 task_type = self._extract_task_type(sample)
+                print(f"question_id: {question_id}, task_type: {task_type}, too_easy_by_task: {too_easy_by_task}, original_task_counts: {original_task_counts}")
                 if self._should_keep_too_easy_sample(
                     question_id, task_type, too_easy_by_task, original_task_counts
                 ):
+                    print(f"keeping question_id: {question_id}")
                     passed_responses[question_id] = question_responses
                 else:
+                    print(f"dropping question_id: {question_id}")
                     dropped_responses[question_id] = question_responses
             else:
                 # Drop non-discriminative questions
@@ -202,6 +205,7 @@ class ComprehensiveRuleFilter:
             var_th = 0.1
         else:
             var_th = 0.01
+        # print(f"is binary: {is_binary}")
         return variance > var_th  # Threshold for meaningful variation
 
     def _classify_question_difficulty(self, question_samples: List[Dict]) -> str:
@@ -341,8 +345,11 @@ class ComprehensiveRuleFilter:
     ) -> bool:
         """
         Determine if a too_easy sample should be kept.
-        Updated logic: Keep enough too_easy samples to ensure each task type retains at least 10% of original size.
+        Previous Updated logic: Keep enough too_easy samples to ensure each task type retains at least 10% of original size.
+        Corrected logic: Only keep too_easy samples if filtering them all out would leave 
+        the task type with less than 10% of its original size.
         """
+        print(f"task_type: {task_type}")
         if task_type not in too_easy_by_task:
             return False
 
@@ -353,12 +360,22 @@ class ComprehensiveRuleFilter:
         # Calculate how many questions we need to keep for this task type
         if original_task_counts and task_type in original_task_counts:
             original_count = original_task_counts[task_type]
-            min_retention_count = max(
-                1, int(original_count * 0.1)
-            )  # At least 10% of original
+            too_easy_count = len(questions_in_task)
+            
+            # Check if filtering out all too-easy questions would leave task type under-represented
+            remaining_after_filtering = original_count - too_easy_count
+            min_required_count = max(1, int(original_count * 0.1))  # At least 10% of original
+            
+            if remaining_after_filtering < min_required_count:
+                # Task type would be under-represented, keep some too-easy questions
+                min_retention_count = min_required_count - remaining_after_filtering
+            else:
+                # Task type has enough remaining questions, filter all too-easy
+                min_retention_count = 0
         else:
-            # Fallback to original logic if no original counts provided
-            min_retention_count = max(1, int(len(questions_in_task) * 0.1))
+            # Fallback: if no original counts provided, filter all too-easy questions
+            print(f"no original counts provided for {task_type}, filtering all too-easy questions")
+            min_retention_count = 0
 
         # Use deterministic sampling based on question_id hash
         # This ensures the same questions are selected consistently across runs

@@ -55,6 +55,17 @@ class BenchmarkFilteringPipeline:
         self.data_loader = BenchmarkDataLoader()
         self.orchestrator = RuleFilteringOrchestrator()
         self.use_specific_filters = self.config.get("use_specific_filters", False)
+        
+        # Store metrics for final summary
+        self.metrics_summary = {
+            "original": {"separability": None, "diversity": None, "agreement": None},
+            "step1": {"separability": None, "diversity": None, "agreement": None},
+            "step1_baseline": {"separability": None},
+            "step2": {"separability": None, "diversity": None, "agreement": None},
+            "step2_baseline": {"separability": None},
+            "step3": {"separability": None, "diversity": None, "agreement": None},
+            "step3_baseline": {"separability": None}
+        }
 
         # Determine which LLM judge steps to run based on filtering scheme
         filter_mode = self.config.get("llm_filter_mode", "both")
@@ -229,6 +240,17 @@ class BenchmarkFilteringPipeline:
 
         return final_dict
 
+    def _is_question_flawed(self, llm_output):
+        """Check if question is flawed based on any available filter results"""
+        if not llm_output:
+            return False
+        # Check specific filter first, then universal filter
+        if llm_output.specific_filter:
+            return llm_output.specific_filter.is_flawed
+        elif llm_output.universal_filter:
+            return llm_output.universal_filter.is_flawed
+        return False
+
     def run_pipeline(
         self, skip_llm_judge: bool = False, skip_rule_based: bool = False
     ) -> Dict[UniqueQuestionID, PipelineOutput]:
@@ -241,17 +263,24 @@ class BenchmarkFilteringPipeline:
 
         pipeline_outputs = {k: PipelineOutput() for k in responses_by_question.keys()}
 
+        sep_list = []
         for i in range(3):
-            separability_dict = self._compute_separability(responses_by_question)
+            ori_separability = self._compute_separability(responses_by_question)
             logger.info(
-                f"Benchmark separability before filtering: {json.dumps(separability_dict, indent=2)}"
+                f"Benchmark separability before filtering: {json.dumps(ori_separability, indent=2)}"
             )
+            sep_list.append(ori_separability)
+            
+        # Store for final summary
+        self.metrics_summary["original"]["separability"] = sep_list
 
         if not self.config.get("skip_diversity_measurement", False):
             diversity_dict = self._compute_diversity(responses_by_question)
             logger.info(
                 f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}"
             )
+            # Store for final summary
+            self.metrics_summary["original"]["diversity"] = diversity_dict
 
         # Calculate model ranking from original dataset for consistent ordering
         model_ranking = None
@@ -267,6 +296,10 @@ class BenchmarkFilteringPipeline:
                 self._visualize_diversity(
                     responses_by_question, "Original Dataset", "original_diversity"
                 )
+            # Store agreement stats for original dataset
+            if hasattr(self, '_current_agreement_stats'):
+                self.metrics_summary["original"]["agreement"] = self._current_agreement_stats.copy()
+                self._current_agreement_stats = {}
 
         # Step 0: Always apply comprehensive filtering first
         current_responses = responses_by_question
@@ -299,6 +332,16 @@ class BenchmarkFilteringPipeline:
                 f"Step 1 passed: {step1_sample_count} samples from {step1_unique_tasks} unique tasks"
             )
 
+            sep_list = []
+            for i in range(3):
+                separability_dict = self._compute_separability(step1_passed)
+                logger.info(
+                    f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}"
+                )
+                sep_list.append(separability_dict)
+            # Store for final summary
+            self.metrics_summary["step1"]["separability"] = sep_list
+
             # Visualize Step 1 filtered performance
             if not self.config.get("skip_visualization", False):
                 self._visualize_model_performance(
@@ -313,6 +356,9 @@ class BenchmarkFilteringPipeline:
                         "After Step 1 (Rule-based Filtering)",
                         "step1_filtered_diversity",
                     )
+                if hasattr(self, '_current_agreement_stats'):
+                    self.metrics_summary["step1"]["agreement"] = self._current_agreement_stats.copy()
+                    self._current_agreement_stats = {}
 
             # Create baseline sample set by randomly sampling N tasks from original samples
             logger.info(f"Step 1 BASELINE...")
@@ -327,12 +373,14 @@ class BenchmarkFilteringPipeline:
             )
 
             # Compute separability for baseline for comparison
+            sep_list = []
             for i in range(3):
                 baseline_separability = self._compute_separability(baseline_responses)
                 logger.info(
                     f"Benchmark separability baseline (vs. step1): {json.dumps(baseline_separability, indent=2)}"
                 )
-            
+                sep_list.append(baseline_separability)
+            self.metrics_summary["step1_baseline"]["separability"] = sep_list
 
             # Visualize baseline performance
             if not self.config.get("skip_visualization", False):
@@ -349,17 +397,13 @@ class BenchmarkFilteringPipeline:
                         "baseline_diversity",
                     )
 
-            for i in range(3):
-                separability_dict = self._compute_separability(step1_passed)
-                logger.info(
-                    f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}"
-                )
-
             if not self.config.get("skip_diversity_measurement", False):
                 diversity_dict = self._compute_diversity(step1_passed)
                 logger.info(
                     f"Benchmark semantic diversity after Step 1: {json.dumps(diversity_dict, indent=2)}"
                 )
+                # Store for final summary
+                self.metrics_summary["step1"]["diversity"] = diversity_dict
         else:
             logger.info("Skipping Step 0 & 1: Rule-based filtering")
 
@@ -375,10 +419,20 @@ class BenchmarkFilteringPipeline:
                 pipeline_outputs[question_id].llm_judge_output = llm_output
             
 
+            # Create step2_passed using the same logic as final summary
+            # This ensures consistency between run_pipeline and _print_final_summary
+            
+            # Get step1_passed question IDs for consistent calculation
+            step1_passed_qids = [
+                qid
+                for qid, output in pipeline_outputs.items()
+                if not output.rule_based_output or output.rule_based_output.passed
+            ]
+
             step2_passed = {
                 qid: responses_by_question[qid]
-                for qid in step2_result.keys()
-                if qid in responses_by_question
+                for qid in step1_passed_qids
+                if not self._is_question_flawed(pipeline_outputs[qid].llm_judge_output)
             }
 
             # Count unique tasks and samples in step2_passed
@@ -390,38 +444,16 @@ class BenchmarkFilteringPipeline:
                 f"Step 2 passed: {step2_sample_count} samples from {step2_unique_tasks} unique tasks"
             )
 
-            # Create baseline sample set by randomly sampling N tasks from step1_passed
-            logger.info(f"Step 2 BASELINE (vs. Step 1 from step1_passed)...")
-            baseline_from_step1 = self._create_task_wise_baseline_sample_set(
-                step1_passed, step2_unique_tasks
-            )
-            baseline_separability = self._compute_separability(baseline_from_step1)
-            
-            logger.info(
-                f"Benchmark separability baseline (vs. Step 2 from step1_passed): {json.dumps(baseline_separability, indent=2)}"
-            )
-
-            # Create baseline sample set by randomly sampling N tasks from all_samples
-            logger.info(f"Step 2 BASELINE (vs. Step 1 from all_samples)...")
-            baseline_from_all = self._create_task_wise_baseline_sample_set(
-                responses_by_question, step2_unique_tasks
-            )
-            baseline_separability = self._compute_separability(baseline_from_all)
-            logger.info(
-                f"Benchmark separability baseline (vs. Step 2 from all_samples): {json.dumps(baseline_separability, indent=2)}"
-            )
-
-            separability_dict = self._compute_separability(step2_passed)
-            logger.info(
-                f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}"
-            )
-
-            if not self.config.get("skip_diversity_measurement", False):
-                diversity_dict = self._compute_diversity(step2_passed)
+            sep_list = []
+            for i in range(3):
+                separability_dict = self._compute_separability(step2_passed)
                 logger.info(
-                    f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}"
+                    f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}"
                 )
-
+                sep_list.append(separability_dict)
+            
+            # Store for final summary
+            self.metrics_summary["step2"]["separability"] = sep_list    
             # Visualize Step 2 filtered performance
             if not self.config.get("skip_visualization", False):
                 self._visualize_model_performance(
@@ -436,6 +468,45 @@ class BenchmarkFilteringPipeline:
                         "After Step 2 (LLM-as-Judge Filtering)",
                         "step2_filtered_diversity",
                     )
+
+            # Store agreement stats for step2
+            if hasattr(self, '_current_agreement_stats'):
+                self.metrics_summary["step2"]["agreement"] = self._current_agreement_stats.copy()
+                self._current_agreement_stats = {}
+            
+            # Create baseline sample set by randomly sampling N tasks from step1_passed
+            # logger.info(f"Step 2 BASELINE (vs. Step 1 from step1_passed)...")
+            # baseline_from_step1 = self._create_task_wise_baseline_sample_set(
+            #     step1_passed, step2_unique_tasks
+            # )
+            # baseline_separability = self._compute_separability(baseline_from_step1)
+            
+            # logger.info(
+            #     f"Benchmark separability baseline (vs. Step 2 from step1_passed): {json.dumps(baseline_separability, indent=2)}"
+            # )
+
+            # Create baseline sample set by randomly sampling N tasks from all_samples
+            logger.info(f"Step 2 BASELINE (vs. Step 1 from all_samples)...")
+            baseline_from_all = self._create_task_wise_baseline_sample_set(
+                responses_by_question, step2_unique_tasks
+            )
+            sep_list = []
+            for i in range(3):
+                baseline_separability = self._compute_separability(baseline_from_all)
+                logger.info(
+                    f"Benchmark separability baseline (vs. Step 2 from all_samples): {json.dumps(baseline_separability, indent=2)}"
+                )
+                sep_list.append(baseline_separability)
+            self.metrics_summary["step2_baseline"]["separability"] = sep_list
+            
+            if not self.config.get("skip_diversity_measurement", False):
+                diversity_dict = self._compute_diversity(step2_passed)
+                logger.info(
+                    f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}"
+                )
+                # Store for final summary
+                self.metrics_summary["step2"]["diversity"] = diversity_dict
+
 
             # Step 3: Top-K selection based on scores
             if LLMJudgeStep.SCORE in self.llm_config.steps:
@@ -453,34 +524,28 @@ class BenchmarkFilteringPipeline:
                     f"Step 3 passed: {step3_sample_count} samples from {step3_unique_tasks} unique tasks"
                 )
 
-                # Create baseline sample sets for step3 comparison
-                logger.info(f"Step 3 BASELINE (vs Step 2 from step2_passed)...")
-                baseline_from_step2 = self._create_task_wise_baseline_sample_set(
-                    step2_passed, step3_unique_tasks
-                )
-                baseline_separability_step2 = self._compute_separability(
-                    baseline_from_step2
-                )
-                logger.info(
-                    f"Benchmark separability for baseline (vs Step 3 from step2_passed): {json.dumps(baseline_separability_step2, indent=2)}"
-                )
-
-                logger.info(f"Step 3 BASELINE (vs Step 2 from all_samples)...")
-                baseline_from_all_step3 = self._create_task_wise_baseline_sample_set(
-                    responses_by_question, step3_unique_tasks
-                )
-                baseline_separability_all_step3 = self._compute_separability(
-                    baseline_from_all_step3
-                )
-                logger.info(
-                    f"Benchmark separability for baseline (vs Step 3 from all_samples): {json.dumps(baseline_separability_all_step3, indent=2)}"
-                )
+                # # Create baseline sample sets for step3 comparison
+                # logger.info(f"Step 3 BASELINE (vs Step 2 from step2_passed)...")
+                # baseline_from_step2 = self._create_task_wise_baseline_sample_set(
+                #     step2_passed, step3_unique_tasks
+                # )
+                # baseline_separability_step2 = self._compute_separability(
+                #     baseline_from_step2
+                # )
+                # logger.info(
+                #     f"Benchmark separability for baseline (vs Step 3 from step2_passed): {json.dumps(baseline_separability_step2, indent=2)}"
+                # )
 
                 # Compute separability for step3 results
-                separability_dict_step3 = self._compute_separability(step3_passed)
-                logger.info(
-                    f"Benchmark separability after Step 3: {json.dumps(separability_dict_step3, indent=2)}"
-                )
+                sep_list = []
+                for i in range(3):
+                    separability_dict_step3 = self._compute_separability(step3_passed)
+                    logger.info(
+                        f"Benchmark separability after Step 3: {json.dumps(separability_dict_step3, indent=2)}"
+                    )
+                    sep_list.append(separability_dict_step3)
+                # Store for final summary
+                self.metrics_summary["step3"]["separability"] = sep_list
 
                 # Visualize Step 3 filtered performance
                 if not self.config.get("skip_visualization", False):
@@ -496,6 +561,34 @@ class BenchmarkFilteringPipeline:
                             "After Step 3 (Top-K Selection)",
                             "step3_filtered_diversity",
                         )
+                
+                # Store agreement stats for step3
+                if hasattr(self, '_current_agreement_stats'):
+                    self.metrics_summary["step3"]["agreement"] = self._current_agreement_stats.copy()
+                    self._current_agreement_stats = {}
+                if not self.config.get("skip_diversity_measurement", False):
+                    diversity_dict = self._compute_diversity(step3_passed)
+                    logger.info(
+                        f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}"
+                    )
+                    # Store for final summary
+                    self.metrics_summary["step3"]["diversity"] = diversity_dict
+
+                logger.info(f"Step 3 BASELINE (vs Step 3 from all_samples)...")
+                baseline_from_all_step3 = self._create_task_wise_baseline_sample_set(
+                    responses_by_question, step3_unique_tasks
+                )
+                sep_list = []
+                for i in range(3):
+                    baseline_separability_all_step3 = self._compute_separability(
+                        baseline_from_all_step3
+                    )
+                    logger.info(
+                        f"Benchmark separability for baseline (vs Step 3 from all_samples): {json.dumps(baseline_separability_all_step3, indent=2)}"
+                    )
+                    sep_list.append(baseline_separability_all_step3)
+                self.metrics_summary["step3_baseline"]["separability"] = sep_list
+
             else:
                 logger.info("Skipping Step 3: Scoring not enabled")
         else:
@@ -711,7 +804,7 @@ class BenchmarkFilteringPipeline:
             if N < 2:
                 diversity_dict[benchmark_name] = 0.0
                 continue
-
+            print("diversity texts[0]:", texts[0])
             # Encode texts -> unit-normalised embeddings
             embeddings = self.embedder.encode(
                 texts,
@@ -791,7 +884,7 @@ class BenchmarkFilteringPipeline:
         id_to_data_by_benchmark = self._extract_texts_for_diversity(
             responses_by_question
         )
-
+        print("vis diversity lens:", len(responses_by_question), len(id_to_data_by_benchmark))
         for benchmark_name, id_to_data in id_to_data_by_benchmark.items():
             if len(id_to_data) < 2:
                 continue
@@ -1218,6 +1311,16 @@ class BenchmarkFilteringPipeline:
         logger.info(f"  Average agreement: {avg_agreement:.3f}")
         logger.info(f"  Min agreement: {min_agreement:.3f}")
         logger.info(f"  Max agreement: {max_agreement:.3f}")
+        
+        # Store agreement statistics for final summary
+        if not hasattr(self, '_current_agreement_stats'):
+            self._current_agreement_stats = {}
+        self._current_agreement_stats[benchmark_name] = {
+            'avg_agreement': avg_agreement,
+            'min_agreement': min_agreement,
+            'max_agreement': max_agreement,
+            'num_models': n_models
+        }
 
     def _count_unique_tasks(self, samples: List[Dict]) -> int:
         """Count unique tasks in samples."""
@@ -1432,21 +1535,10 @@ class BenchmarkFilteringPipeline:
             if not output.rule_based_output or output.rule_based_output.passed
         ]
 
-        def _is_question_flawed(llm_output):
-            """Check if question is flawed based on any available filter results"""
-            if not llm_output:
-                return False
-            # Check specific filter first, then universal filter
-            if llm_output.specific_filter:
-                return llm_output.specific_filter.is_flawed
-            elif llm_output.universal_filter:
-                return llm_output.universal_filter.is_flawed
-            return False
-
         step2_passed = [
             qid
             for qid in step1_passed
-            if not _is_question_flawed(pipeline_outputs[qid].llm_judge_output)
+            if not self._is_question_flawed(pipeline_outputs[qid].llm_judge_output)
         ]
 
         step1_benchmarks = Counter(qid.benchmark.value for qid in step1_passed)
@@ -1464,7 +1556,80 @@ class BenchmarkFilteringPipeline:
         logger.info(f"  After Step 1: {len(step1_passed):,}")
         logger.info(f"  After Step 2: {len(step2_passed):,}")
 
+        # Print compiled metrics summary
+        self._print_compiled_metrics_summary()
+
         logger.info(f"\nPipeline complete!")
+
+    def _print_compiled_metrics_summary(self):
+        """Print a compiled summary of all metrics collected during the pipeline."""
+        logger.info(f"\n{'='*80}")
+        logger.info(f"COMPILED METRICS SUMMARY")
+        logger.info(f"{'='*80}")
+        
+        step_names = {
+            "original": "Original Dataset",
+            "step1": "After Step 1 (Rule-based)",
+            "step2": "After Step 2 (LLM-as-Judge)",
+            "step3": "After Step 3 (Top-K Selection)",
+            "step1_baseline": "Step 1 Baseline",
+            "step2_baseline": "Step 2 Baseline",
+            "step3_baseline": "Step 3 Baseline"
+        }
+        
+        for step_key, step_name in step_names.items():
+            if step_key not in self.metrics_summary:
+                continue
+
+            step_metrics = self.metrics_summary[step_key]
+            if not any(step_metrics.values()):  # Skip if no metrics available
+                continue
+
+            logger.info(f"\n{step_name}:")
+            logger.info(f"{'-'*50}")
+
+            available_keys = set(step_metrics.keys())
+
+            # Separability
+            if "separability" in available_keys and step_metrics["separability"]:
+                logger.info(f"Separability by benchmark:")
+                # Handle both dict and list of dicts (for repeated runs)
+                if isinstance(step_metrics["separability"], dict):
+                    sep_dicts = [step_metrics["separability"]]
+                else:
+                    sep_dicts = step_metrics["separability"]
+                # Print each run
+                for run_idx, sep_dict in enumerate(sep_dicts):
+                    if len(sep_dicts) > 1:
+                        logger.info(f"  Run {run_idx+1}:")
+                    for benchmark, separability in sep_dict.items():
+                        logger.info(f"    {benchmark}: {separability:.3f}")
+                    # avg_separability = np.mean(list(sep_dict.values()))
+                    # logger.info(f"    Average: {avg_separability:.3f}")
+            else:
+                logger.info(f"Separability: Not computed")
+
+            # Only print diversity if present
+            if "diversity" in available_keys and step_metrics["diversity"]:
+                logger.info(f"Semantic diversity by benchmark:")
+                for benchmark, diversity in step_metrics["diversity"].items():
+                    logger.info(f"  {benchmark}: {diversity:.3f}")
+                # avg_diversity = np.mean(list(step_metrics["diversity"].values()))
+                # logger.info(f"  Average: {avg_diversity:.3f}")
+            elif "diversity" in available_keys:
+                logger.info(f"Semantic diversity: Not computed")
+
+            # Only print agreement if present
+            if "agreement" in available_keys and step_metrics["agreement"]:
+                logger.info(f"Model agreement statistics:")
+                for benchmark, stats in step_metrics["agreement"].items():
+                    logger.info(f"  {benchmark}:")
+                    logger.info(f"    Average agreement: {stats['avg_agreement']:.3f}")
+                    logger.info(f"    Min agreement: {stats['min_agreement']:.3f}")
+                    logger.info(f"    Max agreement: {stats['max_agreement']:.3f}")
+                    logger.info(f"    Models: {stats['num_models']}")
+            elif "agreement" in available_keys:
+                logger.info(f"Model agreement: Not computed")
 
     def _count_unique_questions(self, samples: List[Dict]) -> int:
         """Count unique questions in samples."""
