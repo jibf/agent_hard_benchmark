@@ -4,7 +4,12 @@ import sys
 from typing import Dict, Any, List
 from . import BaseLoader
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from src.utils.types import DrafterBenchQuestion, Benchmark
+from src.utils.types import (
+    DrafterBenchQuestion,
+    Benchmark,
+    FormattedQuestion,
+    UniqueQuestionID
+)
 import re
 
 
@@ -73,6 +78,7 @@ class DrafterBenchLoader(BaseLoader):
             available_function_list=[],
             benchmark=Benchmark.DRAFTER_BENCH,
             agent_system_prompt=self.system_prompts[task_type],
+            groundtruth=groundtruth,
             meta={
                 'drafter_bench_context': {
                     'task_type': task_type,
@@ -86,3 +92,20 @@ class DrafterBenchLoader(BaseLoader):
                 }
             }
         )
+
+    def load_responses_for_questions(self, questions: List[FormattedQuestion], responses_by_question: Dict[UniqueQuestionID, List[Dict]]):
+        """add original contents of jsonl to questions, so each question can get all model's response"""
+        for question in questions:
+            question_uid = UniqueQuestionID(
+                benchmark=question.benchmark,
+                task_name=question.task_name,
+                question_id=question.question_id
+            )
+            question.model_responses = responses_by_question[question_uid]
+
+            # use system_prompt saved in jsonl files instead of read it online
+            for message in responses_by_question[question_uid][0]["messages"]:
+                if message["role"] == "system":
+                    agent_system_prompt = message["content"]
+                    break
+            question.agent_system_prompt = agent_system_prompt

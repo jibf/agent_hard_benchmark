@@ -42,5 +42,40 @@
 
 
 
-FILTERING_PROMPT = ""
+FILTERING_PROMPT = """
+You are evaluating whether the provided ground-truth code in a tool-usage benchmark is flawed. The benchmark contains three components:
+* System Prompt (describes the environment and tool schema)
+* User Instruction (what the user is asking for)
+* Ground Truth (a function call representing the correct tool usage)
+
+Sometimes, the ground-truth code does not match the system prompt or contradicts the schema/arguments. Your job is to carefully analyze and determine if the ground-truth is flawed.
+
+Your response must strictly follow this JSON format:
+```json
+{{
+  "reasoning": "Provide a clear, step-by-step explanation for your decision. If the ground-truth is flawed, specify which argument is incorrect and why it contradicts the prompt or schema. If it is not flawed, briefly explain why the ground-truth is a correct interpretation of the user's request.",
+  "reasoning_summary": "A shorter rationale for your decision. If the ground-truth is not flawed, just mention that it is not flawed. If the ground-truth is flawed, specify the issue concisely. e.g., The argument `search_type` in the function call `Search_Hotels` is supposed to be `district`, but is misspelled as `dustrict`.",
+  "error_category": "<Not Flawed | Incorrect Ground Truth>",
+  "is_flawed": <true_or_false>
+}}
+```
+## Sample to be evaluated
+
+### System Prompt
+```
+{agent_system_prompt}
+```
+
+### User's Prompt
+
+```
+{instruction}
+```
+
+### Ground-truth
+
+```
+{groundtruth}
+```
+"""
 SCORING_PROMPT = ""
