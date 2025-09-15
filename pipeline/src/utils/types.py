@@ -93,12 +93,22 @@ class DrafterBenchQuestion(FormattedQuestion):
     agent_system_prompt: str    # system prompt for the agent
     groundtruth: str
 
-class BfclV2Question(FormattedQuestion):
-    pass
+class BFCLQuestion(FormattedQuestion):
+    initial_config: Optional[Dict] = None       # Initial state configuration for multi-turn scenarios
+    expected_path: Optional[List[str]] = None   # Expected function call path for multi-turn scenarios
+    involved_classes: Optional[List[str]] = None # Classes involved in multi-turn scenarios
+    is_multi_turn: bool = False                 # Whether this question is multi-turn
+    ground_truth: Optional[Any] = None          # Expected function call answers (can be various formats)
+    category: Optional[str] = None              # Category (simple, multiple, parallel, etc.)
+    subcategory: Optional[str] = None           # Subcategory for more detailed classification
+    is_live_data: bool = False                  # Whether this is live data with different format
+    
+    # BFCL evaluation specific fields
+    missed_function: Optional[List[str]] = None # Functions that should be missing for specific turns
+    system_prompt: Optional[str] = None         # System prompt for this question type
+    max_turn_limit: int = 20                    # Maximum number of turns allowed
+    exclude_state_log: bool = False            # Whether to exclude state logging for multi-turn
 
-
-class BfclV3Question(FormattedQuestion):
-    pass
 
 
 class MultiChallengeQuestion(FormattedQuestion):

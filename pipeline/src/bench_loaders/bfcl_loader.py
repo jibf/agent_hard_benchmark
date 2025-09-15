@@ -1,14 +1,453 @@
 import json
 import os
 import sys
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+import glob
 from . import BaseLoader
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from src.utils.types import BfclV2Question, Benchmark
+from src.utils.types import BFCLQuestion, Benchmark
 
+# BFCL Constants (from BFCL evaluation system)
+DEFAULT_SYSTEM_PROMPT_WITHOUT_FUNC_DOC = """You are an expert in composing functions. You are given a question and a set of possible functions. Based on the question, you will need to make one or more function/tool calls to achieve the purpose.
+If none of the functions can be used, point it out. If the given question lacks the parameters required by the function, also point it out.
+You should only return the function calls in your response.
+
+If you decide to invoke any of the function(s), you MUST put it in the format of [func_name1(params_name1=params_value1, params_name2=params_value2...), func_name2(params)]
+You SHOULD NOT include any other text in the response.
+
+At each turn, you should try your best to complete the tasks requested by the user within the current turn. Continue to output functions to call until you have fulfilled the user's request to the best of your ability. Once you have no more functions to call, the system will consider the current turn complete and proceed to the next turn or task.
+"""
+
+DEFAULT_SYSTEM_PROMPT = (
+    DEFAULT_SYSTEM_PROMPT_WITHOUT_FUNC_DOC
+    + """
+Here is a list of functions in JSON format that you can invoke.\n{functions}\n
+"""
+)
+
+MAXIMUM_STEP_LIMIT = 20
 
 
 class BfclLoader(BaseLoader):
-    def load_questions(self) -> List[BfclV2Question]:
-        """Load questions from the dataset"""
-        raise NotImplementedError
+    """
+    Berkeley Function Calling Leaderboard (BFCL) data loader
+    
+    Supports comprehensive BFCL evaluation including:
+    - Single-turn and multi-turn function calling
+    - Language-specific processing (Python, Java, JavaScript)
+    - Model-specific input formatting (FC vs prompting)
+    - Multi-turn state management and missing function handling
+    """
+    def __init__(self):
+        self.data_path = "data/BFCL/"
+        self.func_doc_path = "data/BFCL/multi_turn_func_doc/"
+        self.possible_answer_path = "data/BFCL/possible_answer/"
+        
+        # Cache for function documentation
+        self._func_docs_cache = {}
+        # Cache for possible answers
+        self._possible_answers_cache = {}
+        
+    def _load_function_docs(self) -> None:
+        """Load multi-turn function documentation files"""
+        if not os.path.exists(self.func_doc_path):
+            print(f"Warning: Multi-turn function doc path not found: {self.func_doc_path}")
+            return
+            
+        func_doc_files = glob.glob(os.path.join(self.func_doc_path, "*.json"))
+        for file_path in func_doc_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    func_list = []
+                    for line in f:
+                        if line.strip():
+                            func_list.append(json.loads(line.strip()))
+                    
+                    # Extract class name from filename (e.g., gorilla_file_system.json -> GorillaFileSystem)
+                    class_name = os.path.basename(file_path).replace('.json', '')
+                    formatted_class_name = self._format_class_name(class_name)
+                    self._func_docs_cache[formatted_class_name] = func_list
+            except Exception as e:
+                print(f"Error loading function docs from {file_path}: {e}")
+    
+    def _load_possible_answers(self) -> None:
+        """Load possible answer files"""
+        if not os.path.exists(self.possible_answer_path):
+            print(f"Warning: Possible answer path not found: {self.possible_answer_path}")
+            return
+            
+        answer_files = glob.glob(os.path.join(self.possible_answer_path, "*.json"))
+        for file_path in answer_files:
+            try:
+                filename = os.path.basename(file_path)
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    answers = {}
+                    for line in f:
+                        if line.strip():
+                            answer_data = json.loads(line.strip())
+                            answers[answer_data['id']] = answer_data.get('ground_truth', [])
+                    self._possible_answers_cache[filename] = answers
+            except Exception as e:
+                print(f"Error loading possible answers from {file_path}: {e}")
+    
+    def _format_class_name(self, class_name: str) -> str:
+        """Convert filename to proper class name format"""
+        # gorilla_file_system -> GorillaFileSystem
+        parts = class_name.split('_')
+        return ''.join(word.capitalize() for word in parts)
+    
+    def _get_language_specific_hint(self, test_category: str) -> str:
+        """Get language-specific hint based on test category"""
+        if test_category == "java":
+            return " Note that the provided function is in Java 8 SDK syntax."
+        elif test_category == "javascript":
+            return " Note that the provided function is in JavaScript syntax."
+        else:
+            return " Note that the provided function is in Python 3 syntax."
+    
+    def _add_language_specific_hints(self, function_list: List[Dict], test_category: str) -> List[Dict]:
+        """Add language-specific hints to function descriptions"""
+        if not function_list or not test_category:
+            return function_list
+        
+        # Create a deep copy to avoid modifying original
+        processed_functions = []
+        language_hint = self._get_language_specific_hint(test_category)
+        
+        for func in function_list:
+            func_copy = func.copy()
+            if 'description' in func_copy:
+                func_copy['description'] = func_copy['description'] + language_hint
+            processed_functions.append(func_copy)
+        
+        return processed_functions
+    
+    def get_system_prompt(self, function_list: List[Dict], test_category: str = "", include_functions: bool = True) -> str:
+        """Generate system prompt for BFCL evaluation with language-specific hints"""
+        if not include_functions or not function_list:
+            return DEFAULT_SYSTEM_PROMPT_WITHOUT_FUNC_DOC
+        
+        # Apply language-specific processing to function list
+        processed_functions = self._add_language_specific_hints(function_list, test_category)
+        functions_str = json.dumps(processed_functions, indent=2)
+        return DEFAULT_SYSTEM_PROMPT.format(functions=functions_str)
+    
+    def get_model_specific_inputs(self, question: BFCLQuestion, model_type: str = "prompting") -> Dict[str, Any]:
+        """Get model-specific inputs for BFCL evaluation"""
+        test_category = self._determine_category_and_subcategory(question.question_id)[0]
+        
+        if model_type == "function_calling":
+            # For models with native function calling support
+            processed_functions = self._add_language_specific_hints(question.available_function_list, test_category)
+            
+            inputs = {
+                "messages": question.gt_conv_traj[0] if question.gt_conv_traj else [],
+                "functions": processed_functions,
+                "function_call": "auto",
+                "temperature": 0.001  # BFCL default temperature
+            }
+            
+            # Multi-turn specific fields
+            if question.is_multi_turn:
+                inputs["initial_config"] = question.initial_config
+                inputs["involved_classes"] = question.involved_classes
+                inputs["max_turn_limit"] = question.max_turn_limit
+                if question.missed_function:
+                    inputs["missed_function"] = question.missed_function
+            
+            return inputs
+        else:
+            # For prompting models - apply language-specific processing
+            system_prompt = question.system_prompt or self.get_system_prompt(
+                question.available_function_list, test_category
+            )
+            
+            system_message = {
+                "role": "system", 
+                "content": system_prompt
+            }
+            user_messages = question.gt_conv_traj[0] if question.gt_conv_traj else []
+            
+            inputs = {
+                "messages": [system_message] + user_messages,
+                "temperature": 0.001
+            }
+            
+            # Multi-turn specific fields
+            if question.is_multi_turn:
+                inputs["initial_config"] = question.initial_config
+                inputs["involved_classes"] = question.involved_classes
+                inputs["max_turn_limit"] = question.max_turn_limit
+                inputs["exclude_state_log"] = question.exclude_state_log
+                if question.missed_function:
+                    inputs["missed_function"] = question.missed_function
+            
+            return inputs
+    
+    def convert_to_openai_tools(self, function_list: List[Dict]) -> List[Dict]:
+        """Convert BFCL function format to OpenAI tools format"""
+        tools = []
+        for func in function_list:
+            tool = {
+                "type": "function",
+                "function": {
+                    "name": func["name"],
+                    "description": func["description"],
+                    "parameters": func["parameters"]
+                }
+            }
+            tools.append(tool)
+        return tools
+    
+    def get_evaluation_config(self, question: BFCLQuestion) -> Dict[str, Any]:
+        """Get evaluation configuration for BFCL"""
+        return {
+            "max_step_limit": question.max_turn_limit,
+            "exclude_state_log": question.exclude_state_log,
+            "is_multi_turn": question.is_multi_turn,
+            "category": question.category,
+            "subcategory": question.subcategory,
+            "is_live_data": question.is_live_data,
+            "ground_truth": question.ground_truth,
+            "expected_path": question.expected_path,
+            "evaluation_ready": question.meta.get("evaluation_ready", True) if question.meta else True
+        }
+    
+    def _handle_missing_functions(self, question_data: List[List[Dict]], line: dict) -> Optional[List[str]]:
+        """Extract missing function information for multi-turn miss scenarios"""
+        missed_function = line.get('missed_function', None)
+        if missed_function and isinstance(missed_function, list):
+            return missed_function
+        return None
+    
+    def _extract_instruction_from_question(self, question_data: List[List[Dict]]) -> str:
+        """Extract user instruction from question data structure"""
+        if not question_data or not question_data[0]:
+            return ""
+        
+        # Single-turn case: question[0][0]['content']
+        if len(question_data) == 1:
+            first_turn = question_data[0]
+            if first_turn and isinstance(first_turn[0], dict):
+                return first_turn[0].get('content', '')
+        
+        # Multi-turn case: combine all user messages
+        instructions = []
+        for turn_idx, turn in enumerate(question_data):
+            if turn and isinstance(turn[0], dict):
+                content = turn[0].get('content', '')
+                if content:
+                    # Add turn number for clarity in multi-turn scenarios
+                    instructions.append(f"Turn {turn_idx + 1}: {content}")
+        
+        return " | ".join(instructions) if instructions else ""
+    
+    def _determine_category_and_subcategory(self, question_id: str, filename: str = "") -> tuple[str, str]:
+        """Determine category and subcategory from question_id and filename"""
+        # Handle live data
+        if 'live_' in question_id or 'live' in filename:
+            is_live = True
+            if question_id.startswith('live_simple_'):
+                return 'live_simple', 'simple'
+            elif question_id.startswith('live_multiple_'):
+                return 'live_multiple', 'multiple'
+            elif question_id.startswith('live_parallel_'):
+                if 'multiple' in question_id:
+                    return 'live_parallel_multiple', 'parallel_multiple'
+                else:
+                    return 'live_parallel', 'parallel'
+            elif question_id.startswith('live_irrelevance_'):
+                return 'live_irrelevance', 'irrelevance'
+            elif question_id.startswith('live_relevance_'):
+                return 'live_relevance', 'relevance'
+        
+        # Handle regular data
+        if question_id.startswith('simple_'):
+            return 'simple', 'single_turn'
+        elif question_id.startswith('multiple_'):
+            return 'multiple', 'single_turn'
+        elif question_id.startswith('parallel_'):
+            if 'multiple' in question_id:
+                return 'parallel_multiple', 'single_turn'
+            else:
+                return 'parallel', 'single_turn'
+        elif question_id.startswith('multi_turn_'):
+            if 'base' in question_id:
+                return 'multi_turn_base', 'multi_turn'
+            elif 'long_context' in question_id:
+                return 'multi_turn_long_context', 'multi_turn'
+            elif 'miss_func' in question_id:
+                return 'multi_turn_miss_func', 'multi_turn'
+            elif 'miss_param' in question_id:
+                return 'multi_turn_miss_param', 'multi_turn'
+            else:
+                return 'multi_turn', 'multi_turn'
+        elif question_id.startswith('irrelevance_'):
+            return 'irrelevance', 'single_turn'
+        elif question_id.startswith('java_'):
+            return 'java', 'language_specific'
+        elif question_id.startswith('javascript_'):
+            return 'javascript', 'language_specific'
+        else:
+            return 'unknown', 'unknown'
+    
+    def _get_functions_for_multi_turn(self, involved_classes: List[str]) -> List[Dict]:
+        """Get function definitions for multi-turn questions based on involved classes"""
+        if not involved_classes or not self._func_docs_cache:
+            return []
+        
+        all_functions = []
+        for class_name in involved_classes:
+            if class_name in self._func_docs_cache:
+                all_functions.extend(self._func_docs_cache[class_name])
+        
+        return all_functions
+    
+    def _get_possible_answer(self, question_id: str, filename: str) -> Optional[Any]:
+        """Get possible answer for a question"""
+        # Try to find in possible answers cache
+        for answer_filename, answers in self._possible_answers_cache.items():
+            # Direct filename match (e.g., BFCL_v3_simple.json matches BFCL_v3_simple.json)
+            base_filename = filename.replace('.json', '')
+            answer_base = answer_filename.replace('.json', '')
+            
+            if base_filename == answer_base:
+                return answers.get(question_id, None)
+            
+            # Partial matching for similar categories
+            if base_filename in answer_filename or answer_base in filename:
+                return answers.get(question_id, None)
+                
+        return None
+    
+    def _format_line(self, line: dict, filename: str) -> BFCLQuestion:
+        """Format a single line from BFCL dataset into BFCLQuestion"""
+        question_id = line.get('id', 'unknown')
+        question_data = line.get("question", [])
+        
+        # Extract instruction
+        instruction = self._extract_instruction_from_question(question_data)
+        
+        # Determine if multi-turn
+        is_multi_turn = len(question_data) > 1
+        
+        # Multi-turn specific fields
+        initial_config = line.get('initial_config', None) if is_multi_turn else None
+        expected_path = line.get('path', None) if is_multi_turn else None
+        involved_classes = line.get('involved_classes', None) if is_multi_turn else None
+        
+        # Get function list
+        function_list = line.get("function", [])
+        
+        # For multi-turn questions, if no functions are provided, try to get from func docs
+        if is_multi_turn and not function_list and involved_classes:
+            function_list = self._get_functions_for_multi_turn(involved_classes)
+        
+        # Determine category and subcategory
+        category, subcategory = self._determine_category_and_subcategory(question_id, filename)
+        is_live_data = 'live' in category
+        
+        # Get possible answer
+        ground_truth = self._get_possible_answer(question_id, filename)
+        
+        # Handle missing functions for multi-turn scenarios
+        missed_function = self._handle_missing_functions(question_data, line)
+        
+        # Generate system prompt with language-specific hints
+        system_prompt = self.get_system_prompt(function_list, category)
+        
+        # Set exclude state log for certain categories
+        exclude_state_log = category in ['irrelevance', 'live_irrelevance']
+        
+        return BFCLQuestion(
+            question_id=question_id,
+            instruction=instruction,
+            gt_conv_traj=question_data,    
+            available_function_list=function_list,
+            benchmark=Benchmark.BFCL,
+            initial_config=initial_config,
+            expected_path=expected_path,
+            involved_classes=involved_classes,
+            is_multi_turn=is_multi_turn,
+            ground_truth=ground_truth,
+            category=category,
+            subcategory=subcategory,
+            is_live_data=is_live_data,
+            missed_function=missed_function,
+            system_prompt=system_prompt,
+            max_turn_limit=MAXIMUM_STEP_LIMIT,
+            exclude_state_log=exclude_state_log,
+            meta={
+                'file_source': filename,
+                'original_category': self._determine_category_and_subcategory(question_id, filename)[0],
+                'has_ground_truth': ground_truth is not None,
+                'num_functions': len(function_list),
+                'num_turns': len(question_data) if question_data else 0,
+                'has_missing_functions': missed_function is not None,
+                'evaluation_ready': True
+            }
+        )
+    
+    def load_questions(self) -> List[BFCLQuestion]:
+        """Load questions from all BFCL dataset files"""
+        questions = []
+        
+        # Load function documentation and possible answers first
+        self._load_function_docs()
+        self._load_possible_answers()
+        
+        # Find all BFCL JSON files in the data directory
+        json_files = glob.glob(os.path.join(self.data_path, "BFCL_v3_*.json"))
+        
+        if not json_files:
+            print(f"Warning: No BFCL data files found in {self.data_path}")
+            return []
+        
+        print(f"Found {len(json_files)} BFCL data files")
+        print(f"Loaded function docs for {len(self._func_docs_cache)} classes")
+        print(f"Loaded possible answers for {len(self._possible_answers_cache)} files")
+        
+        for file_path in json_files:
+            filename = os.path.basename(file_path)
+            file_questions = 0
+            
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    # Each line is a JSON object
+                    for line_num, line in enumerate(f, 1):
+                        try:
+                            if line.strip():  # Skip empty lines
+                                line_data = json.loads(line.strip())
+                                questions.append(self._format_line(line_data, filename))
+                                file_questions += 1
+                        except json.JSONDecodeError as e:
+                            print(f"Error parsing line {line_num} in {filename}: {e}")
+                        except Exception as e:
+                            print(f"Error processing line {line_num} in {filename}: {e}")
+                            
+                print(f"Loaded {file_questions} questions from {filename}")
+                            
+            except FileNotFoundError:
+                print(f"Warning: File not found: {file_path}")
+            except Exception as e:
+                print(f"Error reading file {file_path}: {e}")
+        
+        # Print statistics
+        categories = {}
+        multi_turn_count = 0
+        with_ground_truth = 0
+        
+        for q in questions:
+            categories[q.category] = categories.get(q.category, 0) + 1
+            if q.is_multi_turn:
+                multi_turn_count += 1
+            if q.ground_truth:
+                with_ground_truth += 1
+        
+        print(f"\n=== BFCL Loader Statistics ===")
+        print(f"Total questions loaded: {len(questions)}")
+        print(f"Multi-turn questions: {multi_turn_count}")
+        print(f"Questions with ground truth: {with_ground_truth}")
+        print(f"Categories: {dict(sorted(categories.items()))}")
+        
+        return questions
