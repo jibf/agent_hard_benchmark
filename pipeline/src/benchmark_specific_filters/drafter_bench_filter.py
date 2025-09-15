@@ -131,7 +131,17 @@ class DrafterBenchFilter(BaseBenchmarkFilter):
         valid_samples = {}
         for question_id, sample_list in question_dict.items():
             task_type = question_id.rsplit("_", 1)[0]
-            question = task_type + "_" + sample_list[0]["messages"][0]["content"].strip()
+            system_prompt = None
+            user_prompt = None
+            for message in sample_list[0]["messages"]:
+                if message["role"] == "user":
+                    user_prompt = message["content"]
+                if message["role"] == "system":
+                    system_prompt = message["content"]
+
+            assert user_prompt and system_prompt
+
+            question = task_type + "_" + system_prompt.strip() + "_" + user_prompt.strip()
             if question not in known_questions:
                 known_questions.add(question)
                 valid_samples[question_id] = sample_list
@@ -163,10 +173,10 @@ class DrafterBenchFilter(BaseBenchmarkFilter):
             is_valid = True
 
             # filter all vague questions
-            if question_list[0]["meta"]["precise_vague"] == "Vague":
-                is_valid = False
-                reason_count["vague_question"] += 1
-                continue
+            # if question_list[0]["meta"]["precise_vague"] == "Vague":
+            #     is_valid = False
+            #     reason_count["vague_question"] += 1
+            #     continue
 
             scores = [sample["eval_result"]["score"] for sample in question_list]
             if len(scores) > 2:
