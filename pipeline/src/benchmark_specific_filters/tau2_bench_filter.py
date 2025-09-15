@@ -39,11 +39,13 @@ class TAU2BenchFilter(BaseBenchmarkFilter):
         vague_qids_to_filter = self._get_qids_with_vague_communication_info()
         # print("vague_qids_to_filter", vague_qids_to_filter)
         # print("qids_to_filter", qids_to_filter)
-        qids_to_filter = set(qids_to_filter + vague_qids_to_filter)
+        # qids_to_filter = set(qids_to_filter + vague_qids_to_filter)
         question_groups = self._group_samples_by_question(samples)
         # print("filter target: ", qids_to_filter)
         passed_samples = []
         dropped_samples = []
+
+        dropped_samples.append(vague_qids_to_filter)
         
         for sample in samples:
             qid = f"{sample['task_name']}-{sample['meta']['id']}"
@@ -52,6 +54,8 @@ class TAU2BenchFilter(BaseBenchmarkFilter):
                 passed_samples.append(sample)
             else:
                 dropped_samples.append(sample)
+
+        dropped_samples = set(dropped_samples)
         
         logger.info(f"TAU2 Bench filtering completed: {len(passed_samples)} passed, {len(dropped_samples)} dropped")
         return passed_samples, dropped_samples
