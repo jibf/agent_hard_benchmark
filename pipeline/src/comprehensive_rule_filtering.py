@@ -98,14 +98,14 @@ class ComprehensiveRuleFilter:
                     0
                 ]  # Use first sample to determine task type
                 task_type = self._extract_task_type(sample)
-                print(f"question_id: {question_id}, task_type: {task_type}, too_easy_by_task: {too_easy_by_task}, original_task_counts: {original_task_counts}")
+                # print(f"question_id: {question_id}, task_type: {task_type}, too_easy_by_task: {too_easy_by_task}, original_task_counts: {original_task_counts}")
                 if self._should_keep_too_easy_sample(
                     question_id, task_type, too_easy_by_task, original_task_counts
                 ):
-                    print(f"keeping question_id: {question_id}")
+                    # print(f"keeping question_id: {question_id}")
                     passed_responses[question_id] = question_responses
                 else:
-                    print(f"dropping question_id: {question_id}")
+                    # print(f"dropping question_id: {question_id}")
                     dropped_responses[question_id] = question_responses
             else:
                 # Drop non-discriminative questions
@@ -349,7 +349,7 @@ class ComprehensiveRuleFilter:
         Corrected logic: Only keep too_easy samples if filtering them all out would leave 
         the task type with less than 10% of its original size.
         """
-        print(f"task_type: {task_type}")
+        # print(f"task_type: {task_type}")
         if task_type not in too_easy_by_task:
             return False
 

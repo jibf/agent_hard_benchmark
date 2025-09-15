@@ -36,8 +36,12 @@ class TAU2BenchFilter(BaseBenchmarkFilter):
         # STEP 1: Filter questions solvable by a trivial agent, but keep those with success rate <= 0.5
         DO_NOTHING_SUCCESS_RATE_THRESHOLD = 0.5
         qids_to_filter = self._get_qids_solvable_by_do_nothing()
+        vague_qids_to_filter = self._get_qids_with_vague_communication_info()
+        # print("vague_qids_to_filter", vague_qids_to_filter)
+        # print("qids_to_filter", qids_to_filter)
+        qids_to_filter = set(qids_to_filter + vague_qids_to_filter)
         question_groups = self._group_samples_by_question(samples)
-        print("filter target: ", qids_to_filter)
+        # print("filter target: ", qids_to_filter)
         passed_samples = []
         dropped_samples = []
         
@@ -57,7 +61,7 @@ class TAU2BenchFilter(BaseBenchmarkFilter):
         function_names_modifying_database = {
             'retail': ['cancel_pending_order', "exchange_delivered_order_items", "modify_pending_order_address", "modify_pending_order_items", "modify_pending_order_payment", "modify_user_address", "return_delivered_order_items"],
             'airline': ["book_reservation", "cancel_reservation", "send_certificate", "update_reservation_baggages", "update_reservation_flights", "update_reservation_passengers"],
-            'telecom': ["make_payment", "resume_line", "refuel_data", "send_payment_request"]
+            # 'telecom': ["make_payment", "resume_line", "refuel_data", "send_payment_request"]
         }
         
 
@@ -66,7 +70,7 @@ class TAU2BenchFilter(BaseBenchmarkFilter):
         # action but no db impact
         result = []
         questions = Tau2BenchLoader().load_questions() # only the questions, not responses
-        print("sample question", questions[0])
+        # print("sample question", questions[10])
 
         # question : question_id = '0', task_name = 'airline'
         # gt_conv_traj = actions
@@ -76,18 +80,62 @@ class TAU2BenchFilter(BaseBenchmarkFilter):
         for question in questions:
             qid = question.question_id
             
-            domain, _ = get_domain_and_id(qid)
-
+            # domain, _ = get_domain_and_id(qid)
+            domain = question.task_name
+            if domain == 'telecom':
+                continue
+            actions = question.evaluation_criteria.get('actions', [])
+            # if domain == "airline":
+            #     if qid in ['13','46']:
+            #         print("airline actions", qid, actions)
+            # if domain == "retail":
+            #     if qid in ['10','50']:
+            #         print("retail actions", qid, actions)
             is_modifying_database = False
-            if domain in function_names_modifying_database:
-                for message in question.gt_conv_traj:
-                    if message['role'] == 'assistant' and 'function_call' in message.keys():
-                        for function_call in message['function_call']:
-                            if function_call['name'] in function_names_modifying_database[domain]:
-                                is_modifying_database = True
+            # if domain in function_names_modifying_database:
+            if domain in ["retail", "airline"]:
+                for action in actions:
+                    if action['name'] in function_names_modifying_database[domain]:
+                        is_modifying_database = True
+                        break
+                
 
-            if len(question.evaluation_criteria.get('actions', [])) == 0 and not is_modifying_database:
-                result.append(qid)
+            if len(actions) == 0 or not is_modifying_database:
+                result.append(f"{domain}-{qid}")
+
+        return result
+
+    def _get_qids_with_vague_communication_info(self) -> List[str]:
+        # function_names_modifying_database = {
+        #     'retail': ['cancel_pending_order', "exchange_delivered_order_items", "modify_pending_order_address", "modify_pending_order_items", "modify_pending_order_payment", "modify_user_address", "return_delivered_order_items"],
+        #     'airline': ["book_reservation", "cancel_reservation", "send_certificate", "update_reservation_baggages", "update_reservation_flights", "update_reservation_passengers"],
+        #     'telecom': ["make_payment", "resume_line", "refuel_data", "send_payment_request"]
+        # }
+        
+
+        # no action evaluation_criteria.actions == []
+
+        # action but no db impact
+        result = []
+        questions = Tau2BenchLoader().load_questions() # only the questions, not responses
+        # print("sample question", questions[10])
+
+        # question : question_id = '0', task_name = 'airline'
+        # gt_conv_traj = actions
+        # evaluation_criteria.communicate_info
+        # reward_basis isn't included in the loader
+
+        for question in questions:
+            qid = question.question_id
+            
+            # domain, _ = get_domain_and_id(qid)
+            domain = question.task_name
+            communicate_info = question.evaluation_criteria.get('communicate_info', [])
+            if communicate_info:
+                for info in communicate_info:
+                    if ' ' in info:
+                        result.append(f"{domain}-{qid}")
+                        break
 
         return result
 
@@ -140,6 +188,6 @@ class TAU2BenchFilter(BaseBenchmarkFilter):
         return np.mean(numeric_scores)
 
 
-def get_domain_and_id(question_id: str) -> Tuple[str, int]:
-    domain, id_str = question_id.split("-")
-    return domain, int(id_str)
+# def get_domain_and_id(question_id: str) -> Tuple[str, int]:
+#     domain, id_str = question_id.split("-")
+#     return domain, int(id_str)
