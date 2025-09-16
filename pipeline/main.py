@@ -46,6 +46,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+COMMON_MODEL_SET = {
+    'claude-4-sonnet-thinking-on-10k', 'Kimi-K2-Instruct', 'Qwen3-235B-A22B-Instruct-2507-FP8',
+    'o4-mini-high', 'Qwen3-235B-A22B-Thinking-2507-FP8', 'gpt-4.1', 'gpt-4o-mini',
+    'gpt-4o-20240806', 'claude-4-sonnet-thinking-off', 'Qwen3-235B-A22B-FP8', 'o3-high'
+}
+
 
 class BenchmarkFilteringPipeline:
     """Complete benchmark filtering pipeline."""
@@ -201,18 +207,20 @@ class BenchmarkFilteringPipeline:
         # filter out models do not have all results for all benchmarks
         for idx, benchmark_name in enumerate(benchmark_reamined_model):
             if idx == 0:
-                remained_model_cross_all_benchmar = benchmark_reamined_model[
+                remained_model_cross_all_benchmark = benchmark_reamined_model[
                     benchmark_name
                 ]
                 continue
-            remained_model_cross_all_benchmar = (
-                remained_model_cross_all_benchmar.intersection(
+            remained_model_cross_all_benchmark = (
+                remained_model_cross_all_benchmark.intersection(
                     benchmark_reamined_model[benchmark_name]
                 )
             )
+        remained_model_cross_all_benchmark = remained_model_cross_all_benchmark.intersection(COMMON_MODEL_SET)
+        for idx, benchmark_name in enumerate(benchmark_reamined_model):
             filterd_model = (
                 benchmark_reamined_model[benchmark_name]
-                - remained_model_cross_all_benchmar
+                - remained_model_cross_all_benchmark
             )
             logging.info(
                 f"Filtered model {filterd_model} for benchmark {benchmark_name} to maintain consistency cross all benchmarks."
@@ -224,11 +232,11 @@ class BenchmarkFilteringPipeline:
             unique_model_set = set()
             for response in responses:
                 model_name = response["model_name"]
-                if model_name in remained_model_cross_all_benchmar:
+                if model_name in remained_model_cross_all_benchmark:
                     filterd_response_list.append(response)
                     unique_model_set.add(model_name)
 
-            if unique_model_set == remained_model_cross_all_benchmar:
+            if unique_model_set == remained_model_cross_all_benchmark:
                 final_dict[qid] = filterd_response_list
 
         response_count = sum([len(responses) for responses in filtered_dict.values()])
