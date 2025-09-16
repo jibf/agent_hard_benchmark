@@ -26,6 +26,7 @@ Here is a list of functions in JSON format that you can invoke.\n{functions}\n
 )
 
 MAXIMUM_STEP_LIMIT = 20
+EXPECTATION_ONLY_CATEGORIES = {"irrelevance", "live_irrelevance", "live_relevance"}
 
 
 class BfclLoader(BaseLoader):
@@ -349,6 +350,28 @@ class BfclLoader(BaseLoader):
         
         # Get possible answer
         ground_truth = self._get_possible_answer(question_id, filename)
+
+        # Expectation policy where there is no ground truth for these categories
+        expect_call = None
+        expectation_text = None
+        if category in EXPECTATION_ONLY_CATEGORIES and ground_truth is None:
+            if category == "live_relevance":
+                expect_call = True
+                expectation_text = (
+                    "BFCL relevance policy: Expect at least one valid function call in this turn."
+                )
+            else:  # irrelevance or live_irrelevance
+                expect_call = False
+                expectation_text = (
+                    "BFCL irrelevance policy: Expect no function calls in this turn."
+                )
+
+            # Option B (prompt-visible): prepend to the instruction so prompts see it
+            # If your judge reads meta, you can do both.
+            if instruction:
+                instruction = expectation_text + "\n\n" + instruction
+            else:
+                instruction = expectation_text
         
         # Handle missing functions for multi-turn scenarios
         missed_function = self._handle_missing_functions(question_data, line)
@@ -358,9 +381,23 @@ class BfclLoader(BaseLoader):
         
         # Set exclude state log for certain categories
         exclude_state_log = category in ['irrelevance', 'live_irrelevance']
+
+        # Build meta (attach expect_call if set)
+        meta_payload = {
+            'file_source': filename,
+            'original_category': self._determine_category_and_subcategory(question_id, filename)[0],
+            'has_ground_truth': ground_truth is not None,
+            'num_functions': len(function_list),
+            'num_turns': len(question_data) if question_data else 0,
+            'has_missing_functions': missed_function is not None,
+            'evaluation_ready': True
+        }
+        if expect_call is not None:
+            meta_payload['expect_call'] = expect_call
         
         return BFCLQuestion(
             question_id=question_id,
+            task_name=category,
             instruction=instruction,
             gt_conv_traj=question_data,    
             available_function_list=function_list,

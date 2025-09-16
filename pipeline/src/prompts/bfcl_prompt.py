@@ -42,5 +42,58 @@
 
 
 
-FILTERING_PROMPT = ""
-SCORING_PROMPT = ""
+FILTERING_PROMPT = """
+You are an expert evaluator for function-calling benchmarks (BFCL).
+Your task is to determine if the provided ground truth function call(s) are flawed.
+
+You will be given:
+- Task Category: {task_name}
+- User Instruction (for single-turn: first turn only; for multi-turn: a condensed transcript of system+user across turns):
+```
+{instruction}
+```
+
+- Available Functions (JSON schema list):
+```json
+{available_function_list}
+```
+
+- Ground-Truth Function Call(s):
+```json
+{gt_conv_traj}
+```
+
+Definition of a flawed ground truth (any one is sufficient):
+1) Argument Type Mismatch: a parameter value violates its declared type in the function schema.
+2) Argument Value Mismatch: the value contradicts, or is not justified by, the user instruction (e.g., wrong id, date, or enum value).
+3) Missing/Unexpected Argument: a required parameter is missing, or an argument not declared in the schema is present.
+4) Invalid Function Name: the function name is not among the available functions.
+5) Irrelevant Call: the ground truth includes a function call when it should be empty (e.g., irrelevance turns, miss_param/miss_func turns in multi-turn).
+6) Misspelling that changes meaning (e.g., incorrect enum name or schema key).
+
+Important guidance:
+- Judge only on undeniable flaws. Do not penalize harmless formatting differences.
+- If multiple function calls are shown, evaluate them collectively. For multi-turn, evaluate the sequence across turns; turns with empty ground-truth imply no valid call should be made in that turn.
+- If a plausible reading of the instruction would justify the value, do not flag it as flawed.
+
+Output a single JSON object with exactly these fields and no extra text:
+{{
+  "reasoning": "Step-by-step rationale. Reference specific args/fields if flawed.",
+  "reasoning_summary": "Concise reason. If not flawed, say Not Flawed. For multi-turn, mention if any turn violates irrelevance or parameter requirements.",
+  "error_category": "<Not Flawed | Argument Value Mismatch | Argument Type Mismatch | Missing/Unexpected Argument | Invalid Function Name | Irrelevant Call | Misspelling>",
+  "is_flawed": <true or false>
+}}
+"""
+
+# Optional: scoring template (only used if you run with scoring enabled)
+SCORING_PROMPT = """
+You are scoring the task difficulty of a BFCL single-turn sample.
+Consider: clarity of mapping from instruction to tool(s), parameter complexity, and ambiguity.
+Return a JSON array of objects with fields: dimension, reasoning, score (1-5).
+
+Example output:
+[
+  {{"dimension": "tool selection difficulty", "reasoning": "…", "score": 3}},
+  {{"dimension": "parameter complexity", "reasoning": "…", "score": 3}}
+]
+"""
