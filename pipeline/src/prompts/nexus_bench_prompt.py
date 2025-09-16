@@ -55,24 +55,20 @@ You will be provided with the following context for each sample:
 
 A sample is flawed if at least one ground-truth function call violates one of the criteria below.
 
-1. **Argument / Parameter Type Mismatch**
+1. **Argument / Parameter Type Mismatch Due to Problematic Function Schemas**
    – A ground-truth function call uses a parameter value whose type clearly contradicts the schema or function name.  
-   – Example: Function `vt_get_votes_on_ip_address` called with `ip="example.com"` (a domain, not an IP).  
+   – Example: Function `vt_get_votes_on_ip_address` called with `ip="example.com"` (example.com is a domain, not an IP address).  
    – Such mismatches reflect mis-specified tools, not model reasoning, so they must be flagged.
    - NOTE: All functions are Python functions, which do not need the parameter names to be passed in the queries. If the ground truth function call passes by argument without the parameter name, then it is not a mismatch.
 
-3. **Ambiguous or Invalid Ground Truth**
-   - Example: is the user query is 'time in chicago', and the available functions suggest the agent needs to get the current time using a function call, but the ground truth is '2025-09-11 02:00:00', then the ground-truth is invalid.
-   – Such mismatches reflect the output of non-deterministic function outputs, not model reasoning, so they must be flagged.
-   - However, the defined functions can exist in an alternate universe and the query could be valid. For example, if the question asks to add 5 and 7 and the ground truth is -2, and defines the add() function to return the difference of two numbers, then the ground-truth is valid because the provided function call (add(5, 7)) is valid and would return -2.
-
-3. **Ambiguous or Poorly Written User Query**
+2. **Ambiguous or Poorly Written User Query**
    - Example: User query 'E. coli doubles every 20m, 120m from 5 cells' or 'what's the clock? in London, Paris and Kiev, dude?'. It is unclear exactly what the user is asking for.
    - Such mismatches reflect ambiguous user queries, not model reasoning, so they must be flagged.
    - However, ONLY flag this if the user query cannot be reasonably inferred from the available tools and system instructions.
 
-NOTE: for TypeWriter tasks (LangChainTypeWriterHard, LangChainMultitoolTypeWriterHard), the ground truth is often the final output of the agent, not the result of a single function call. So it is not a mismatch if the ground truth is the query repeated IF the query can be typed with the available tools.
-
+NOTE: For TypeWriter tasks (LangChainTypeWriterHard, LangChainMultitoolTypeWriterHard), the ground truth is often the final output of the agent, not the result of a single function call. So it is not a mismatch if the ground truth is the query repeated IF the query can be typed with the available tools.
+For TMIHallucination, the task involves a remapping of words to other words, so for example, if the instruction specifies that "Wet" maps to "Hot" and "Hot" maps to "Wet", and the user query is "Raindrops are wet" and the ground truth is match_values(["Hot")]. This is valid because the ground truth correctly remaps the user query to the correct value.
+Also, the defined functions can exist in an alternate universe and the query could be valid. For example, if the question asks to add 5 and 7 and the ground truth is -2, and defines the add() function to return the difference of two numbers, then the ground-truth is valid because the provided function call (add(5, 7)) is valid and would return -2.
 -----
 
 ## Evaluation and Output Format
@@ -82,7 +78,7 @@ Think step-by-step.  Output **exactly** the JSON object below—no extra keys or
 {{
   "reasoning": "Provide a clear, step-by-step justification.  If flawed, specify the first flaw and why it violates the prompt, schema, or context.",
   "reasoning_summary": "One-sentence summary of the verdict.",
-  "error_category": "<Argument Type Mismatch | Ambiguous or Invalid Ground Truth Value | Ambiguous or Poorly Written User Query | Not Flawed>",
+  "error_category": "<Argument / Parameter Type Mismatch Due to Problematic Function Schemas | Ambiguous or Poorly Written User Query | Not Flawed>",
   "is_flawed": <true_or_false>
 }}
 ```

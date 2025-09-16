@@ -3,6 +3,13 @@ import sys
 import inspect
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+from pathlib import Path
+import json
+from functools import lru_cache
+# -----------------------------------------------------------------------------
+# Standard library imports
+# -----------------------------------------------------------------------------
+from collections import Counter
 
 from datasets import load_dataset
 from . import BaseLoader
@@ -11,6 +18,103 @@ from . import BaseLoader
 # Additional imports
 # -----------------------------------------------------------------------------
 from typing import Dict, Any, List, Optional
+
+# Directory containing evaluation JSONL files (relative to repo root)
+_EVAL_DIR = (
+    Path(__file__).resolve().parents[2] / "benchmark" / "NexusBench-evaluation"
+)
+
+
+def _build_id_lookup() -> tuple[Dict[tuple, str], Dict[str, str]]:
+    """Return two mappings:
+    1. (query, ground_truth) -> canonical id  (exact match)
+    2. query -> canonical id  (first occurrence wins)
+
+    Scans all evaluation JSONL files so every NexusBench question is covered.
+    """
+
+    exact_lookup: Dict[tuple, str] = {}
+    query_lookup: Dict[str, str] = {}
+    if not _EVAL_DIR.exists():
+        return exact_lookup, query_lookup
+
+    for jsonl_path in _EVAL_DIR.glob("*.jsonl"):
+        # ---------------------------------------------------------------------
+        # First pass: collect all (query, ground_truth, qid) tuples and count
+        # how many times each *query* appears *within the current file*.
+        # ---------------------------------------------------------------------
+        entries: list[tuple[str, str, str]] = []  # (query, ground_truth, qid)
+        query_counts: Counter[str] = Counter()
+
+        with jsonl_path.open() as f:
+            for line in f:
+                if not line.strip():
+                    continue
+
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    # Skip malformed JSON lines but keep parsing the rest.
+                    continue
+
+                meta = obj.get("meta", {})
+                qid = meta.get("id")
+                ground_truth = str(meta.get("ground_truth", "")).strip()
+
+                # Extract first user message content (the "query").
+                query = next(
+                    (
+                        str(m.get("content", "")).strip()
+                        for m in obj.get("messages", [])
+                        if m.get("role") == "user"
+                    ),
+                    "",
+                )
+
+                if qid and query:
+                    query_norm = query  # already stripped above
+                    entries.append((query_norm, ground_truth, qid))
+                    query_counts[query_norm] += 1
+
+        # ------------------------------------------------------------------
+        # Second pass: populate global lookups **only** for queries that are
+        # unique within this JSONL file (i.e., the count is exactly 1).
+        # Any query that appears more than once in *this* file is completely
+        # excluded from both the exact- and query-only lookup tables.
+        # ------------------------------------------------------------------
+        for query_norm, ground_truth, qid in entries:
+            if query_counts[query_norm] > 1:
+                # Duplicate query within the same file – skip entirely.
+                continue
+
+            exact_lookup[(query_norm, ground_truth)] = qid
+
+            # Store first occurrence for query-only mapping if not already present.
+            if query_norm not in query_lookup:
+                query_lookup[query_norm] = qid
+
+    return exact_lookup, query_lookup
+
+# Cache lookups
+_LOOKUP_EXACT: Optional[Dict[tuple, str]] = None
+_LOOKUP_QUERY: Optional[Dict[str, str]] = None
+
+
+def _ensure_lookups():
+    global _LOOKUP_EXACT, _LOOKUP_QUERY
+    if _LOOKUP_EXACT is None or _LOOKUP_QUERY is None:
+        _LOOKUP_EXACT, _LOOKUP_QUERY = _build_id_lookup()
+
+
+def _get_canonical_id(query: str, ground_truth: str) -> Optional[str]:
+    _ensure_lookups()
+    query_norm = query.strip()
+    gt_norm = ground_truth.strip()
+    cid = _LOOKUP_EXACT.get((query_norm, gt_norm))  # type: ignore[arg-type]
+    if cid:
+        return cid
+    return _LOOKUP_QUERY.get(query_norm)  # type: ignore[arg-type]
+
 
 # Import the generic FC API prompter to generate the exact prompt that will be
 # shown to the underlying model.  We purposefully *do not* rely on any
@@ -209,8 +313,18 @@ class NexusBenchLoader(BaseLoader):
             }
 
             for i, sample in enumerate(samples):
+                # Attempt to retrieve canonical ID from reference file
+                canon_id = _get_canonical_id(str(sample.query), str(sample.reference))
+                if not canon_id:
+                    print(
+                        f"[SKIP] {benchmark_name}: No canonical ID found for query={sample.query!r} | reference={sample.reference!r}"
+                    )
+                    continue
+
+                sample_id = canon_id
+
                 formatted_question = self.format_nexus_sample(
-                    sample, config, f"{benchmark_name}_{i}"
+                    sample, config, sample_id
                 )
                 if formatted_question:
                     all_questions.append(formatted_question)
@@ -608,8 +722,15 @@ class NexusBenchLoader(BaseLoader):
             }
 
             for i, sample in enumerate(samples):
+                canon_id = _get_canonical_id(str(sample.query), str(sample.reference))
+                if not canon_id:
+                    print(
+                        f"[SKIP] {benchmark_name}: No canonical ID found for query={sample.query!r} | reference={sample.reference!r}"
+                    )
+                    continue
+
                 formatted_question = self.format_nexus_sample(
-                    sample, config, f"{benchmark_name}_{i}"
+                    sample, config, canon_id
                 )
                 if formatted_question:
                     questions.append(formatted_question)
