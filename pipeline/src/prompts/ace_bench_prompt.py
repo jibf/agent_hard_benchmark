@@ -77,9 +77,7 @@ Your final output must be a JSON object with the following structure, with no ad
 
 ### Agent System Prompt
 
-```
 {agent_system_prompt}
-```
 
 ### Ground-truth function call trajectory
 

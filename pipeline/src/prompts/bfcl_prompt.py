@@ -92,7 +92,7 @@ Output a single JSON object with exactly these fields and no extra text:
 
 {system_prompt}
 
-- Ground-Truth Function Call(s):
+### Ground-Truth Function Call(s):
 ```json
 {ground_truth}
 ```
