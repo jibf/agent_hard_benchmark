@@ -78,6 +78,7 @@ class ComprehensiveRuleFilter:
         # - Drop ALL samples for non-discriminative questions
         passed_responses = {}
         dropped_responses = {}
+        dropped_too_easy_count = 0
 
         # Group too_easy questions by task type for retention sampling
         too_easy_by_task = self._group_questions_by_task_type(
@@ -106,6 +107,7 @@ class ComprehensiveRuleFilter:
                     passed_responses[question_id] = question_responses
                 else:
                     # print(f"dropping question_id: {question_id}")
+                    dropped_too_easy_count += 1
                     dropped_responses[question_id] = question_responses
             else:
                 # Drop non-discriminative questions
@@ -113,6 +115,9 @@ class ComprehensiveRuleFilter:
 
         passed_count = sum(len(responses) for responses in passed_responses.values())
         dropped_count = sum(len(responses) for responses in dropped_responses.values())
+        logger.info(
+            f"Dropped {dropped_too_easy_count}/{len(too_easy_questions)} = {dropped_too_easy_count/len(too_easy_questions)*100:.2f}% too easy questions"
+        )
         logger.info(
             f"Final results: {passed_count} samples passed, {dropped_count} dropped"
         )
