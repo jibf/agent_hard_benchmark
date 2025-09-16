@@ -40,49 +40,62 @@
 # ]
 #
 
-
+# IN BFCL, agent system prompt includes available_function_list
 
 FILTERING_PROMPT = """
-You are an expert evaluator for function-calling benchmarks (BFCL).
-Your task is to determine if the provided ground truth function call(s) are flawed.
+You are an expert evaluator for evaluating a function-calling benchmark named BFCL.
+Your task is to determine if the provided ground-truth function call(s) are flawed.
 
 You will be given:
-- Task Category: {task_name}
-- User Instruction (for single-turn: first turn only; for multi-turn: a condensed transcript of system+user across turns):
-```
-{instruction}
-```
+* Instruction: The description of the task given to the agent. This can be either single-turn or multi-turn.
+* Agent System Prompt: the system prompt used to initialize the agent model. This may contain a specific instruction on the answer style, domain-specific policy that the agent needs to follow, a list of available functions and their schema (in JSON format), etc.
+* Ground-Truth Function Call Trajectory: the provided ground-truth trajectory of function calls. When this is empty or None, it means that the agent needs to call nothing to be scored as correct.
 
-- Available Functions (JSON schema list):
-```json
-{available_function_list}
-```
+## Definition of a flawed ground truth (any one is sufficient):
 
-- Ground-Truth Function Call(s):
-```json
-{gt_conv_traj}
-```
+1. Argument Type Mismatch: a parameter value violates its declared type in the function schema.
+2. Argument Value Mismatch: the value contradicts, or is not justified by, the user instruction (e.g., wrong id, date, or enum value).
+3. Missing/Unexpected Argument: a required parameter is missing, or an argument not declared in the schema is present.
+4. Invalid Function Name: the function name is not among the available functions.
+5. Irrelevant Call: the ground truth includes a function call when it should be empty (e.g., irrelevance turns, miss_param/miss_func turns in multi-turn).
+6. Misspelling that changes meaning (e.g., incorrect enum name or schema key).
 
-Definition of a flawed ground truth (any one is sufficient):
-1) Argument Type Mismatch: a parameter value violates its declared type in the function schema.
-2) Argument Value Mismatch: the value contradicts, or is not justified by, the user instruction (e.g., wrong id, date, or enum value).
-3) Missing/Unexpected Argument: a required parameter is missing, or an argument not declared in the schema is present.
-4) Invalid Function Name: the function name is not among the available functions.
-5) Irrelevant Call: the ground truth includes a function call when it should be empty (e.g., irrelevance turns, miss_param/miss_func turns in multi-turn).
-6) Misspelling that changes meaning (e.g., incorrect enum name or schema key).
+## Important guidance:
 
-Important guidance:
 - Judge only on undeniable flaws. Do not penalize harmless formatting differences.
 - If multiple function calls are shown, evaluate them collectively. For multi-turn, evaluate the sequence across turns; turns with empty ground-truth imply no valid call should be made in that turn.
 - If a plausible reading of the instruction would justify the value, do not flag it as flawed.
 
+## Output Format
+
 Output a single JSON object with exactly these fields and no extra text:
+```json
 {{
   "reasoning": "Step-by-step rationale. Reference specific args/fields if flawed.",
   "reasoning_summary": "Concise reason. If not flawed, say Not Flawed. For multi-turn, mention if any turn violates irrelevance or parameter requirements.",
   "error_category": "<Not Flawed | Argument Value Mismatch | Argument Type Mismatch | Missing/Unexpected Argument | Invalid Function Name | Irrelevant Call | Misspelling>",
   "is_flawed": <true or false>
 }}
+```
+
+## Sample to be evaluated
+
+### Category 
+* category: {category}
+* subcategory: {subcategory}
+
+### Instruction
+
+{instruction}
+
+### Agent System Prompt
+
+{system_prompt}
+
+- Ground-Truth Function Call(s):
+```json
+{ground_truth}
+```
 """
 
 # Optional: scoring template (only used if you run with scoring enabled)

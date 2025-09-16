@@ -78,6 +78,7 @@ class AceBenchQuestion(FormattedQuestion):
     involved_classes: Optional[List[str]] = None     # Classes involved in multi-turn scenarios
     agent_system_prompt: Optional[str] = None        # System prompt for the assistant agent
     user_system_prompt: Optional[str] = None         # System prompt for user simulation (if applicable)
+    previous_conversation_history: str = None        # Conversation history between the user and the agent in natural language
     
 class NexusBenchQuestion(FormattedQuestion):
     benchmark_name: str

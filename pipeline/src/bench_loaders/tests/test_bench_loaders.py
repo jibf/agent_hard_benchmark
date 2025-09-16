@@ -11,8 +11,8 @@ BENCHMARKS = [
     # Benchmark.NEXUS_BENCH,
     # Benchmark.TOOL_SANDBOX,
     # Benchmark.COMPLEX_FUNC_BENCH,
-    Benchmark.DRAFTER_BENCH,
-    # Benchmark.BFCL,
+    # Benchmark.DRAFTER_BENCH,
+    Benchmark.BFCL,
     # Benchmark.MULTI_CHALLENGE
     ]
 
@@ -32,7 +32,7 @@ def test_bench_loader(benchmark: Benchmark):
                 question_dict = question.model_dump()
                 for field, value in question_dict.items():
                     value_str = str(value)
-                    print(f"\033[91m=== {field} ===\033[0m:\n {value_str[:100]}")
+                    print(f"\033[91m=== {field} ===\033[0m:\n {value_str}")
                 prev_task_name = task_name
                 input()
             else:

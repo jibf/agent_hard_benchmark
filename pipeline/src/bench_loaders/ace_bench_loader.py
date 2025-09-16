@@ -103,7 +103,7 @@ class AceBenchLoader(BaseLoader):
             ground_truth = self._get_ground_truth(question_id, task_file_name)
             
             # Get prompts for this specific question
-            agent_prompt, user_prompt = self._get_system_prompts(question_id, question_text, functions, time_info, profile, lang)
+            agent_prompt, previous_conversation_history = self._get_system_prompts(question_id, question_text, functions, time_info, profile, lang)
             
             # Create the question object
             question = AceBenchQuestion(
@@ -118,7 +118,7 @@ class AceBenchLoader(BaseLoader):
                 path=path,
                 involved_classes=involved_classes,
                 agent_system_prompt=agent_prompt,
-                user_system_prompt=user_prompt,
+                previous_conversation_history=previous_conversation_history,
                 meta={
                     'data_type': task_file_name,
                     'file_path': question_file_path

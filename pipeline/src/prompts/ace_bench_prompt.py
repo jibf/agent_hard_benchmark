@@ -1,12 +1,16 @@
 
+# NOTE: in ACEBench, agent system prompt includes available function list
+
+
 FILTERING_PROMPT = """You are an expert evaluator for ACEBench, a benchmark designed to assess an agent's ability to perform tool usage (function calling) across scenarios of increasing complexity and realism.
 
 Your task is to identify if a sample in the benchmark has a fundamental flaw in its ground-truth, which would make it an unreliable sample for evaluation.
 
 You will be provided with the following information:
-* User Scenario: the prompt given to the model that simulates user interactions.
-* Available Function List: a list of functions available for the agents and their schema
-* Ground-Truth Function Calls: the provided ground-truth trajectory containing the sequence of function calls and their responses.
+* Conversation History: The conversation history between the user and the agent model. The agent's next function call immediately following this history is what will be evaluated.
+* Agent System Prompt: the system prompt used to initialize the agent model. this may be a specific instruction on the answer style, domain-specific policy that the agent needs to follow, etc. 
+* API Specification: a list of functions available for the agents and their schema
+* Ground-Truth Function Calls: the provided ground-truth trajectory of function calls. When this is empty, it means that the agent needs to call nothing to be scored as correct.
 
 A sample is considered flawed if at least one of the ground-truth function calls has an issue listed below.
 
@@ -67,16 +71,14 @@ Your final output must be a JSON object with the following structure, with no ad
 
 ## Sample to be evaluated
 
-### User's Prompt
+### Conversation History 
+
+{previous_conversation_history}
+
+### Agent System Prompt
 
 ```
-{instruction}
-```
-
-### List of available functions and their schema
-
-```json
-{available_function_list}
+{agent_system_prompt}
 ```
 
 ### Ground-truth function call trajectory
@@ -85,11 +87,7 @@ Your final output must be a JSON object with the following structure, with no ad
 {gt_conv_traj}
 ```
 
-### Metadata
-
-```json
-{meta}
-```"""
+"""
 
 SCORING_PROMPT = """You are an expert evaluator for ACEBench, a benchmark for evaluating LLMs' ability to perform tool usage (function calling) across scenarios of increasing complexity and realism.
 
@@ -100,14 +98,25 @@ Your task is to score the given sample across 5 dimensions, each rated from 1-5 
 - 4: Good performance, minor issues
 - 5: Excellent performance, robust and reliable
 
-**Sample Information**:
-- Task: {task_name}
-- Instruction: {instruction}
-- Available Functions: {available_function_list}
-- Ground Truth: {gt_conv_traj}
-- Metadata: {meta}
+## Sample to be evaluated
 
-**Scoring Dimensions**:
+### Conversation History 
+
+{previous_conversation_history}
+
+### Agent System Prompt
+
+```
+{agent_system_prompt}
+```
+
+### Ground-truth function call trajectory
+
+```json
+{gt_conv_traj}
+```
+
+## Scoring Dimensions
 
 1. **Parameter Accuracy** (1-5): How accurately does the model generate parameter values? Consider semantic correctness, proper formatting, and consistency with expected schema.
 
@@ -119,7 +128,9 @@ Your task is to score the given sample across 5 dimensions, each rated from 1-5 
 
 5. **Real-world Applicability** (1-5): How realistic and practical are the model's responses for real-world tool usage scenarios?
 
-**Output Format**: Provide your evaluation in the following JSON format:
+## Output Format
+ 
+Provide your evaluation in the following JSON format:
 [
   {{
     "dimension": "parameter accuracy",
