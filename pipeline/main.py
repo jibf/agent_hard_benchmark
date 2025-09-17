@@ -348,7 +348,7 @@ class BenchmarkFilteringPipeline:
         remaining_problematic_issues = deepcopy(problematic_issues)
         self._write_filter_summary(
             passed_ids=set(responses_by_question.keys()),
-            input_problematic_ids=set(remaining_problematic_issues.keys()),
+            input_ids=set(responses_by_question.keys()),
             phase="initial",
             problematic_issues=problematic_issues,
         )
@@ -366,7 +366,7 @@ class BenchmarkFilteringPipeline:
             )
             self._write_filter_summary(
                 passed_ids=set(step0_passed.keys()),
-                input_problematic_ids=set(remaining_problematic_issues.keys()),
+                input_ids=set(responses_by_question.keys()),
                 phase="step0",
                 problematic_issues=problematic_issues,
             )
@@ -388,7 +388,7 @@ class BenchmarkFilteringPipeline:
             )
             self._write_filter_summary(
                 passed_ids=set(step1_passed.keys()),
-                input_problematic_ids=set(remaining_problematic_issues.keys()),
+                input_ids=set(step0_passed.keys()),
                 phase="step1",
                 problematic_issues=problematic_issues,
             )
@@ -526,7 +526,7 @@ class BenchmarkFilteringPipeline:
             )
             self._write_filter_summary(
                 passed_ids=set(step2_passed.keys()),
-                input_problematic_ids=set(remaining_problematic_issues.keys()),
+                input_ids=set(current_responses.keys()),
                 phase="step2",
                 problematic_issues=problematic_issues,
             )
@@ -625,7 +625,7 @@ class BenchmarkFilteringPipeline:
                 )
                 self._write_filter_summary(
                     passed_ids=set(step3_passed.keys()),
-                    input_problematic_ids=set(remaining_problematic_issues.keys()),
+                    input_problematic_ids=set(step2_result.keys()),
                     phase="step3",
                     problematic_issues=problematic_issues,
                 )
@@ -1522,13 +1522,13 @@ class BenchmarkFilteringPipeline:
         return baseline
 
     def _write_filter_summary(
-        self, passed_ids: set, input_problematic_ids: set, phase: str, problematic_issues: Dict = None
+        self, passed_ids: set, input_ids: set, phase: str, problematic_issues: Dict = None
     ):
         """Record filtering summary for each phase.
 
         Args:
             passed_ids: Set of question IDs that passed current phase
-            input_problematic_ids: Set of question IDs that input to current phase
+            input_ids: Set of question IDs that input to current phase
             phase: Phase name ("initial", "step0", "step1", "step2", "step3", "final")
             problematic_issues: Dict of problematic issues for getting issue reasons
         """
@@ -1575,7 +1575,7 @@ class BenchmarkFilteringPipeline:
 
             if phase in field_map:
                 field_name = field_map[phase]
-                for question_id in input_problematic_ids:
+                for question_id in input_ids:
                     entry = self.filtering_summary[question_id]
 
                     # If this question is not in passed_ids and hasn't been marked as failed yet
