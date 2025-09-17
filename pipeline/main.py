@@ -292,7 +292,7 @@ class BenchmarkFilteringPipeline:
         logger.info("Starting benchmark filtering pipeline")
 
         all_responses = self._load_benchmark_data()
-        problematic_issues = self.data_loader.load_problematic_issues()
+        problematic_issues = self.data_loader.load_problematic_issues(self.config.get("target_benchmark"))
         responses_by_question = group_responses_by_question(all_responses)
         responses_by_question = self.filter_illegal_data(responses_by_question)
 

@@ -168,9 +168,10 @@ class BenchmarkDataLoader:
         else:
             raise ValueError(f"Unknown benchmark name: {benchmark_name}")
 
-    def load_problematic_issues(self) -> Dict[str, Dict[str, Dict]]:
+    def load_problematic_issues(self, target_benchmark: Optional[List[str]] = None) -> Dict[str, Dict[str, Dict]]:
         """Load problematic issues from CSV files in problematic_questions directory."""
         logger.info("Loading problematic issues...")
+        target_list = [name.lower().replace("-", "") for name in target_benchmark]
 
         # Get the problematic_questions directory relative to the pipeline root
         pipeline_root = Path(__file__).parent.parent  # Go up from src to pipeline
@@ -185,14 +186,12 @@ class BenchmarkDataLoader:
 
         # Find all CSV files in the directory
         csv_files = list(problematic_dir.glob("*.csv"))
-        logger.info(
-            f"Found {len(csv_files)} CSV files in problematic_questions directory"
-        )
 
         for csv_file in csv_files:
             # Extract benchmark name from filename (e.g., "DrafterBench_problematic_questions.csv" -> "DrafterBench")
             benchmark_name = csv_file.stem.replace("_problematic_questions", "")
-
+            if benchmark_name.lower().replace("-", "") not in target_list:
+                continue
             try:
                 with open(csv_file, "r", encoding="utf-8") as f:
                     reader = csv.DictReader(f)
