@@ -9,10 +9,12 @@ import os
 import json
 import logging
 import argparse
+import csv
 import numpy as np
 import random
 import matplotlib.pyplot as plt
 import seaborn as sns
+from copy import deepcopy
 from math import comb
 from typing import Dict, List, Tuple
 from collections import Counter
@@ -36,7 +38,7 @@ from src.utils.types import (
     PipelineOutput,
     RuleBasedOutput,
 )
-from src.utils import group_responses_by_question
+from src.utils import group_responses_by_question, log_confusion_matrix
 
 # Set up logging
 logging.basicConfig(
@@ -47,9 +49,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 COMMON_MODEL_SET = {
-    'claude-4-sonnet-thinking-on-10k', 'Kimi-K2-Instruct', 'Qwen3-235B-A22B-Instruct-2507-FP8',
-    'o4-mini-high', 'Qwen3-235B-A22B-Thinking-2507-FP8', 'gpt-4.1', 'gpt-4o-mini',
-    'gpt-4o-20240806', 'claude-4-sonnet-thinking-off', 'Qwen3-235B-A22B-FP8', 'o3-high'
+    "claude-4-sonnet-thinking-on-10k",
+    "Kimi-K2-Instruct",
+    "Qwen3-235B-A22B-Instruct-2507-FP8",
+    "o4-mini-high",
+    "Qwen3-235B-A22B-Thinking-2507-FP8",
+    "gpt-4.1",
+    "gpt-4o-mini",
+    "gpt-4o-20240806",
+    "claude-4-sonnet-thinking-off",
+    "Qwen3-235B-A22B-FP8",
+    "o3-high",
 }
 
 
@@ -61,7 +71,7 @@ class BenchmarkFilteringPipeline:
         self.data_loader = BenchmarkDataLoader()
         self.orchestrator = RuleFilteringOrchestrator()
         self.use_specific_filters = self.config.get("use_specific_filters", False)
-        
+
         # Store metrics for final summary
         self.metrics_summary = {
             "original": {"separability": None, "diversity": None, "agreement": None},
@@ -70,7 +80,7 @@ class BenchmarkFilteringPipeline:
             "step2": {"separability": None, "diversity": None, "agreement": None},
             "step2_baseline": {"separability": None},
             "step3": {"separability": None, "diversity": None, "agreement": None},
-            "step3_baseline": {"separability": None}
+            "step3_baseline": {"separability": None},
         }
 
         # Determine which LLM judge steps to run based on filtering scheme
@@ -86,7 +96,9 @@ class BenchmarkFilteringPipeline:
             if not skip_scoring:
                 llm_steps.append(LLMJudgeStep.SCORE)
         else:
-            raise ValueError(f"Invalid llm_filter_mode: {filter_mode}. Must be 'common', 'specific', or 'both'")
+            raise ValueError(
+                f"Invalid llm_filter_mode: {filter_mode}. Must be 'common', 'specific', or 'both'"
+            )
 
         self.llm_config = LLMJudgeConfig(
             model=self.config.get("llm_model", "openai/gpt-4.1"),
@@ -115,6 +127,18 @@ class BenchmarkFilteringPipeline:
         self.embed_all_initial_prompts: bool = self.config.get(
             "embed_all_initial_prompts", False
         )
+        self.fitering_template = {
+            "Benchmark": None,
+            "task_type": None,
+            "task_id": None,
+            "is_issue": None,
+            "issue_type": None,
+            "comp_passed": None,
+            "specific_rule_passed": None,
+            "specific_llm_passed": None,
+            "topk_selection_passed": None,
+        }
+        self.filering_summary = {}
 
     def _make_json_serializable(self, obj):
         """Make objects JSON serializable by converting enums and other non-serializable types."""
@@ -216,7 +240,9 @@ class BenchmarkFilteringPipeline:
                     benchmark_reamined_model[benchmark_name]
                 )
             )
-        remained_model_cross_all_benchmark = remained_model_cross_all_benchmark.intersection(COMMON_MODEL_SET)
+        remained_model_cross_all_benchmark = (
+            remained_model_cross_all_benchmark.intersection(COMMON_MODEL_SET)
+        )
         for idx, benchmark_name in enumerate(benchmark_reamined_model):
             filterd_model = (
                 benchmark_reamined_model[benchmark_name]
@@ -266,6 +292,7 @@ class BenchmarkFilteringPipeline:
         logger.info("Starting benchmark filtering pipeline")
 
         all_responses = self._load_benchmark_data()
+        problematic_issues = self.data_loader.load_problematic_issues()
         responses_by_question = group_responses_by_question(all_responses)
         responses_by_question = self.filter_illegal_data(responses_by_question)
 
@@ -278,7 +305,7 @@ class BenchmarkFilteringPipeline:
                 f"Benchmark separability before filtering: {json.dumps(ori_separability, indent=2)}"
             )
             sep_list.append(ori_separability)
-            
+
         # Store for final summary
         self.metrics_summary["original"]["separability"] = sep_list
 
@@ -305,22 +332,62 @@ class BenchmarkFilteringPipeline:
                     responses_by_question, "Original Dataset", "original_diversity"
                 )
             # Store agreement stats for original dataset
-            if hasattr(self, '_current_agreement_stats'):
-                self.metrics_summary["original"]["agreement"] = self._current_agreement_stats.copy()
+            if hasattr(self, "_current_agreement_stats"):
+                self.metrics_summary["original"]["agreement"] = (
+                    self._current_agreement_stats.copy()
+                )
                 self._current_agreement_stats = {}
 
         # Step 0: Always apply comprehensive filtering first
         current_responses = responses_by_question
+        remaining_problematic_issues = deepcopy(problematic_issues)
+        self._write_filter_summary(
+            passed_ids=set(responses_by_question.keys()),
+            input_problematic_ids=set(remaining_problematic_issues.keys()),
+            phase="initial",
+            problematic_issues=problematic_issues,
+        )
         if not skip_rule_based:
             logger.info("Step 0: Comprehensive rule-based filtering (always applied)")
             step0_passed, step0_dropped = self._run_comprehensive_filtering(
                 responses_by_question
             )
-
+            log_confusion_matrix(
+                problematic_issues=remaining_problematic_issues,
+                passed_ids=set(step0_passed.keys()),
+                total_num=len(current_responses),
+            )
+            self._write_filter_summary(
+                passed_ids=set(step0_passed.keys()),
+                input_problematic_ids=set(remaining_problematic_issues.keys()),
+                phase="step0",
+                problematic_issues=problematic_issues,
+            )
+            remaining_problematic_issues = {
+                question_id: problematic_issues
+                for question_id in remaining_problematic_issues
+                if question_id in step0_passed
+            }
             # Step 1: Apply benchmark-specific filtering for benchmarks that have specific filters
             step1_passed, step1_dropped = self._run_benchmark_specific_filtering(
                 step0_passed
             )
+            log_confusion_matrix(
+                problematic_issues=remaining_problematic_issues,
+                passed_ids=set(step1_passed.keys()),
+                total_num=len(step0_passed),
+            )
+            self._write_filter_summary(
+                passed_ids=set(step1_passed.keys()),
+                input_problematic_ids=set(remaining_problematic_issues.keys()),
+                phase="step1",
+                problematic_issues=problematic_issues,
+            )
+            remaining_problematic_issues = {
+                question_id: problematic_issues
+                for question_id in remaining_problematic_issues
+                if question_id in step1_passed
+            }
             current_responses = step1_passed
 
             # Update pipeline_outputs with step1 results
@@ -364,8 +431,10 @@ class BenchmarkFilteringPipeline:
                         "After Step 1 (Rule-based Filtering)",
                         "step1_filtered_diversity",
                     )
-                if hasattr(self, '_current_agreement_stats'):
-                    self.metrics_summary["step1"]["agreement"] = self._current_agreement_stats.copy()
+                if hasattr(self, "_current_agreement_stats"):
+                    self.metrics_summary["step1"]["agreement"] = (
+                        self._current_agreement_stats.copy()
+                    )
                     self._current_agreement_stats = {}
 
             # Create baseline sample set by randomly sampling N tasks from original samples
@@ -420,15 +489,13 @@ class BenchmarkFilteringPipeline:
             logger.info("Step 2: LLM-as-Judge filtering")
 
             step2_result = self._run_llm_judge(current_responses)
-
             # Update pipeline_outputs with step2 results
             for question_id, llm_output in step2_result.items():
                 pipeline_outputs[question_id].llm_judge_output = llm_output
-            
 
             # Create step2_passed using the same logic as final summary
             # This ensures consistency between run_pipeline and _print_final_summary
-            
+
             # Get step1_passed question IDs for consistent calculation
             step1_passed_qids = [
                 qid
@@ -440,6 +507,22 @@ class BenchmarkFilteringPipeline:
                 qid: responses_by_question[qid]
                 for qid in step1_passed_qids
                 if not self._is_question_flawed(pipeline_outputs[qid].llm_judge_output)
+            }
+            log_confusion_matrix(
+                problematic_issues=remaining_problematic_issues,
+                passed_ids=set(step2_passed.keys()),
+                total_num=len(current_responses),
+            )
+            self._write_filter_summary(
+                passed_ids=set(step2_passed.keys()),
+                input_problematic_ids=set(remaining_problematic_issues.keys()),
+                phase="step2",
+                problematic_issues=problematic_issues,
+            )
+            remaining_problematic_issues = {
+                question_id: problematic_issues
+                for question_id in remaining_problematic_issues
+                if question_id in step2_passed
             }
 
             # Count unique tasks and samples in step2_passed
@@ -458,9 +541,9 @@ class BenchmarkFilteringPipeline:
                     f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}"
                 )
                 sep_list.append(separability_dict)
-            
+
             # Store for final summary
-            self.metrics_summary["step2"]["separability"] = sep_list    
+            self.metrics_summary["step2"]["separability"] = sep_list
             # Visualize Step 2 filtered performance
             if not self.config.get("skip_visualization", False):
                 self._visualize_model_performance(
@@ -477,17 +560,19 @@ class BenchmarkFilteringPipeline:
                     )
 
             # Store agreement stats for step2
-            if hasattr(self, '_current_agreement_stats'):
-                self.metrics_summary["step2"]["agreement"] = self._current_agreement_stats.copy()
+            if hasattr(self, "_current_agreement_stats"):
+                self.metrics_summary["step2"]["agreement"] = (
+                    self._current_agreement_stats.copy()
+                )
                 self._current_agreement_stats = {}
-            
+
             # Create baseline sample set by randomly sampling N tasks from step1_passed
             # logger.info(f"Step 2 BASELINE (vs. Step 1 from step1_passed)...")
             # baseline_from_step1 = self._create_task_wise_baseline_sample_set(
             #     step1_passed, step2_unique_tasks
             # )
             # baseline_separability = self._compute_separability(baseline_from_step1)
-            
+
             # logger.info(
             #     f"Benchmark separability baseline (vs. Step 2 from step1_passed): {json.dumps(baseline_separability, indent=2)}"
             # )
@@ -505,7 +590,7 @@ class BenchmarkFilteringPipeline:
                 )
                 sep_list.append(baseline_separability)
             self.metrics_summary["step2_baseline"]["separability"] = sep_list
-            
+
             if not self.config.get("skip_diversity_measurement", False):
                 diversity_dict = self._compute_diversity(step2_passed)
                 logger.info(
@@ -514,13 +599,28 @@ class BenchmarkFilteringPipeline:
                 # Store for final summary
                 self.metrics_summary["step2"]["diversity"] = diversity_dict
 
-
             # Step 3: Top-K selection based on scores
             if LLMJudgeStep.SCORE in self.llm_config.steps:
                 logger.info("Step 3: Selecting top 50 samples based on total scores")
                 step3_passed = self._run_step3_top_k_selection(
                     step2_result, responses_by_question, 50
                 )
+                log_confusion_matrix(
+                    problematic_issues=remaining_problematic_issues,
+                    passed_ids=set(step3_passed.keys()),
+                    total_num=len(step2_result),
+                )
+                self._write_filter_summary(
+                    passed_ids=set(step3_passed.keys()),
+                    input_problematic_ids=set(remaining_problematic_issues.keys()),
+                    phase="step3",
+                    problematic_issues=problematic_issues,
+                )
+                remaining_problematic_issues = {
+                    question_id: problematic_issues
+                    for question_id in remaining_problematic_issues
+                    if question_id in step3_passed
+                }
 
                 # Count unique tasks and samples in step3_passed
                 step3_unique_tasks = len(step3_passed)
@@ -568,10 +668,12 @@ class BenchmarkFilteringPipeline:
                             "After Step 3 (Top-K Selection)",
                             "step3_filtered_diversity",
                         )
-                
+
                 # Store agreement stats for step3
-                if hasattr(self, '_current_agreement_stats'):
-                    self.metrics_summary["step3"]["agreement"] = self._current_agreement_stats.copy()
+                if hasattr(self, "_current_agreement_stats"):
+                    self.metrics_summary["step3"]["agreement"] = (
+                        self._current_agreement_stats.copy()
+                    )
                     self._current_agreement_stats = {}
                 if not self.config.get("skip_diversity_measurement", False):
                     diversity_dict = self._compute_diversity(step3_passed)
@@ -685,7 +787,7 @@ class BenchmarkFilteringPipeline:
                     f"No specific filter for {benchmark_name}, keeping all {len(benchmark_samples)} samples"
                 )
                 all_passed_samples.extend(benchmark_samples)
-        
+
         # Convert back to responses_by_question format
         from src.utils import group_responses_by_question
 
@@ -891,7 +993,11 @@ class BenchmarkFilteringPipeline:
         id_to_data_by_benchmark = self._extract_texts_for_diversity(
             responses_by_question
         )
-        print("vis diversity lens:", len(responses_by_question), len(id_to_data_by_benchmark))
+        print(
+            "vis diversity lens:",
+            len(responses_by_question),
+            len(id_to_data_by_benchmark),
+        )
         for benchmark_name, id_to_data in id_to_data_by_benchmark.items():
             if len(id_to_data) < 2:
                 continue
@@ -1206,7 +1312,7 @@ class BenchmarkFilteringPipeline:
                 if str(response["benchmark_name"]) == benchmark_name:
                     model_name = response["model_path"]
                     score = response["eval_result"]["score"]
-                    
+
                     if question_id not in question_model_scores:
                         question_model_scores[question_id] = {}
                     question_model_scores[question_id][model_name] = score
@@ -1215,18 +1321,22 @@ class BenchmarkFilteringPipeline:
         available_models = set()
         for question_id, model_scores in question_model_scores.items():
             available_models.update(model_scores.keys())
-        
+
         # Use only models that exist in both model_order and available_models
-        filtered_model_order = [model for model in model_order if model in available_models]
-        
+        filtered_model_order = [
+            model for model in model_order if model in available_models
+        ]
+
         if len(filtered_model_order) < 2:
-            logger.warning(f"Not enough models ({len(filtered_model_order)}) to create agreement heatmap for {benchmark_name}")
+            logger.warning(
+                f"Not enough models ({len(filtered_model_order)}) to create agreement heatmap for {benchmark_name}"
+            )
             return
 
         # Calculate agreement matrix
         n_models = len(filtered_model_order)
         agreement_matrix = np.zeros((n_models, n_models))
-        
+
         # For each pair of models, calculate agreement
         for i, model1 in enumerate(filtered_model_order):
             for j, model2 in enumerate(filtered_model_order):
@@ -1235,22 +1345,22 @@ class BenchmarkFilteringPipeline:
                 else:
                     agreements = 0
                     total_comparisons = 0
-                    
+
                     # Compare on each question where both models have responses
                     for question_id, model_scores in question_model_scores.items():
                         if model1 in model_scores and model2 in model_scores:
                             score1 = model_scores[model1]
                             score2 = model_scores[model2]
-                            
+
                             # Convert scores to binary correctness (assuming score > 0.5 means correct)
                             correct1 = 1 if score1 > 0.5 else 0
                             correct2 = 1 if score2 > 0.5 else 0
-                            
+
                             # Agreement if both correct or both incorrect
                             if correct1 == correct2:
                                 agreements += 1
                             total_comparisons += 1
-                    
+
                     if total_comparisons > 0:
                         agreement_matrix[i, j] = agreements / total_comparisons
                     else:
@@ -1258,23 +1368,23 @@ class BenchmarkFilteringPipeline:
 
         # Create the heatmap
         plt.figure(figsize=(max(8, n_models * 0.8), max(6, n_models * 0.6)))
-        
+
         # Create heatmap with custom colormap
         sns.heatmap(
             agreement_matrix,
             xticklabels=filtered_model_order,
             yticklabels=filtered_model_order,
             annot=True,
-            fmt='.3f',
-            cmap='RdYlBu_r',
+            fmt=".3f",
+            cmap="RdYlBu_r",
             vmin=0,
             vmax=1,
-            cbar_kws={'label': 'Agreement Rate'},
+            cbar_kws={"label": "Agreement Rate"},
             square=True,
             linewidths=0.5,
-            annot_kws={'fontsize': 8}
+            annot_kws={"fontsize": 8},
         )
-        
+
         plt.title(
             f"{title} - {benchmark_name}\nModel Agreement Heatmap",
             fontsize=12,
@@ -1283,13 +1393,13 @@ class BenchmarkFilteringPipeline:
         )
         plt.xlabel("Model", fontsize=10, fontweight="bold")
         plt.ylabel("Model", fontsize=10, fontweight="bold")
-        
+
         # Rotate x-axis labels for better readability
         plt.xticks(rotation=45, ha="right", fontsize=9)
         plt.yticks(rotation=0, fontsize=9)
-        
+
         plt.tight_layout()
-        
+
         # Save the heatmap
         safe_benchmark_name = benchmark_name.replace("/", "_").replace(" ", "_")
         heatmap_filename = os.path.join(
@@ -1304,29 +1414,29 @@ class BenchmarkFilteringPipeline:
             format="png",
         )
         plt.close()
-        
+
         logger.info(f"Saved agreement heatmap: {heatmap_filename}")
-        
+
         # Log some summary statistics
         # Calculate average agreement (excluding diagonal)
         mask = ~np.eye(n_models, dtype=bool)
         avg_agreement = np.mean(agreement_matrix[mask])
         min_agreement = np.min(agreement_matrix[mask])
         max_agreement = np.max(agreement_matrix[mask])
-        
+
         logger.info(f"Agreement statistics for {benchmark_name}:")
         logger.info(f"  Average agreement: {avg_agreement:.3f}")
         logger.info(f"  Min agreement: {min_agreement:.3f}")
         logger.info(f"  Max agreement: {max_agreement:.3f}")
-        
+
         # Store agreement statistics for final summary
-        if not hasattr(self, '_current_agreement_stats'):
+        if not hasattr(self, "_current_agreement_stats"):
             self._current_agreement_stats = {}
         self._current_agreement_stats[benchmark_name] = {
-            'avg_agreement': avg_agreement,
-            'min_agreement': min_agreement,
-            'max_agreement': max_agreement,
-            'num_models': n_models
+            "avg_agreement": avg_agreement,
+            "min_agreement": min_agreement,
+            "max_agreement": max_agreement,
+            "num_models": n_models,
         }
 
     def _count_unique_tasks(self, samples: List[Dict]) -> int:
@@ -1397,6 +1507,123 @@ class BenchmarkFilteringPipeline:
             f"Task-wise baseline created: {baseline_samples} samples from {len(selected_task_ids)} tasks"
         )
         return baseline
+
+    def _write_filter_summary(
+        self, passed_ids: set, input_problematic_ids: set, phase: str, problematic_issues: Dict = None
+    ):
+        """Record filtering summary for each phase.
+
+        Args:
+            passed_ids: Set of question IDs that passed current phase
+            input_problematic_ids: Set of question IDs that input to current phase
+            phase: Phase name ("initial", "step0", "step1", "step2", "step3", "final")
+            problematic_issues: Dict of problematic issues for getting issue reasons
+        """
+        logger.info(f"Recording filter summary for phase: {phase}")
+
+        if phase == "initial":
+            # Initialize all questions with basic info
+            for question_id in passed_ids:
+                if question_id not in self.filering_summary:
+                    # Create new entry from template
+                    entry = self.fitering_template.copy()
+
+                    # Fill basic info from question_id
+                    entry["Benchmark"] = (
+                        question_id.benchmark.value
+                        if hasattr(question_id.benchmark, "value")
+                        else str(question_id.benchmark)
+                    )
+                    entry["task_type"] = (
+                        question_id.task_name if question_id.task_name else ""
+                    )
+                    entry["task_id"] = question_id.question_id
+
+                    # Check if this is a problematic question
+                    is_problematic = False
+                    issue_reason = None
+                    if question_id in problematic_issues:
+                        is_problematic = True
+                        issue_reason = problematic_issues[question_id]["reason"]
+
+                    entry["is_issue"] = is_problematic
+                    entry["issue_type"] = issue_reason
+
+                    self.filering_summary[question_id] = entry
+
+        else:
+            # Mark questions that were NOT in passed_ids as failed for this phase
+            field_map = {
+                "step0": "comp_passed",
+                "step1": "specific_rule_passed",
+                "step2": "specific_llm_passed",
+                "step3": "topk_selection_passed",
+            }
+
+            if phase in field_map:
+                field_name = field_map[phase]
+                for question_id in input_problematic_ids:
+                    entry = self.filering_summary[question_id]
+                    # If this question is not in passed_ids and hasn't been marked as failed yet
+                    if question_id not in passed_ids:
+                        entry[field_name] = False
+                    else:
+                        entry[field_name] = True
+
+        self._save_filter_summary_csv()
+
+    def _save_filter_summary_csv(self):
+        """Save filtering summary to CSV file, ordered by filtering stage (latest filtered first)."""
+        if not self.filering_summary:
+            logger.info("No filtering summary to save")
+            return
+
+        # Sort questions by when they were filtered (reverse order - latest filtered first)
+        def get_filter_stage(entry):
+            # Return stage number where question was filtered (higher = later)
+            if entry.get("is_issue") == False:
+                return 0
+            elif entry.get("topk_selection_passed") == True:
+                return 5
+            elif entry.get("topk_selection_passed") == False:
+                return 4
+            elif entry.get("specific_llm_passed") == False:
+                return 3
+            elif entry.get("specific_rule_passed") == False:
+                return 2
+            elif entry.get("comp_passed") == False:
+                return 1
+            else:
+                return 5
+
+        # Sort by filter stage (descending) then by question_id for consistency
+        sorted_items = sorted(
+            self.filering_summary.items(),
+            key=lambda x: (get_filter_stage(x[1]), str(x[0])),
+            reverse=True,
+        )
+
+        # Use fixed filename (will overwrite in same run)
+        csv_path = "filtering_summary.csv"
+
+        # Write CSV
+        fieldnames = list(self.fitering_template.keys())
+
+        with open(csv_path, "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+
+            for question_id, entry in sorted_items:
+                row = entry.copy()
+
+                # Replace None values with empty strings for CSV
+                for key, value in row.items():
+                    if value is None:
+                        row[key] = ""
+
+                writer.writerow(row)
+
+        logger.info(f"Filtering summary saved to: {csv_path}")
 
     def _save_results(self, pipeline_outputs: Dict[UniqueQuestionID, PipelineOutput]):
         """Save results for the pipeline."""
@@ -1570,10 +1797,10 @@ class BenchmarkFilteringPipeline:
 
     def _print_compiled_metrics_summary(self):
         """Print a compiled summary of all metrics collected during the pipeline."""
-        logger.info(f"\n{'='*80}")
+        logger.info(f"\n{'=' * 80}")
         logger.info(f"COMPILED METRICS SUMMARY")
-        logger.info(f"{'='*80}")
-        
+        logger.info(f"{'=' * 80}")
+
         step_names = {
             "original": "Original Dataset",
             "step1": "After Step 1 (Rule-based)",
@@ -1581,9 +1808,9 @@ class BenchmarkFilteringPipeline:
             "step3": "After Step 3 (Top-K Selection)",
             "step1_baseline": "Step 1 Baseline",
             "step2_baseline": "Step 2 Baseline",
-            "step3_baseline": "Step 3 Baseline"
+            "step3_baseline": "Step 3 Baseline",
         }
-        
+
         for step_key, step_name in step_names.items():
             if step_key not in self.metrics_summary:
                 continue
@@ -1593,7 +1820,7 @@ class BenchmarkFilteringPipeline:
                 continue
 
             logger.info(f"\n{step_name}:")
-            logger.info(f"{'-'*50}")
+            logger.info(f"{'-' * 50}")
 
             available_keys = set(step_metrics.keys())
 
@@ -1608,7 +1835,7 @@ class BenchmarkFilteringPipeline:
                 # Print each run
                 for run_idx, sep_dict in enumerate(sep_dicts):
                     if len(sep_dicts) > 1:
-                        logger.info(f"  Run {run_idx+1}:")
+                        logger.info(f"  Run {run_idx + 1}:")
                     for benchmark, separability in sep_dict.items():
                         logger.info(f"    {benchmark}: {separability:.3f}")
                     # avg_separability = np.mean(list(sep_dict.values()))
@@ -1748,7 +1975,7 @@ def main():
     )
     parser.add_argument(
         "--target-benchmark",
-        nargs='+',
+        nargs="+",
         choices=[benchmark.value for benchmark in Benchmark],
         help="Target benchmark(s) to process (default: all available benchmarks)",
     )
