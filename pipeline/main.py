@@ -1570,6 +1570,18 @@ class BenchmarkFilteringPipeline:
                     else:
                         entry[field_name] = True
 
+        retention_task_types = [question_id.task_name for question_id in passed_ids]
+        baseline_types = [question_id.task_name for question_id in self.filering_summary]
+        retention_stat = Counter(retention_task_types)
+        baseline_stat = Counter(baseline_types)
+
+        if phase not in ["initial"]:
+            logging.info(f"==================== Retention ratio after {phase} ====================")
+            for task_type in baseline_stat:
+                base_num = baseline_stat[task_type]
+                retention_num = retention_stat[task_type]
+                logging.info(f"{task_type}: {retention_num}/{base_num} = {retention_num/base_num*100 :.2f}%")
+
         self._save_filter_summary_csv()
 
     def _save_filter_summary_csv(self):
