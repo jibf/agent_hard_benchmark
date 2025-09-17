@@ -39,6 +39,7 @@ from src.utils.types import (
     RuleBasedOutput,
 )
 from src.utils import group_responses_by_question, log_confusion_matrix
+from metric.irt_metric import compute_irt_metric
 
 # Set up logging
 logging.basicConfig(
@@ -296,6 +297,10 @@ class BenchmarkFilteringPipeline:
         responses_by_question = group_responses_by_question(all_responses)
         responses_by_question = self.filter_illegal_data(responses_by_question)
 
+        # Compute IRT discrimination metric
+        irt_discrimination = compute_irt_metric(responses_by_question, threshold=0.5)
+        logger.info(f"Benchmark IRT discrimination before filtering: {irt_discrimination:.4f}")
+
         pipeline_outputs = {k: PipelineOutput() for k in responses_by_question.keys()}
 
         sep_list = []
@@ -352,6 +357,8 @@ class BenchmarkFilteringPipeline:
             step0_passed, step0_dropped = self._run_comprehensive_filtering(
                 responses_by_question
             )
+            irt_discrimination = compute_irt_metric(step0_passed, threshold=0.5)
+            logger.info(f"Benchmark IRT discrimination After Step 0: {irt_discrimination:.4f}")
             log_confusion_matrix(
                 problematic_issues=remaining_problematic_issues,
                 passed_ids=set(step0_passed.keys()),
@@ -372,6 +379,8 @@ class BenchmarkFilteringPipeline:
             step1_passed, step1_dropped = self._run_benchmark_specific_filtering(
                 step0_passed
             )
+            irt_discrimination = compute_irt_metric(step1_passed, threshold=0.5)
+            logger.info(f"Benchmark IRT discrimination After Step 1: {irt_discrimination:.4f}")
             log_confusion_matrix(
                 problematic_issues=remaining_problematic_issues,
                 passed_ids=set(step1_passed.keys()),
@@ -508,6 +517,8 @@ class BenchmarkFilteringPipeline:
                 for qid in step1_passed_qids
                 if not self._is_question_flawed(pipeline_outputs[qid].llm_judge_output)
             }
+            irt_discrimination = compute_irt_metric(step2_passed, threshold=0.5)
+            logger.info(f"Benchmark IRT discrimination After Step 2: {irt_discrimination:.4f}")
             log_confusion_matrix(
                 problematic_issues=remaining_problematic_issues,
                 passed_ids=set(step2_passed.keys()),
@@ -605,6 +616,8 @@ class BenchmarkFilteringPipeline:
                 step3_passed = self._run_step3_top_k_selection(
                     step2_result, responses_by_question, 50
                 )
+                irt_discrimination = compute_irt_metric(step3_passed)
+                logger.info(f"Benchmark IRT discrimination After Step 3: {irt_discrimination:.4f}")
                 log_confusion_matrix(
                     problematic_issues=remaining_problematic_issues,
                     passed_ids=set(step3_passed.keys()),
