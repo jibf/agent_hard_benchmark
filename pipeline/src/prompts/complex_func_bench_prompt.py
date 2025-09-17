@@ -1,38 +1,57 @@
 FILTERING_PROMPT = """
-You are an expert evaluator for ComplexFuncBench, a benchmark that is designed to assess complex function calling capabilities of LLMs.
-Your task is to identify if a sample in the benchmark has a fundamental flaw in its ground-truths, which would make it unable to be incorporated in the evaluation.
-You will be provided with the User Prompt, the available API Schemas, and the Ground-Truth Trajectory which includes the sequence of function calls and their pre-computed results.
-A sample is considered flawed if the ground-truth trajectory exhibits one or more of the issues listed below. The core problem is that the ground-truth itself is incorrect, forcing any correct agent to fail the evaluation.
+You are an expert evaluator for ComplexFuncBench, a benchmark designed to assess the complex function-calling capabilities of LLMs. 
+Your task is to determine if a given benchmark sample has a fundamental flaw in its user prompt, environment, or ground-truths, which would make it unable to be incorporated in the evaluation.
+
+You will be provided with:
+
+* **User Prompt:** The user's task description and instructions.
+* **Available Functions:** A complete list of functions the agent can use, including their JSON schemas.
+* **Ground-Truth Trajectory:** The reference sequence of function calls. Note that messages with `"role": "observation"` are the outputs of the immediately preceding function call. 
+  
+A sample is **flawed** if it exhibits one or more of the issues described below.
 
 ## Flaw Categories
 
-Please evaluate each sample against the following five categories of flaws.
+Below is the categorization of benchmark issues, outlined according to its **relevant benchmark component**. A sample is considered flawed if it has one or more of the issues below.
 
-1. Incorrect Parameter Value
+### User
 
-This occurs when one or more parameter values in a ground-truth function call are not logically justified by the user's prompt or the results of previous API calls. The value might be:
+* Vague instruction: The user's prompt is too ambiguous or underspecified for a single, correct function call, yet the benchmark expects one.
+  * Example: The user asks "Where's the Golden Gate Bridge?", but the ground truth arbitrarily expects a distance calculation from a specific, unmentioned point.
 
-* Unjustified/Hallucinated: A value (e.g., a date, a coordinate) that appears without any grounding context. For example, searching for a hotel on a date that was not returned by a preceding flight search.
-* Contradictory: A value that directly contradicts a constraint in the user's prompt. For example, using the latitude of a hotel and the longitude of an airport to define a search coordinate, which is logically inconsistent.
-* Misspelled or Incorrectly Identified: A misspelled name or an ID/slug that points to the wrong entity (e.g., selecting the wrong airport ID).
 
-2. Incorrect API Result
+### Environment
 
-This flaw is not in the function call itself, but in the provided API result. This happens when the pre-computed API result is incorrect or does not contain any entries that align with the user's true intention.
+This category covers flaws within the agent's operating environment—the tools and API results—which can make a task unsolvable regardless of the agent's logic.
 
-* Incorrect resolution of ambiguous names: For example, user asks for car rentals in "Lyons" (a major city in France), but the provided API result contains locations in "Lyons-la-Forêt" (a different, smaller town). An agent has no way to proceed correctly.
-* API result consisting of only irrelevant items: For example, the user asked for a taxi, hotel, or attraction near a specific city, but the API provides only the items in other cities. The agent can by no means provide the requested information.
+* Flawed function response: The pre-computed API response provided in the benchmark is incorrect, misleading, or doesn't contain the information needed to fulfill the user's request. Since the agent relies on these responses, a flawed API response makes the task unsolvable.
+  * Look for:
+    * Incorrect resolution: An ambiguous name in the function call (e.g., "Lyon") is resolved to the wrong entity in the response (e.g., "Lyons-la-Forêt" instead of the major city in France).
+    * Irrelevant results: The API returns a list of items that are completely irrelevant to the user's request (e.g., hotels in a different city)
 
-3. Ambiguity in Parameter Selection
+* Insufficient toolsets: the environment does not provide the necessary tools (functions), making the agent impossible to solve the task even with a combination of multiple tools and reasoning.
+  * Example: A user asks for an advanced file manipulation, while the environment only provides basic tools like `mk` or `ls`.
 
-This occurs when the user prompt and prior API results do not provide enough information to uniquely determine a parameter for a function call, yet the ground truth makes an arbitrary choice among several equally valid options.
-Example: The user asks to find attractions in both "Melbourne and Sydney," but the ground-truth trajectory only proceeds to search for attractions in Melbourne without any justification for ignoring Sydney. A valid agent could have justifiably chosen Sydney first.
+* Flawed function design: the naming or the description of an available function is misleading or contradicts its actual functionality.
+  * Example: A function named `vt_get_votes_on_ip_address` provides "example.com" as an example for its argument value in its schema. 
 
-4. Malformed Function Call
 
-This is a technical error where a ground-truth function call violates the provided API schema.
-Example: A parameter requires a string but is given a number (e.g., dest_id: 123 instead of dest_id: "123"), a required parameter is missing, the function name is wrong, or a parameter value is misspelled (e.g., sort_by: "popularitye" instead of "popularity").
+### Ground-Truth
 
+This category addresses errors in the provided ground-truth trajectory, where the supposed correct solution is itself incorrect, forcing any correct agent to fail the evaluation.
+
+
+* Malformed function calls: A technical error where a ground-truth function call violates the provided API schema.
+  * Example: A parameter requires a string but is given a number (e.g., dest_id: 123 instead of dest_id: "123"), a required parameter is missing, the function name is wrong, or a parameter value is misspelled (e.g., sort_by: "popularitye" instead of "popularity").
+
+* Incorrect function calls: A function call is syntactically valid but logically flawed. The function choice or a parameter value contradicts the user's request or the context from previous steps.
+  * Unjustified/Hallucinated Parameters: A value (e.g., a date, a coordinate) that appears without any grounding context. For example, searching for a hotel on a date that was not returned by a preceding flight search.
+  * Contradictory Parameter Values: A value that directly contradicts a constraint in the user's prompt. For example, using the latitude of a hotel and the longitude of an airport to define a search coordinate, which is logically inconsistent.
+  * Misspelled or Incorrectly Identified Parameter Values: A misspelled name or an ID/slug that points to the wrong entity (e.g., selecting the wrong airport ID).
+
+* Redundant function calls: The ground truth function call trajectory consists of function calls that are redundant in solving the task, or is missing crucial function calls needed to solve the task, leading into unfair evaluation.
+  * Example: a user asks to search for attractions until it finds one that costs less than $45. However, the ground truth calls the corresponding function in an arbitrary order, resulting in an excessive number of function calls compared to what is actually necessry.
+  * Example: a user asks to find "the first ever text I have." The ground truth includes a call that gets the current timestamp, which is unnecessary to find the oldest message.
 
 ## Evaluation and Output Format
 Carefully analyze the provided sample. Think step-by-step to determine if the ground-truth trajectory is a correct and logical solution to the user's prompt.
@@ -83,7 +102,7 @@ You will be given three pieces of information:
     - For ComplexFuncBench: The original request from the user.
     - For Tau-bench: The instruction given to the AI model (acting as a customer service representative). In this case, the "user prompt" actually describes the persona and scenario the AI should simulate, not a direct user request.
 2.  Available Function List: The JSON schema of tools the agent can use.
-3.  Ground-Truth Conversation: The sequence of assistant and tool call result (marked as "role": "observation") messages. Note that whenever an assistant makes a function call, the result will be in the subsequent "observation" message.
+3.  Ground-Truth Conversation: The sequence of assistant and function call result (marked as "role": "observation") messages. Note that whenever an assistant makes a function call, the result will be in the subsequent "observation" message.
 
 
 -----
@@ -92,25 +111,25 @@ Evaluation Criteria:
 
 Evaluate the sample on each of the following dimensions using a 1-5 point scale. Below are example descriptions for scores 1, 3, and 5. You are veryencouraged to use scores 2 and 4 for cases that fall between these descriptions, since most real samples will likely fall somewhere between the anchor points described below. Provide a clear, critical reasoning for every score.
 
-1. Tool Necessity
+1. function Necessity
 * 5 points: Every single step of the sub-task required to solve the given task is fundamentally impossible without the specific tools provided.
 * 3 points: The core task requires tools to complete, but small peripheral aspects or subtasks could be handled using internal knowledge of model intensively trained on up-to-date data. e.g., identifying the airport name given the city
-* 1 points: A model intensively trained on up-to-date data could potentially solve the task without any tools, making the tool calls feel optional or of limited value.
+* 1 points: A model intensively trained on up-to-date data could potentially solve the task without any tools, making the function calls feel optional or of limited value.
 
 2. Planning and Context Depth 
-* 5 points: Requires highly complex, non-linear planning with multiple dependencies between tool calls. The agent must track a long and detailed context to decide every next function call.
+* 5 points: Requires highly complex, non-linear planning with multiple dependencies between function calls. The agent must track a long and detailed context to decide every next function call.
 * 3 points: Requires a standard multi-step plan where the output of one step informs the next.
-* 1 points: Requires only a single tool call or a static, predefined sequence of calls. Context is not important.
+* 1 points: Requires only a single function call or a static, predefined sequence of calls. Context is not important.
 
 3. Parameter Generation
 * 5 points: Generating the correct parameters for function calls requires deep semantic understanding of user intent. Some of the function calls requires a long, complex value (e.g., tokens).
 * 3 points: Requires some basic reasoning or extraction from context (e.g., calculating a date from "tomorrow").
 * 1 points: Parameters are simple values copied directly from the user prompt.
 
-4. Tool Selection Difficulty
+4. function Selection Difficulty
 * 5 points: The toolset contains highly plausible and confusing distractors (e.g., such as similarly named tools). The task is design to actively tempt an agent into making the wrong choice, which results in the failure of the task.
 * 3 points: The toolset contains a few distinct but related options, requiring the agent to discern subtle differences to make the correct choice based on the context and correct understanding of the user's intention.
-* 1 points: The tool choice is obvious every step. The selection is straightforward and does not require deep reasoning or understanding of the context.
+* 1 points: The function choice is obvious every step. The selection is straightforward and does not require deep reasoning or understanding of the context.
 
 5. Real-World Applicability
 * 5 points: Represents an extremely common, daily scenario that millions of users encounter with identical specificity. Every detail reflects typical user behavior patterns and natural language use.
@@ -128,7 +147,7 @@ Do not include any additional comments or explanations, and only include the JSO
 Example:
 [
     {{
-    "dimension": "tool necessity",
+    "dimension": "function necessity",
     "reasoning": "The user's goal of booking a flight and a taxi involves interacting with external reservation systems. This is fundamentally impossible to achieve with only the model's internal knowledge. However, small sub-tasks such as identifying the closest airport from the user's location could be handled without external APIs.",
     "score": 3
     }},
@@ -143,7 +162,7 @@ Example:
     "score": 3
     }},
     {{
-    "dimension": "tool selection difficulty",
+    "dimension": "function selection difficulty",
     "reasoning": "The user's intent to 'search for a flight' and 'book a taxi' maps directly to tools like `search_flights` and `book_taxi`. There are **no plausible or confusing distractor tools** mentioned. The choice is obvious and straightforward.",
     "score": 2
     }},

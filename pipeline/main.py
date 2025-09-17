@@ -139,7 +139,7 @@ class BenchmarkFilteringPipeline:
             "specific_llm_passed": None,
             "topk_selection_passed": None,
         }
-        self.filering_summary = {}
+        self.filtering_summary = {}
 
     def _make_json_serializable(self, obj):
         """Make objects JSON serializable by converting enums and other non-serializable types."""
@@ -1537,7 +1537,7 @@ class BenchmarkFilteringPipeline:
         if phase == "initial":
             # Initialize all questions with basic info
             for question_id in passed_ids:
-                if question_id not in self.filering_summary:
+                if question_id not in self.filtering_summary:
                     # Create new entry from template
                     entry = self.fitering_template.copy()
 
@@ -1562,7 +1562,7 @@ class BenchmarkFilteringPipeline:
                     entry["is_issue"] = is_problematic
                     entry["issue_type"] = issue_reason
 
-                    self.filering_summary[question_id] = entry
+                    self.filtering_summary[question_id] = entry
 
         else:
             # Mark questions that were NOT in passed_ids as failed for this phase
@@ -1576,7 +1576,8 @@ class BenchmarkFilteringPipeline:
             if phase in field_map:
                 field_name = field_map[phase]
                 for question_id in input_problematic_ids:
-                    entry = self.filering_summary[question_id]
+                    entry = self.filtering_summary[question_id]
+
                     # If this question is not in passed_ids and hasn't been marked as failed yet
                     if question_id not in passed_ids:
                         entry[field_name] = False
@@ -1584,7 +1585,7 @@ class BenchmarkFilteringPipeline:
                         entry[field_name] = True
 
         retention_task_types = [question_id.task_name for question_id in passed_ids]
-        baseline_types = [question_id.task_name for question_id in self.filering_summary]
+        baseline_types = [question_id.task_name for question_id in self.filtering_summary]
         retention_stat = Counter(retention_task_types)
         baseline_stat = Counter(baseline_types)
 
@@ -1599,7 +1600,7 @@ class BenchmarkFilteringPipeline:
 
     def _save_filter_summary_csv(self):
         """Save filtering summary to CSV file, ordered by filtering stage (latest filtered first)."""
-        if not self.filering_summary:
+        if not self.filtering_summary:
             logger.info("No filtering summary to save")
             return
 
@@ -1623,7 +1624,7 @@ class BenchmarkFilteringPipeline:
 
         # Sort by filter stage (descending) then by question_id for consistency
         sorted_items = sorted(
-            self.filering_summary.items(),
+            self.filtering_summary.items(),
             key=lambda x: (get_filter_stage(x[1]), str(x[0])),
             reverse=True,
         )
@@ -2007,8 +2008,8 @@ def main():
     parser.add_argument(
         "--llm-filter-mode",
         choices=["common", "specific", "both"],
-        default="both",
-        help="LLM filtering scheme: 'common' (universal filter only), 'specific' (benchmark-specific filter only), 'both' (universal + specific filters + scoring by default)",
+        default="specific",
+        help="LLM filtering scheme: 'common' (universal filter only), 'specific' (benchmark-specific filter only), 'both' (universal + specific filters)",
     )
     parser.add_argument(
         "--skip-scoring",
