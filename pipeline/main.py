@@ -113,7 +113,7 @@ class BenchmarkFilteringPipeline:
         # ----- Embedding model for semantic diversity -----
         model_name = self.config.get("embedding_model", "Qwen/Qwen3-Embedding-8B")
         self.embedder = None
-        if self.config.get("skip_diversity_measurement", False):
+        if self.config.get("skip_measurement", False):
             pass
         else:
             self.embedder = SentenceTransformer(
@@ -298,8 +298,9 @@ class BenchmarkFilteringPipeline:
         responses_by_question = self.filter_illegal_data(responses_by_question)
 
         # Compute IRT discrimination metric
-        irt_discrimination = compute_irt_metric(responses_by_question, threshold=0.5)
-        logger.info(f"Benchmark IRT discrimination before filtering: {irt_discrimination:.4f}")
+        if not self.config.get("skip_measurement", False):
+            irt_discrimination = compute_irt_metric(responses_by_question, threshold=0.5)
+            logger.info(f"Benchmark IRT discrimination before filtering: {irt_discrimination:.4f}")
 
         pipeline_outputs = {k: PipelineOutput() for k in responses_by_question.keys()}
 
@@ -314,7 +315,7 @@ class BenchmarkFilteringPipeline:
         # Store for final summary
         self.metrics_summary["original"]["separability"] = sep_list
 
-        if not self.config.get("skip_diversity_measurement", False):
+        if not self.config.get("skip_measurement", False):
             diversity_dict = self._compute_diversity(responses_by_question)
             logger.info(
                 f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}"
@@ -332,7 +333,7 @@ class BenchmarkFilteringPipeline:
                 "original_performance",
                 model_ranking=model_ranking,
             )
-            if not self.config.get("skip_diversity_measurement", False):
+            if not self.config.get("skip_measurement", False):
                 self._visualize_diversity(
                     responses_by_question, "Original Dataset", "original_diversity"
                 )
@@ -357,8 +358,9 @@ class BenchmarkFilteringPipeline:
             step0_passed, step0_dropped = self._run_comprehensive_filtering(
                 responses_by_question
             )
-            irt_discrimination = compute_irt_metric(step0_passed, threshold=0.5)
-            logger.info(f"Benchmark IRT discrimination After Step 0: {irt_discrimination:.4f}")
+            if not self.config.get("skip_measurement", False):
+                irt_discrimination = compute_irt_metric(step0_passed, threshold=0.5)
+                logger.info(f"Benchmark IRT discrimination After Step 0: {irt_discrimination:.4f}")
             log_confusion_matrix(
                 problematic_issues=remaining_problematic_issues,
                 passed_ids=set(step0_passed.keys()),
@@ -379,8 +381,9 @@ class BenchmarkFilteringPipeline:
             step1_passed, step1_dropped = self._run_benchmark_specific_filtering(
                 step0_passed
             )
-            irt_discrimination = compute_irt_metric(step1_passed, threshold=0.5)
-            logger.info(f"Benchmark IRT discrimination After Step 1: {irt_discrimination:.4f}")
+            if not self.config.get("skip_measurement", False):
+                irt_discrimination = compute_irt_metric(step1_passed, threshold=0.5)
+                logger.info(f"Benchmark IRT discrimination After Step 1: {irt_discrimination:.4f}")
             log_confusion_matrix(
                 problematic_issues=remaining_problematic_issues,
                 passed_ids=set(step1_passed.keys()),
@@ -434,7 +437,7 @@ class BenchmarkFilteringPipeline:
                     "step1_filtered_performance",
                     model_ranking=model_ranking,
                 )
-                if not self.config.get("skip_diversity_measurement", False):
+                if not self.config.get("skip_measurement", False):
                     self._visualize_diversity(
                         step1_passed,
                         "After Step 1 (Rule-based Filtering)",
@@ -476,14 +479,14 @@ class BenchmarkFilteringPipeline:
                     "baseline_performance",
                     model_ranking=model_ranking,
                 )
-                if not self.config.get("skip_diversity_measurement", False):
+                if not self.config.get("skip_measurement", False):
                     self._visualize_diversity(
                         baseline_responses,
                         "Baseline (Random Sampling)",
                         "baseline_diversity",
                     )
 
-            if not self.config.get("skip_diversity_measurement", False):
+            if not self.config.get("skip_measurement", False):
                 diversity_dict = self._compute_diversity(step1_passed)
                 logger.info(
                     f"Benchmark semantic diversity after Step 1: {json.dumps(diversity_dict, indent=2)}"
@@ -517,8 +520,9 @@ class BenchmarkFilteringPipeline:
                 for qid in step1_passed_qids
                 if not self._is_question_flawed(pipeline_outputs[qid].llm_judge_output)
             }
-            irt_discrimination = compute_irt_metric(step2_passed, threshold=0.5)
-            logger.info(f"Benchmark IRT discrimination After Step 2: {irt_discrimination:.4f}")
+            if not self.config.get("skip_measurement", False):
+                irt_discrimination = compute_irt_metric(step2_passed, threshold=0.5)
+                logger.info(f"Benchmark IRT discrimination After Step 2: {irt_discrimination:.4f}")
             log_confusion_matrix(
                 problematic_issues=remaining_problematic_issues,
                 passed_ids=set(step2_passed.keys()),
@@ -563,7 +567,7 @@ class BenchmarkFilteringPipeline:
                     "step2_filtered_performance",
                     model_ranking=model_ranking,
                 )
-                if not self.config.get("skip_diversity_measurement", False):
+                if not self.config.get("skip_measurement", False):
                     self._visualize_diversity(
                         step2_passed,
                         "After Step 2 (LLM-as-Judge Filtering)",
@@ -602,7 +606,7 @@ class BenchmarkFilteringPipeline:
                 sep_list.append(baseline_separability)
             self.metrics_summary["step2_baseline"]["separability"] = sep_list
 
-            if not self.config.get("skip_diversity_measurement", False):
+            if not self.config.get("skip_measurement", False):
                 diversity_dict = self._compute_diversity(step2_passed)
                 logger.info(
                     f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}"
@@ -616,8 +620,9 @@ class BenchmarkFilteringPipeline:
                 step3_passed = self._run_step3_top_k_selection(
                     step2_result, responses_by_question, 50
                 )
-                irt_discrimination = compute_irt_metric(step3_passed)
-                logger.info(f"Benchmark IRT discrimination After Step 3: {irt_discrimination:.4f}")
+                if not self.config.get("skip_measurement", False):
+                    irt_discrimination = compute_irt_metric(step3_passed)
+                    logger.info(f"Benchmark IRT discrimination After Step 3: {irt_discrimination:.4f}")
                 log_confusion_matrix(
                     problematic_issues=remaining_problematic_issues,
                     passed_ids=set(step3_passed.keys()),
@@ -675,7 +680,7 @@ class BenchmarkFilteringPipeline:
                         "step3_filtered_performance",
                         model_ranking=model_ranking,
                     )
-                    if not self.config.get("skip_diversity_measurement", False):
+                    if not self.config.get("skip_measurement", False):
                         self._visualize_diversity(
                             step3_passed,
                             "After Step 3 (Top-K Selection)",
@@ -688,10 +693,10 @@ class BenchmarkFilteringPipeline:
                         self._current_agreement_stats.copy()
                     )
                     self._current_agreement_stats = {}
-                if not self.config.get("skip_diversity_measurement", False):
+                if not self.config.get("skip_measurement", False):
                     diversity_dict = self._compute_diversity(step3_passed)
                     logger.info(
-                        f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}"
+                        f"Benchmark semantic diversity after Step 3: {json.dumps(diversity_dict, indent=2)}"
                     )
                     # Store for final summary
                     self.metrics_summary["step3"]["diversity"] = diversity_dict
@@ -2039,9 +2044,9 @@ def main():
         help="Diversity calculation: If set, embed the concatenation of all initial (system & user) prompts before the first assistant call instead of only the last user prompt.",
     )
     parser.add_argument(
-        "--skip-diversity-measurement",
+        "--skip-measurement",
         action="store_true",
-        help="Skip diversity measurement calculation to speed up processing",
+        help="Skip diversity and IRT measurement calculations to speed up processing",
     )
 
     args = parser.parse_args()
@@ -2058,7 +2063,7 @@ def main():
         "embedding_model": args.embedding_model,
         "embedding_batch_size": args.embedding_batch_size,
         "embed_all_initial_prompts": args.embed_all_initial_prompts,
-        "skip_diversity_measurement": args.skip_diversity_measurement,
+        "skip_measurement": args.skip_measurement,
     }
 
     # Validate arguments
