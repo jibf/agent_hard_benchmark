@@ -412,11 +412,16 @@ def convert_result_to_excel(model_name, category, paths):
 
     df = pd.DataFrame(prompt_list)
 
+    # Use output directory from paths instead of hardcoded relative path
+    # Extract base output directory from OUTPUT_PATH (e.g., "/path/to/score_all/score_en/" -> "/path/to")
+    base_output_dir = os.path.dirname(os.path.dirname(SCORE_PATH.rstrip('/')))
+    excel_base_dir = os.path.join(base_output_dir, "result_excel")
+
     if language == 'zh':
-        folder_path = "../result_excel/zh/" + model_name
+        folder_path = os.path.join(excel_base_dir, "zh", model_name)
     elif language == 'en':
-        folder_path = "../result_excel/en/" + model_name
-    save_path = folder_path + "/data_" + category + ".xlsx"
+        folder_path = os.path.join(excel_base_dir, "en", model_name)
+    save_path = os.path.join(folder_path, f"data_{category}.xlsx")
     if not os.path.exists(folder_path):
         # Create folder if it doesn't exist
         os.makedirs(folder_path)

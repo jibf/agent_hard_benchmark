@@ -65,7 +65,11 @@ def sort_json(file):
     with open(file,'r', encoding='utf-8') as f:
         for line in f:
             data.append(json.loads(line))
-    if "multi_turn" in file and "agent" not in file:
+
+    # Extract filename from full path to avoid issues with absolute paths containing "agent"
+    filename = os.path.basename(file)
+
+    if "multi_turn" in filename and "agent" not in filename:
         data = sorted(data, key=lambda x: tuple(map(int, x["id"].split("_")[-2:])))
     else:
         data = sorted(data, key=lambda x: int(x["id"].split("_")[-1]))
