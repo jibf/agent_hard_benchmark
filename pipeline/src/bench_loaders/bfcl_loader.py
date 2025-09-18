@@ -350,7 +350,7 @@ class BfclLoader(BaseLoader):
         
         # Get possible answer
         ground_truth = self._get_possible_answer(question_id, filename)
-
+        
         # Expectation policy where there is no ground truth for these categories
         expect_call = None
         expectation_text = None
@@ -358,21 +358,20 @@ class BfclLoader(BaseLoader):
             if category == "live_relevance":
                 expect_call = True
                 expectation_text = (
-                    "BFCL relevance policy: Expect at least one valid function call in this turn."
+                    "BFCL relevance policy: Expect at least one valid function call for the task in this turn."
                 )
             else:  # irrelevance or live_irrelevance
                 expect_call = False
                 expectation_text = (
-                    "BFCL irrelevance policy: Expect no function calls in this turn."
+                    "BFCL irrelevance policy: Expect no valid or relevant function calls for the task in this turn."
                 )
 
             # Option B (prompt-visible): prepend to the instruction so prompts see it
-            # If your judge reads meta, you can do both.
             if instruction:
                 instruction = expectation_text + "\n\n" + instruction
             else:
                 instruction = expectation_text
-        
+
         # Handle missing functions for multi-turn scenarios
         missed_function = self._handle_missing_functions(question_data, line)
         
@@ -414,16 +413,7 @@ class BfclLoader(BaseLoader):
             system_prompt=system_prompt,
             max_turn_limit=MAXIMUM_STEP_LIMIT,
             exclude_state_log=exclude_state_log,
-            meta={
-                'file_source': filename,
-                'original_category': self._determine_category_and_subcategory(question_id, filename)[0],
-                'has_ground_truth': ground_truth is not None,
-                'num_functions': len(function_list),
-                'num_turns': len(question_data) if question_data else 0,
-                'has_missing_functions': missed_function is not None,
-                'evaluation_ready': True
-            }
-        )
+            meta=meta_payload)
     
     def load_questions(self) -> List[BFCLQuestion]:
         """Load questions from all BFCL dataset files"""

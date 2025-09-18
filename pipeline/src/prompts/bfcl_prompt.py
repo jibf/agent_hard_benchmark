@@ -46,19 +46,26 @@ FILTERING_PROMPT = """
 You are an expert evaluator for evaluating a function-calling benchmark named BFCL.
 Your task is to determine if the provided ground-truth function call(s) are flawed.
 
-You will be given:
+You will be provided with the following information:
 * Instruction: The description of the task given to the agent. This can be either single-turn or multi-turn.
 * Agent System Prompt: the system prompt used to initialize the agent model. This may contain a specific instruction on the answer style, domain-specific policy that the agent needs to follow, a list of available functions and their schema (in JSON format), etc.
 * Ground-Truth Function Call Trajectory: the provided ground-truth trajectory of function calls. When this is empty or None, it means that the agent needs to call nothing to be scored as correct.
 
 ## Definition of a flawed ground truth (any one is sufficient):
 
-1. Argument Type Mismatch: a parameter value violates its declared type in the function schema.
-2. Argument Value Mismatch: the value contradicts, or is not justified by, the user instruction (e.g., wrong id, date, or enum value).
-3. Missing/Unexpected Argument: a required parameter is missing, or an argument not declared in the schema is present.
-4. Invalid Function Name: the function name is not among the available functions.
-5. Irrelevant Call: the ground truth includes a function call when it should be empty (e.g., irrelevance turns, miss_param/miss_func turns in multi-turn).
-6. Misspelling that changes meaning (e.g., incorrect enum name or schema key).
+1. **Empty Function List**: No functions are provided but the test expects function calls
+2. **Domain Mismatch**: The provided functions cannot fulfill the user's intent
+3. **Missing Core Functionality**: Essential functions for completing the task are absent
+4. **Incompatible Parameters**: Functions exist but their parameters don't match requirements
+5. **Multi-turn Context Issues**: Multi-turn scenarios lack proper state management or function availability
+6. **Environment-Function Mismatch**: Available functions don't match the described environment
+
+
+## Required Analysis Format:
+
+
+**MISMATCH_TYPE**: [EMPTY_FUNCTIONS | DOMAIN_MISMATCH | MISSING_FUNCTIONALITY | INCOMPATIBLE | CONTEXT_MISMATCH | N/A]
+
 
 ## Important guidance:
 
@@ -66,14 +73,16 @@ You will be given:
 - If multiple function calls are shown, evaluate them collectively. For multi-turn, evaluate the sequence across turns; turns with empty ground-truth imply no valid call should be made in that turn.
 - If a plausible reading of the instruction would justify the value, do not flag it as flawed.
 
-## Output Format
+## Evaluation and Output Format
+
+Carefully analyze the provided sample. step-by-step to determine if the ground-truth actions are logical and if the function usage is coherent. 
 
 Output a single JSON object with exactly these fields and no extra text:
 ```json
 {{
   "reasoning": "Step-by-step rationale. Reference specific args/fields if flawed.",
   "reasoning_summary": "Concise reason. If not flawed, say Not Flawed. For multi-turn, mention if any turn violates irrelevance or parameter requirements.",
-  "error_category": "<Not Flawed | Argument Value Mismatch | Argument Type Mismatch | Missing/Unexpected Argument | Invalid Function Name | Irrelevant Call | Misspelling>",
+  "error_category": "<Not Flawed | EMPTY_FUNCTIONS | DOMAIN_MISMATCH | MISSING_FUNCTIONALITY | INCOMPATIBLE | CONTEXT_MISMATCH>",
   "is_flawed": <true or false>
 }}
 ```
