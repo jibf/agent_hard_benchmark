@@ -2,6 +2,7 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 """Simulated user role for any model that conforms to OpenAI tool use API"""
 
+import os
 from logging import getLogger
 from typing import Dict, Iterable, List, Literal, Optional, Union, cast
 
@@ -32,11 +33,10 @@ class OpenAIAPIUser(BaseRole):
     model_name: str
 
     def __init__(self) -> None:
-        # We set the `base_url` explicitly here to avoid picking up the
-        # `OPENAI_BASE_URL` environment variable that may be set for serving models as
-        # OpenAI API compatible servers.
-        # self.openai_client: OpenAI = OpenAI(base_url="https://api.openai.com/v1")
-        self.openai_client: OpenAI = OpenAI(base_url="http://5.78.122.79:10000/v1", )
+        # Use environment variable for base URL configuration
+        base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+        api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_client: OpenAI = OpenAI(base_url=base_url, api_key=api_key)
 
     def respond(self, ending_index: Optional[int] = None) -> None:
         """Reads a List of messages and attempt to respond with a Message

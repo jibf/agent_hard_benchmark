@@ -205,8 +205,9 @@ class CustomAPIUserSimulationEnv(BaseUserSimulationEnv):
         
         # Initialize OpenAI client for custom API
         from openai import OpenAI
+        base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         self.client = OpenAI(
-            base_url="http://5.78.122.79:10000/v1",
+            base_url=base_url,
             api_key=os.getenv("OPENAI_API_KEY")
         )
         

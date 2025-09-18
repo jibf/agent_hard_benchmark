@@ -39,8 +39,9 @@ class OpenAIAPIAgent(BaseRole):
         # We set the `base_url` explicitly here to avoid picking up the
         # Uses OPENAI_BASE_URL environment variable for serving models as
         # OpenAI API compatible servers. API key is read from OPENAI_API_KEY.
-        self.openai_client: OpenAI = OpenAI(base_url=os.getenv("OPENAI_BASE_URL"), )
-        # import pdb; pdb.set_trace()
+        base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+        api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_client: OpenAI = OpenAI(base_url=base_url, api_key=api_key)
 
     def respond(self, ending_index: Optional[int] = None) -> None:
         """Reads a List of messages and attempt to respond with a Message

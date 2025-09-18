@@ -17,7 +17,8 @@ def test_openai_format():
         print("Error: API_KEY environment variable not set")
         return False
     
-    url = "http://5.78.122.79:12500/v1/chat/completions"
+    base_url = os.getenv('BASE_URL', 'https://api.openai.com/v1')
+    url = f"{base_url.rstrip('/')}/chat/completions"
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -116,9 +117,10 @@ def test_openai_library():
         return False
     
     try:
+        base_url = os.getenv('BASE_URL', 'https://api.openai.com/v1')
         client = OpenAI(
             api_key=api_key,
-            base_url="http://5.78.122.79:12500/v1"
+            base_url=base_url
         )
         
         response = client.chat.completions.create(

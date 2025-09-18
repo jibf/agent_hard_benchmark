@@ -298,6 +298,9 @@ class BenchmarkRunner:
 
         self.logger.info(f"Running {benchmark_name}...")
 
+        # Create .env file for ComplexFuncBench
+        self.create_env_file(benchmark_dir)
+
         # Create benchmark-specific output directory
         benchmark_output_dir = self.output_dir / benchmark_name
         benchmark_output_dir.mkdir(parents=True, exist_ok=True)
@@ -322,6 +325,9 @@ class BenchmarkRunner:
             return False
 
         self.logger.info(f"Running {benchmark_name}...")
+
+        # Create .env file for MultiChallenge
+        self.create_env_file(benchmark_dir)
 
         # Create benchmark-specific output directory
         benchmark_output_dir = self.output_dir / benchmark_name
@@ -455,6 +461,9 @@ class BenchmarkRunner:
             return False
 
         self.logger.info(f"Running {benchmark_name}...")
+
+        # Create .env file for BFCL
+        self.create_env_file(benchmark_dir)
 
         # Create benchmark-specific output directory
         benchmark_output_dir = self.output_dir / benchmark_name
@@ -663,7 +672,7 @@ def load_env_config():
     """Load configuration from .env file if it exists"""
     env_file = Path(".env")
     if env_file.exists():
-        load_dotenv(env_file)
+        load_dotenv(env_file, override=True)
         print(f"Loaded configuration from {env_file}")
     else:
         print(
