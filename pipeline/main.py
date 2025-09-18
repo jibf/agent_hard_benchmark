@@ -77,6 +77,8 @@ class BenchmarkFilteringPipeline:
             "step2_baseline": {"separability": None},
             "step3": {"separability": None, "diversity": None, "agreement": None},
             "step3_baseline": {"separability": None},
+            "step4": {"separability": None, "diversity": None, "agreement": None},
+            "step4_baseline": {"separability": None},
         }
 
         # Determine which LLM judge steps to run based on filtering scheme
@@ -339,7 +341,6 @@ class BenchmarkFilteringPipeline:
                 )
                 self._current_agreement_stats = {}
 
-        # Step 0: Always apply comprehensive filtering first
         current_responses = responses_by_question
         remaining_problematic_issues = deepcopy(problematic_issues)
         self._write_filter_summary(
@@ -348,33 +349,12 @@ class BenchmarkFilteringPipeline:
             phase="initial",
             problematic_issues=problematic_issues,
         )
+
         if not skip_rule_based:
-            logger.info("Step 0: Comprehensive rule-based filtering (always applied)")
-            step0_passed, step0_dropped = self._run_comprehensive_filtering(
-                responses_by_question
-            )
-            if not self.config.get("skip_measurement", False):
-                irt_discrimination = compute_irt_metric(step0_passed, threshold=0.5)
-                logger.info(f"Benchmark IRT discrimination After Step 0: {irt_discrimination:.4f}")
-            log_confusion_matrix(
-                problematic_issues=remaining_problematic_issues,
-                passed_ids=set(step0_passed.keys()),
-                total_num=len(current_responses),
-            )
-            self._write_filter_summary(
-                passed_ids=set(step0_passed.keys()),
-                input_ids=set(responses_by_question.keys()),
-                phase="step0",
-                problematic_issues=problematic_issues,
-            )
-            remaining_problematic_issues = {
-                question_id: problematic_issues
-                for question_id in remaining_problematic_issues
-                if question_id in step0_passed
-            }
             # Step 1: Apply benchmark-specific filtering for benchmarks that have specific filters
+            logger.info("Step 1: Benchmark-specific filtering")
             step1_passed, step1_dropped = self._run_benchmark_specific_filtering(
-                step0_passed
+                responses_by_question
             )
             if not self.config.get("skip_measurement", False):
                 irt_discrimination = compute_irt_metric(step1_passed, threshold=0.5)
@@ -382,11 +362,11 @@ class BenchmarkFilteringPipeline:
             log_confusion_matrix(
                 problematic_issues=remaining_problematic_issues,
                 passed_ids=set(step1_passed.keys()),
-                total_num=len(step0_passed),
+                total_num=len(responses_by_question),
             )
             self._write_filter_summary(
                 passed_ids=set(step1_passed.keys()),
-                input_ids=set(step0_passed.keys()),
+                input_ids=set(responses_by_question.keys()),
                 phase="step1",
                 problematic_issues=problematic_issues,
             )
@@ -489,7 +469,7 @@ class BenchmarkFilteringPipeline:
                 # Store for final summary
                 self.metrics_summary["step1"]["diversity"] = diversity_dict
         else:
-            logger.info("Skipping Step 0 & 1: Rule-based filtering")
+            logger.info("Skipping Step 1: Rule-based filtering")
 
         # Step 2: LLM-as-Judge filtering
         if not skip_llm_judge:
@@ -534,7 +514,7 @@ class BenchmarkFilteringPipeline:
                 for question_id in remaining_problematic_issues
                 if question_id in step2_passed
             }
-
+            current_responses = step2_passed
             # Count unique tasks and samples in step2_passed
             step2_unique_tasks = len(step2_passed)
             step2_sample_count = sum(
@@ -615,6 +595,7 @@ class BenchmarkFilteringPipeline:
                 step3_passed = self._run_step3_top_k_selection(
                     step2_result, responses_by_question, 50
                 )
+                current_responses = step3_passed
                 if not self.config.get("skip_measurement", False):
                     irt_discrimination = compute_irt_metric(step3_passed)
                     logger.info(f"Benchmark IRT discrimination After Step 3: {irt_discrimination:.4f}")
@@ -716,6 +697,94 @@ class BenchmarkFilteringPipeline:
         else:
             logger.info("Skipping Step 2: LLM-as-Judge filtering")
 
+        # Step 4: Apply comprehensive rule-based filtering (moved from Step 0)
+        if not skip_rule_based:
+            logger.info("Step 4: Comprehensive rule-based filtering (final stage)")
+            step4_passed, step4_dropped = self._run_comprehensive_filtering(
+                current_responses
+            )
+            irt_discrimination = compute_irt_metric(step4_passed, threshold=0.5)
+            logger.info(f"Benchmark IRT discrimination After Step 4: {irt_discrimination:.4f}")
+            log_confusion_matrix(
+                problematic_issues=remaining_problematic_issues,
+                passed_ids=set(step4_passed.keys()),
+                total_num=len(current_responses),
+            )
+            self._write_filter_summary(
+                passed_ids=set(step4_passed.keys()),
+                input_ids=set(current_responses.keys()),
+                phase="step4",
+                problematic_issues=problematic_issues,
+            )
+            remaining_problematic_issues = {
+                question_id: problematic_issues
+                for question_id in remaining_problematic_issues
+                if question_id in step4_passed
+            }
+
+            # Count unique tasks and samples in step4_passed
+            step4_unique_tasks = len(step4_passed)
+            step4_sample_count = sum(
+                len(responses) for responses in step4_passed.values()
+            )
+            logger.info(
+                f"Step 4 passed: {step4_sample_count} samples from {step4_unique_tasks} unique tasks"
+            )
+
+            sep_list = []
+            for i in range(3):
+                separability_dict = self._compute_separability(step4_passed)
+                logger.info(
+                    f"Benchmark separability after Step 4: {json.dumps(separability_dict, indent=2)}"
+                )
+                sep_list.append(separability_dict)
+            # Store for final summary
+            self.metrics_summary["step4"]["separability"] = sep_list
+
+            # Visualize Step 4 filtered performance
+            if not self.config.get("skip_visualization", False):
+                self._visualize_model_performance(
+                    step4_passed,
+                    "After Step 4 (Comprehensive Rule-based Filtering)",
+                    "step4_filtered_performance",
+                    model_ranking=model_ranking,
+                )
+                if not self.config.get("skip_diversity_measurement", False):
+                    self._visualize_diversity(
+                        step4_passed,
+                        "After Step 4 (Comprehensive Rule-based Filtering)",
+                        "step4_filtered_diversity",
+                    )
+                if hasattr(self, "_current_agreement_stats"):
+                    self.metrics_summary["step4"]["agreement"] = (
+                        self._current_agreement_stats.copy()
+                    )
+                    self._current_agreement_stats = {}
+
+            # Create baseline sample set for step4 comparison
+            logger.info(f"Step 4 BASELINE...")
+            baseline_from_all_step4 = self._create_task_wise_baseline_sample_set(
+                responses_by_question, step4_unique_tasks
+            )
+            sep_list = []
+            for i in range(3):
+                baseline_separability = self._compute_separability(baseline_from_all_step4)
+                logger.info(
+                    f"Benchmark separability baseline (vs. step4): {json.dumps(baseline_separability, indent=2)}"
+                )
+                sep_list.append(baseline_separability)
+            self.metrics_summary["step4_baseline"]["separability"] = sep_list
+
+            if not self.config.get("skip_diversity_measurement", False):
+                diversity_dict = self._compute_diversity(step4_passed)
+                logger.info(
+                    f"Benchmark semantic diversity after Step 4: {json.dumps(diversity_dict, indent=2)}"
+                )
+                # Store for final summary
+                self.metrics_summary["step4"]["diversity"] = diversity_dict
+        else:
+            logger.info("Skipping Step 4: Comprehensive rule-based filtering")
+
         self._save_results(pipeline_outputs)
         self._print_final_summary(pipeline_outputs)
         return pipeline_outputs
@@ -738,7 +807,7 @@ class BenchmarkFilteringPipeline:
     def _run_comprehensive_filtering(
         self, responses_by_question: Dict[str, List[Dict]]
     ) -> Tuple[Dict[str, List[Dict]], Dict[str, List[Dict]]]:
-        """Run Step 0: Comprehensive rule-based filtering (always applied)."""
+        """Run Step 4: Comprehensive rule-based filtering."""
         # Save unified dataset before filtering
         all_samples = [
             sample
@@ -762,7 +831,7 @@ class BenchmarkFilteringPipeline:
     def _run_benchmark_specific_filtering(
         self, responses_by_question: Dict[str, List[Dict]]
     ) -> Tuple[Dict[str, List[Dict]], Dict[str, List[Dict]]]:
-        """Run Step 1: Benchmark-specific filtering (applied after comprehensive filtering)."""
+        """Run Step 1: Benchmark-specific filtering."""
         logger.info(
             "Step 1: Applying benchmark-specific filtering for benchmarks with specific filters..."
         )
@@ -1567,10 +1636,10 @@ class BenchmarkFilteringPipeline:
         else:
             # Mark questions that were NOT in passed_ids as failed for this phase
             field_map = {
-                "step0": "comp_passed",
                 "step1": "specific_rule_passed",
                 "step2": "specific_llm_passed",
                 "step3": "topk_selection_passed",
+                "step4": "comp_passed",
             }
 
             if phase in field_map:
@@ -1824,9 +1893,11 @@ class BenchmarkFilteringPipeline:
             "step1": "After Step 1 (Rule-based)",
             "step2": "After Step 2 (LLM-as-Judge)",
             "step3": "After Step 3 (Top-K Selection)",
+            "step4": "After Step 4 (Comprehensive Rule-based)",
             "step1_baseline": "Step 1 Baseline",
             "step2_baseline": "Step 2 Baseline",
             "step3_baseline": "Step 3 Baseline",
+            "step4_baseline": "Step 4 Baseline",
         }
 
         for step_key, step_name in step_names.items():

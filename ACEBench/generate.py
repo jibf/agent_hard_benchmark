@@ -3,6 +3,7 @@ import argparse, json, os
 from tqdm import tqdm
 from model_inference.inference_map import inference_map
 from model_inference.apimodel_inference import APIModelInference
+from model_inference.dynamic_apimodel import create_dynamic_apimodel_config
 from category import ACE_DATA_CATEGORY
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -74,14 +75,26 @@ def sort_json(file):
             f.write('\n')  
 
 def generate_singal(args, model_name, test_case):
-    model_path = args.model_path 
+    model_path = args.model_path
     result_path = args.result_path
-    # Get the inference handler
-    inference_handler = inference_map[model_name]
+
+    # Get the inference handler, with dynamic model support
+    if model_name in inference_map:
+        inference_handler = inference_map[model_name]
+    else:
+        # Check if we have API_KEY and BASE_URL for dynamic model creation
+        api_key = os.getenv("API_KEY")
+        base_url = os.getenv("BASE_URL")
+        if api_key and base_url:
+            print(f"Model {model_name} not found in inference_map, creating dynamic model with API_KEY and BASE_URL")
+            inference_handler = create_dynamic_apimodel_config(model_name, api_key, base_url)
+        else:
+            raise KeyError(f"Model {model_name} not found in inference_map and no API_KEY/BASE_URL provided for dynamic model creation")
     
     # Check if it's an API model (APIModelInference) or local model (CommonInference)
-    if inference_handler == APIModelInference:
-        # API models don't need model_path or tensor_parallel_size parameter
+    # Handle both predefined classes and dynamic classes
+    if inference_handler == APIModelInference or (hasattr(inference_handler, '__name__') and 'APIModelInference' in str(inference_handler.__bases__ if hasattr(inference_handler, '__bases__') else [])):
+        # API models (both predefined and dynamic) don't need model_path or tensor_parallel_size parameter
         model_inference = inference_handler(model_name, temperature=args.temperature, top_p=args.top_p, max_tokens=args.max_tokens, max_dialog_turns=args.max_dialog_turns, user_model=args.user_model, language=args.language)
     else:
         # Local models need tensor_parallel_size parameter
