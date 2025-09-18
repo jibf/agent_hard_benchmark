@@ -7,6 +7,7 @@ from typing import Dict, List, Tuple
 from .base_filter import BaseBenchmarkFilter
 import logging
 import numpy as np
+import re
 from collections import defaultdict
 from src.bench_loaders.tau_bench_loader import TauBenchLoader
 
@@ -35,19 +36,29 @@ class TAUBenchFilter(BaseBenchmarkFilter):
         
         # STEP 1: Filter questions solvable by a trivial agent, but keep those with success rate <= 0.5
         DO_NOTHING_SUCCESS_RATE_THRESHOLD = 0.5
-        qids_to_filter = self._get_qids_solvable_by_do_nothing()
+        do_nothing_qids_to_filter = self._get_qids_solvable_by_do_nothing()
+
+        # STEP 2: Filter questions with high role confusion rate
+        ROLE_CONFUSION_FREQUENCY_THRESHOLD = 0.2
+        role_confusion_qids_to_filter = self._get_qids_with_role_confusion(samples, ROLE_CONFUSION_FREQUENCY_THRESHOLD)
+
         question_groups = self._group_samples_by_question(samples)
-        
         passed_samples = []
         dropped_samples = []
-        
+
         for sample in samples:
             qid = f"{sample['task_name']}-{sample['meta']['id']}"
             mean_score = self._calculate_mean_score(question_groups[qid])
-            if qid not in qids_to_filter or mean_score <= DO_NOTHING_SUCCESS_RATE_THRESHOLD:
-                passed_samples.append(sample)
-            else:
+
+            should_filter = (
+                (qid in do_nothing_qids_to_filter and mean_score > DO_NOTHING_SUCCESS_RATE_THRESHOLD)
+                or qid in role_confusion_qids_to_filter
+            )
+
+            if should_filter:
                 dropped_samples.append(sample)
+            else:
+                passed_samples.append(sample)
         
         logger.info(f"TAU Bench filtering completed: {len(passed_samples)} passed, {len(dropped_samples)} dropped")
         return passed_samples, dropped_samples
@@ -125,6 +136,66 @@ class TAUBenchFilter(BaseBenchmarkFilter):
         
         # Calculate mean score (success rate)
         return np.mean(numeric_scores)
+
+    def _detect_role_confusion_from_user_message(self, content: str) -> bool:
+        """Detect if user message shows role confusion by using agent-like language"""
+        if not content or not isinstance(content, str):
+            return False
+
+        content_lower = content.lower()
+        confusion_patterns = [
+            r'\byour\s+(phone|device|computer|laptop|system|account|order|reservation|flight|booking|service|plan|bill|number)\b',
+        ]
+
+        for pattern in confusion_patterns:
+            if re.search(pattern, content_lower):
+                return True
+
+        return False
+
+    def _get_qids_with_role_confusion(self, samples: List[Dict], threshold: float) -> List[str]:
+        """Get question IDs that have role confusion rate above threshold"""
+        question_groups = self._group_samples_by_question(samples)
+        qids_to_filter = []
+
+        for qid, question_samples in question_groups.items():
+            confusion_count = 0
+            total_samples = len(question_samples)
+
+            for sample in question_samples:
+                has_confusion = False
+
+                messages = []
+                if 'conversation' in sample:
+                    messages = sample['conversation']
+                elif 'messages' in sample:
+                    messages = sample['messages']
+                elif 'response' in sample and isinstance(sample['response'], dict):
+                    if 'conversation' in sample['response']:
+                        messages = sample['response']['conversation']
+                    elif 'messages' in sample['response']:
+                        messages = sample['response']['messages']
+
+                for message in messages:
+                    if isinstance(message, dict) and message.get('role') == 'user' and 'content' in message:
+                        content = message['content']
+                        if self._detect_role_confusion_from_user_message(content):
+                            has_confusion = True
+                            break
+
+                if has_confusion:
+                    confusion_count += 1
+
+            if total_samples > 0:
+                confusion_rate = confusion_count / total_samples
+                if confusion_rate > threshold:
+                    qids_to_filter.append(qid)
+                    logger.info(f"Filtering {qid}: role confusion rate {confusion_rate:.3f} > {threshold}")
+                if confusion_rate > 0:
+                    logger.info(f"Unfiltered {qid}: role confusion rate {confusion_rate:.3f} < {threshold}")
+
+
+        return qids_to_filter
 
 
 def get_domain_and_id(question_id: str) -> Tuple[str, int]:
