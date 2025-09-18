@@ -192,10 +192,43 @@ Carefully analyze the provided sample using the dimensions above. Your final out
 {available_function_list}
 ```
 
-### Ground-Truth Milestone Function Calls 
+### Ground-Truth Milestone Function Calls
 * Note that messages with "role": "observation" are the results of the function call right before.
 
 ```json
 {gt_conv_traj}
 ```
 """
+
+# Test
+if __name__ == "__main__":
+    from src.utils.types import Benchmark
+    from src.bench_loaders import get_bench_loader
+
+    # Test Tau Bench
+    tau_loader = get_bench_loader(Benchmark.TAU_BENCH)()
+    tau_questions = tau_loader.load_questions()
+    tau_sample = None
+    for question in tau_questions:
+        if question.question_id == "1" and question.task_name == "retail":
+            tau_sample = question
+            break
+
+    if tau_sample:
+        print(f"Tau Bench sample ID: {tau_sample.question_id}")
+
+        # Generate formatted prompt using the FILTERING_PROMPT template
+        tau_filtering_prompt = FILTERING_PROMPT.format(
+            instruction=tau_sample.instruction,
+            agent_system_prompt=tau_sample.agent_system_prompt,
+            user_context=tau_sample.user_context,
+            available_function_list=tau_sample.available_function_list,
+            gt_conv_traj=tau_sample.gt_conv_traj
+        )
+
+        with open("tau_bench_formatted_prompt.txt", "w", encoding="utf-8") as f:
+            f.write(tau_filtering_prompt)
+
+        print("Tau Bench formatted prompt saved to tau_bench_formatted_prompt.txt")
+    else:
+        print("No Tau Bench sample found with ID '1' in retail task")
