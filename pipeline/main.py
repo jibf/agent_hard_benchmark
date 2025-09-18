@@ -753,7 +753,7 @@ class BenchmarkFilteringPipeline:
             if step4_alpha_values:
                 print("Step4 alpha values: ", step4_alpha_values)
                 step4_avg_alpha = np.mean(step4_alpha_values)
-                logger.info(f"Benchmark IRT discrimination After Step 1: {step4_avg_alpha:.4f}")
+                logger.info(f"Benchmark IRT discrimination After Step 4: {step4_avg_alpha:.4f}")
             else:
                 logger.warning("No matching alpha values found for Step 4 passed questions")
             # irt_discrimination = compute_irt_metric(step4_passed, threshold=0.5)
