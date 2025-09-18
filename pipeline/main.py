@@ -41,12 +41,7 @@ from src.utils.types import (
 from src.utils import group_responses_by_question, log_confusion_matrix
 from metric.irt_metric import compute_irt_metric
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("pipeline.log"), logging.StreamHandler()],
-)
+# Logger will be configured in main() function
 logger = logging.getLogger(__name__)
 
 COMMON_MODEL_SET = {
@@ -349,7 +344,7 @@ class BenchmarkFilteringPipeline:
         remaining_problematic_issues = deepcopy(problematic_issues)
         self._write_filter_summary(
             passed_ids=set(responses_by_question.keys()),
-            input_problematic_ids=set(remaining_problematic_issues.keys()),
+            input_ids=set(responses_by_question.keys()),
             phase="initial",
             problematic_issues=problematic_issues,
         )
@@ -368,7 +363,7 @@ class BenchmarkFilteringPipeline:
             )
             self._write_filter_summary(
                 passed_ids=set(step0_passed.keys()),
-                input_problematic_ids=set(remaining_problematic_issues.keys()),
+                input_ids=set(responses_by_question.keys()),
                 phase="step0",
                 problematic_issues=problematic_issues,
             )
@@ -391,7 +386,7 @@ class BenchmarkFilteringPipeline:
             )
             self._write_filter_summary(
                 passed_ids=set(step1_passed.keys()),
-                input_problematic_ids=set(remaining_problematic_issues.keys()),
+                input_ids=set(step0_passed.keys()),
                 phase="step1",
                 problematic_issues=problematic_issues,
             )
@@ -530,7 +525,7 @@ class BenchmarkFilteringPipeline:
             )
             self._write_filter_summary(
                 passed_ids=set(step2_passed.keys()),
-                input_problematic_ids=set(remaining_problematic_issues.keys()),
+                input_ids=set(current_responses.keys()),
                 phase="step2",
                 problematic_issues=problematic_issues,
             )
@@ -630,7 +625,7 @@ class BenchmarkFilteringPipeline:
                 )
                 self._write_filter_summary(
                     passed_ids=set(step3_passed.keys()),
-                    input_problematic_ids=set(remaining_problematic_issues.keys()),
+                    input_problematic_ids=set(step2_result.keys()),
                     phase="step3",
                     problematic_issues=problematic_issues,
                 )
@@ -1527,13 +1522,13 @@ class BenchmarkFilteringPipeline:
         return baseline
 
     def _write_filter_summary(
-        self, passed_ids: set, input_problematic_ids: set, phase: str, problematic_issues: Dict = None
+        self, passed_ids: set, input_ids: set, phase: str, problematic_issues: Dict = None
     ):
         """Record filtering summary for each phase.
 
         Args:
             passed_ids: Set of question IDs that passed current phase
-            input_problematic_ids: Set of question IDs that input to current phase
+            input_ids: Set of question IDs that input to current phase
             phase: Phase name ("initial", "step0", "step1", "step2", "step3", "final")
             problematic_issues: Dict of problematic issues for getting issue reasons
         """
@@ -1580,7 +1575,7 @@ class BenchmarkFilteringPipeline:
 
             if phase in field_map:
                 field_name = field_map[phase]
-                for question_id in input_problematic_ids:
+                for question_id in input_ids:
                     entry = self.filtering_summary[question_id]
 
                     # If this question is not in passed_ids and hasn't been marked as failed yet
@@ -1612,20 +1607,13 @@ class BenchmarkFilteringPipeline:
         # Sort questions by when they were filtered (reverse order - latest filtered first)
         def get_filter_stage(entry):
             # Return stage number where question was filtered (higher = later)
-            if entry.get("is_issue") == False:
-                return 0
-            elif entry.get("topk_selection_passed") == True:
-                return 5
-            elif entry.get("topk_selection_passed") == False:
-                return 4
-            elif entry.get("specific_llm_passed") == False:
-                return 3
-            elif entry.get("specific_rule_passed") == False:
-                return 2
-            elif entry.get("comp_passed") == False:
-                return 1
-            else:
-                return 5
+            order = 0
+            for stage in ["topk_selection_passed", "specific_llm_passed", "specific_rule_passed", "comp_passed"]:
+                if entry[stage] == True:
+                    order += 1
+            if entry.get("is_issue") == True:
+                order += 0.5
+            return order
 
         # Sort by filter stage (descending) then by question_id for consistency
         sorted_items = sorted(
@@ -1634,8 +1622,7 @@ class BenchmarkFilteringPipeline:
             reverse=True,
         )
 
-        # Use fixed filename (will overwrite in same run)
-        csv_path = "filtering_summary.csv"
+        csv_path = self.config.get("csv_filename")
 
         # Write CSV
         fieldnames = list(self.fitering_template.keys())
@@ -1977,6 +1964,8 @@ class BenchmarkFilteringPipeline:
 
 def main():
     """Main entry point."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     parser = argparse.ArgumentParser(description="Benchmark Filtering Pipeline")
     parser.add_argument(
         "--skip-llm-judge",
@@ -2051,6 +2040,19 @@ def main():
 
     args = parser.parse_args()
 
+    output_dir = "pipeline_results"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Generate file prefix based on target_benchmark
+    if args.target_benchmark:
+        benchmark_prefix = "_".join(args.target_benchmark)
+    else:
+        benchmark_prefix = "all"
+
+    # Generate filenames with unified naming convention
+    log_filename = f"{output_dir}/{benchmark_prefix}_{timestamp}_pipeline.log"
+    csv_filename = f"{output_dir}/{benchmark_prefix}_{timestamp}_filtering_summary.csv"
+
     # Configuration
     config = {
         "llm_model": args.llm_model,
@@ -2064,7 +2066,16 @@ def main():
         "embedding_batch_size": args.embedding_batch_size,
         "embed_all_initial_prompts": args.embed_all_initial_prompts,
         "skip_measurement": args.skip_measurement,
+        "csv_filename": csv_filename,
     }
+
+    # Set up logging with dynamic filename
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[logging.FileHandler(log_filename), logging.StreamHandler()],
+        force=True  # This allows reconfiguring if already configured
+    )
 
     # Validate arguments
     if args.skip_rule_based and args.skip_llm_judge:

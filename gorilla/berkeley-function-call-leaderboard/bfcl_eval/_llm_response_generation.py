@@ -1,9 +1,10 @@
 import argparse
 import json
+import os
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-import traceback
 
 from bfcl_eval.constants.category_mapping import (
     MULTI_TURN_FUNC_DOC_FILE_MAPPING,
@@ -17,7 +18,9 @@ from bfcl_eval.constants.eval_config import (
     TEST_IDS_TO_GENERATE_PATH,
 )
 from bfcl_eval.eval_checker.eval_runner_helper import load_file
+import bfcl_eval.constants.model_config
 from bfcl_eval.constants.model_config import MODEL_CONFIG_MAPPING
+from bfcl_eval.model_handler.api_inference.dynamic_openai import create_dynamic_model_config
 from bfcl_eval.model_handler.model_style import ModelStyle
 from bfcl_eval.utils import is_multi_turn, parse_test_category_argument, sort_key
 from tqdm import tqdm
@@ -64,8 +67,10 @@ def get_args():
     return args
 
 
-def build_handler(model_name, temperature):
-    config = MODEL_CONFIG_MAPPING[model_name]
+def build_handler(model_name, temperature, config_mapping=None):
+    # Use provided config mapping or fallback to global one
+    mapping = config_mapping if config_mapping is not None else MODEL_CONFIG_MAPPING
+    config = mapping[model_name]
     handler = config.model_handler(model_name, temperature)
     # Propagate config flags to the handler instance
     handler.is_fc_model = config.is_fc_model
@@ -224,9 +229,9 @@ def multi_threaded_inference(handler, test_case, include_input_log, exclude_stat
     return result_to_write
 
 
-def generate_results(args, model_name, test_cases_total):
+def generate_results(args, model_name, test_cases_total, config_mapping=None):
     update_mode = args.allow_overwrite
-    handler = build_handler(model_name, args.temperature)
+    handler = build_handler(model_name, args.temperature, config_mapping)
 
     if handler.model_style == ModelStyle.OSSMODEL:
         # batch_inference will handle the writing of results
@@ -282,13 +287,35 @@ def main(args):
         all_test_entries_involved,
     ) = get_involved_test_entries(args.test_category, args.run_ids)
 
+    # Extended MODEL_CONFIG_MAPPING with dynamic models
+    extended_model_config = MODEL_CONFIG_MAPPING.copy()
+
     for model_name in args.model:
         if model_name not in MODEL_CONFIG_MAPPING:
-            raise ValueError(
-                        f"Unknown model_name '{model_name}'.\n"
-                        "• For officially supported models, please refer to `SUPPORTED_MODELS.md`.\n"
-                        "• For running new models, please refer to `README.md` and `CONTRIBUTING.md`."
-                    )
+            # Try to create a dynamic model configuration from unified environment variables
+            api_key = os.getenv("API_KEY")
+            base_url = os.getenv("BASE_URL")
+
+            if api_key and base_url:
+                # Create dynamic model configuration with is_fc_model=False
+                dynamic_config = create_dynamic_model_config(
+                    model_name=model_name,
+                    api_key=api_key,
+                    base_url=base_url,
+                    is_fc_model=False
+                )
+                extended_model_config[model_name] = dynamic_config
+                print(f"Created dynamic configuration for model: {model_name}")
+            else:
+                raise ValueError(
+                            f"Unknown model_name '{model_name}'.\n"
+                            "• For officially supported models, please refer to `SUPPORTED_MODELS.md`.\n"
+                            "• For running new models, please refer to `README.md` and `CONTRIBUTING.md`.\n"
+                            "• For dynamic models, set environment variables: API_KEY and BASE_URL"
+                        )
+
+    # Replace the global MODEL_CONFIG_MAPPING temporarily
+    bfcl_eval.constants.model_config.MODEL_CONFIG_MAPPING = extended_model_config
     print(f"Generating results for {args.model}")
     if args.run_ids:
         print("Running specific test cases. Ignoring `--test-category` argument.")
@@ -314,4 +341,4 @@ def main(args):
                 f"All selected test cases have been previously generated for {model_name}. No new test cases to generate."
             )
         else:
-            generate_results(args, model_name, test_cases_total)
+            generate_results(args, model_name, test_cases_total, extended_model_config)

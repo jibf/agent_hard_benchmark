@@ -479,7 +479,7 @@ class BenchmarkRunner:
         # Run evaluation if generation succeeded
         if success:
             self.logger.info("Running BFCL evaluation...")
-            eval_command = f"bfcl evaluate --model {self.model_name}"
+            eval_command = f"bfcl evaluate --model {self.model_name} --result-dir {benchmark_output_dir}"
 
             eval_success, eval_output = self.run_command(eval_command, benchmark_dir)
 

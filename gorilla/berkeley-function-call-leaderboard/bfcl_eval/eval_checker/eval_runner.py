@@ -1,5 +1,7 @@
 import argparse
+import os
 
+import bfcl_eval.constants.model_config
 from bfcl_eval.constants.category_mapping import (
     TEST_COLLECTION_MAPPING,
     TEST_FILE_MAPPING,
@@ -21,13 +23,16 @@ from bfcl_eval.eval_checker.multi_turn_eval.multi_turn_checker import (
 )
 from bfcl_eval.eval_checker.multi_turn_eval.multi_turn_utils import is_empty_execute_response
 from bfcl_eval.constants.model_config import MODEL_CONFIG_MAPPING
+from bfcl_eval.model_handler.api_inference.dynamic_openai import create_dynamic_model_config
 from bfcl_eval.utils import *
 from dotenv import load_dotenv
 from tqdm import tqdm
 
 
-def get_handler(model_name):
-    config = MODEL_CONFIG_MAPPING[model_name]
+def get_handler(model_name, config_mapping=None):
+    # Use provided config mapping or fallback to global one
+    mapping = config_mapping if config_mapping is not None else MODEL_CONFIG_MAPPING
+    config = mapping[model_name]
     handler = config.model_handler(
         model_name, temperature=0
     )  # Temperature doesn't matter for evaluation
@@ -487,19 +492,50 @@ def main(model, test_categories, result_dir, score_dir):
 
     _, all_test_categories = parse_test_category_argument(test_categories)
 
+    # Extended MODEL_CONFIG_MAPPING with dynamic models
+    extended_model_config = MODEL_CONFIG_MAPPING.copy()
+
     model_names = None
     if model:
         model_names = []
         for model_name in model:
             if model_name not in MODEL_CONFIG_MAPPING:
-                raise ValueError(f"Invalid model name '{model_name}'.")
+                # Try to create a dynamic model configuration from environment variables
+                api_key = os.getenv("API_KEY")
+                base_url = os.getenv("BASE_URL")
+
+                if api_key and base_url:
+                    # Create dynamic model configuration with is_fc_model=False
+                    dynamic_config = create_dynamic_model_config(
+                        model_name=model_name,
+                        api_key=api_key,
+                        base_url=base_url,
+                        is_fc_model=False
+                    )
+                    extended_model_config[model_name] = dynamic_config
+                    print(f"Created dynamic configuration for evaluation of model: {model_name}")
+                else:
+                    raise ValueError(
+                                f"Invalid model name '{model_name}'.\n"
+                                "• For officially supported models, please refer to `SUPPORTED_MODELS.md`.\n"
+                                "• For dynamic models, set environment variables: API_KEY and BASE_URL"
+                            )
+
             # Runner takes in the model name that contains "_", instead of "/", for the sake of file path issues.
             # This is differnet than the model name format that the generation script "openfunctions_evaluation.py" takes in (where the name contains "/").
             # We patch it here to avoid confusing the user.
             model_names.append(model_name.replace("/", "_"))
 
-    # Driver function to run the evaluation for all categories involved.
-    runner(model_names, all_test_categories, result_dir, score_dir)
+    # Replace the global MODEL_CONFIG_MAPPING temporarily for evaluation
+    original_mapping = bfcl_eval.constants.model_config.MODEL_CONFIG_MAPPING
+    bfcl_eval.constants.model_config.MODEL_CONFIG_MAPPING = extended_model_config
+
+    try:
+        # Driver function to run the evaluation for all categories involved.
+        runner(model_names, all_test_categories, result_dir, score_dir)
+    finally:
+        # Restore original mapping
+        bfcl_eval.constants.model_config.MODEL_CONFIG_MAPPING = original_mapping
 
     print(
         f"🏁 Evaluation completed. See {score_dir / 'data_overall.csv'} for overall evaluation results on BFCL V3."
