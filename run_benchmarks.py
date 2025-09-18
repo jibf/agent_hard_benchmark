@@ -89,20 +89,20 @@ class BenchmarkRunner:
         """Setup environment variables for benchmark execution"""
         env = os.environ.copy()
 
-        # Common environment variables
+        # Common environment variables - read provider-specific keys from environment
         env_vars = {
-            "OPENAI_API_KEY": self.api_key,
-            "OPENAI_BASE_URL": self.base_url,
-            "OPENAI_API_BASE": self.base_url,
-            "VLLM_API_BASE": self.base_url,
-            "GPT_AGENT_API_KEY": self.api_key,
-            "GPT_BASE_URL": self.base_url,
-            "GPT_API_KEY": self.api_key,
-            "API_KEY": self.api_key,
-            "BASE_URL": self.base_url,
-            "ANTHROPIC_API_KEY": self.api_key,  # For benchmarks that use Anthropic
-            "GOOGLE_API_KEY": self.api_key,  # For benchmarks that use Google
-            "MISTRAL_API_KEY": self.api_key,  # For benchmarks that use Mistral
+            "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", self.api_key),
+            "OPENAI_BASE_URL": os.getenv("OPENAI_BASE_URL", self.base_url),
+            "OPENAI_API_BASE": os.getenv("OPENAI_API_BASE", self.base_url),
+            "VLLM_API_BASE": os.getenv("VLLM_API_BASE", self.base_url),
+            "GPT_AGENT_API_KEY": os.getenv("GPT_AGENT_API_KEY", self.api_key),
+            "GPT_BASE_URL": os.getenv("GPT_BASE_URL", self.base_url),
+            "GPT_API_KEY": os.getenv("GPT_API_KEY", self.api_key),
+            "API_KEY": self.api_key,  # Keep as fallback
+            "BASE_URL": self.base_url,  # Keep as fallback
+            "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", self.api_key),
+            "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY", self.api_key),
+            "MISTRAL_API_KEY": os.getenv("MISTRAL_API_KEY", self.api_key),
         }
 
         # Add RAPID_API_KEY if it exists in environment
@@ -118,11 +118,11 @@ class BenchmarkRunner:
         env_file = benchmark_dir / ".env"
 
         default_vars = {
-            "OPENAI_API_KEY": self.api_key,
-            "OPENAI_BASE_URL": self.base_url,
-            "OPENAI_API_BASE": self.base_url,
-            "API_KEY": self.api_key,
-            "BASE_URL": self.base_url,
+            "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", self.api_key),
+            "OPENAI_BASE_URL": os.getenv("OPENAI_BASE_URL", self.base_url),
+            "OPENAI_API_BASE": os.getenv("OPENAI_API_BASE", self.base_url),
+            "API_KEY": self.api_key,  # Keep as fallback
+            "BASE_URL": self.base_url,  # Keep as fallback
         }
 
         if custom_vars:
@@ -359,13 +359,13 @@ class BenchmarkRunner:
 
         # Create comprehensive .env file
         custom_vars = {
-            "GPT_AGENT_API_KEY": self.api_key,
-            "GPT_BASE_URL": self.base_url,
-            "GPT_API_KEY": self.api_key,
-            "DEEPSEEK_API_KEY": self.api_key,
-            "DEEPSEEK_BASE_URL": self.base_url,
-            "QWEN_API_KEY": self.api_key,
-            "QWEN_BASE_URL": self.base_url,
+            "GPT_AGENT_API_KEY": os.getenv("GPT_AGENT_API_KEY", self.api_key),
+            "GPT_BASE_URL": os.getenv("GPT_BASE_URL", self.base_url),
+            "GPT_API_KEY": os.getenv("GPT_API_KEY", self.api_key),
+            "DEEPSEEK_API_KEY": os.getenv("DEEPSEEK_API_KEY", self.api_key),
+            "DEEPSEEK_BASE_URL": os.getenv("DEEPSEEK_BASE_URL", self.base_url),
+            "QWEN_API_KEY": os.getenv("QWEN_API_KEY", self.api_key),
+            "QWEN_BASE_URL": os.getenv("QWEN_BASE_URL", self.base_url),
         }
         self.create_env_file(benchmark_dir, custom_vars)
 
@@ -409,8 +409,8 @@ class BenchmarkRunner:
 
         # Create .env file with specific variables for TauBench
         custom_vars = {
-            "ANTHROPIC_API_BASE": self.base_url,
-            "VLLM_API_BASE": self.base_url,
+            "ANTHROPIC_API_BASE": os.getenv("ANTHROPIC_API_BASE", self.base_url),
+            "VLLM_API_BASE": os.getenv("VLLM_API_BASE", self.base_url),
         }
         self.create_env_file(benchmark_dir, custom_vars)
 
