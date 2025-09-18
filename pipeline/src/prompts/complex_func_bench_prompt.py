@@ -49,9 +49,9 @@ This category addresses errors in the provided ground-truth trajectory, where th
   * Contradictory Parameter Values: A value that directly contradicts a constraint in the user's prompt. For example, using the latitude of a hotel and the longitude of an airport to define a search coordinate, which is logically inconsistent.
   * Misspelled or Incorrectly Identified Parameter Values: A misspelled name or an ID/slug that points to the wrong entity (e.g., selecting the wrong airport ID).
 
-* Redundant function calls: The ground truth function call trajectory consists of function calls that are redundant in solving the task, or is missing crucial function calls needed to solve the task, leading into unfair evaluation.
-  * Example: a user asks to search for attractions until it finds one that costs less than $45. However, the ground truth calls the corresponding function in an arbitrary order, resulting in an excessive number of function calls compared to what is actually necessry.
-  * Example: a user asks to find "the first ever text I have." The ground truth includes a call that gets the current timestamp, which is unnecessary to find the oldest message.
+* Redundant/ungrounded function calls: The ground truth function call trajectory consists of function calls that are redundant in solving the task, ungrounded by the context, or irrelevant in solving the task.
+  * Irrelevant tool call: A function call in the ground truth trajectory is totally irrelevant to the task or belongs to a completely different domain. Example: agent calls a function to reserve a flight, though it was asked to process product exchange.
+  * Redundant tool call: A function call that is not necessary in solving the task. Example: the agent is asked to search for attractions until it finds one that meets a certain condition; However, the agent performs the search in an arbitrary order, resulting in an excessive number of function calls.
 
 ## Evaluation and Output Format
 Carefully analyze the provided sample. Think step-by-step to determine if the ground-truth trajectory is a correct and logical solution to the user's prompt.
@@ -63,7 +63,7 @@ Your final output must be a JSON object with the following structure, with no ad
 {{
   "reasoning": "Provide a clear, step-by-step explanation for your decision. If the ground-truth is flawed, specify which argument is incorrect and why it contradicts the prompt or schema. If it is not flawed, briefly explain why the ground-truth is a correct interpretation of the user's request.",
   "reasoning_summary": "A shorter rationale for your decision. If the ground-truth is not flawed, just mention that it is not flawed. If the ground-truth is flawed, specify the issue concisely. e.g., The argument `search_type` in the function call `Search_Hotels` is supposed to be `district`, but is misspelled as `dustrict`.",
-  "error_category": "<Not Flawed | Incorrect Parameter Value | Incorrect API Result | Ambiguity in Parameter Selection | Malformed Function Call>",
+  "error_category": "The category that corresponds to the issue. e.g., \"Flawed function response\". If the sample is not flawed, use \"Not Flawed\".",
   "is_flawed": <true_or_false>
 
 }}

@@ -3,6 +3,7 @@ import os
 import sys
 import logging
 import toml
+import re
 from typing import Dict, Any, List, Optional
 from . import BaseLoader
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -173,15 +174,15 @@ class Tau2BenchLoader(BaseLoader):
             tau2_bench_path = "data/tau2-bench-envs/src"
             if tau2_bench_path not in sys.path:
                 sys.path.insert(0, tau2_bench_path)
-            
+
             from tau2.registry import registry
             env_constructor = registry.get_env_constructor(domain)
             environment = env_constructor()
-            
+
             # Get policy from environment
             policy = getattr(environment, 'policy', '')
-            return policy or f"You are a helpful assistant for the {domain} domain."
-            
+            return demote_markdown_headings(policy, 3) if policy else f"You are a helpful assistant for the {domain} domain."
+
         except Exception as e:
             print(f"Error getting agent system prompt for domain {domain}: {e}")
             return f"You are a helpful assistant for the {domain} domain."
@@ -484,5 +485,23 @@ class Tau2BenchLoader(BaseLoader):
             
         except Exception as e:
             print(f"Error getting user function schemas for domain {domain}: {e}")
-            
+
         return []
+
+
+def demote_markdown_headings(markdown_text: str, levels_to_demote: int = 3) -> str:
+    """Demote markdown headings by specified number of levels"""
+    processed_lines = []
+    heading_pattern = re.compile(r"^\s*(#+)\s+(.*)")
+
+    for line in markdown_text.splitlines():
+        match = heading_pattern.match(line)
+        if match:
+            hashes = match.group(1)
+            title = match.group(2)
+            new_level = min(len(hashes) + levels_to_demote, 6)
+            processed_lines.append(f"{'#' * new_level} {title}")
+        else:
+            processed_lines.append(line)
+
+    return "\n".join(processed_lines)

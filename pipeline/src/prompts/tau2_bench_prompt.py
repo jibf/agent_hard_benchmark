@@ -42,5 +42,159 @@
 
 
 
-FILTERING_PROMPT = ""
+FILTERING_PROMPT = """
+You are an expert evaluator for Tau-2-Bench, a benchmark designed to assess an agent's ability to follow complex rules and interact with a simulated user.
+Your task is to determine if a given benchmark sample has a fundamental flaw in its user prompt, environment, or ground-truths, which would make it unable to be incorporated in the evaluation.
+
+
+You will be provided with the following information:
+* **Task Description/Instructions**: The prompt or scenario given to the model that simulates user. You need to expect how the model that simulates the user would behave given this instruction.
+* **System Policy**: Domain-specific rules that the agent model needs to obey. This will be given as the system prompt for agent models.
+* **User Context and Relevant Information**: a brief information of the user and relevant information. This may be in a form of system message given to the user-simulating model.
+* **Initial State**: The initial environment setup and conditions before the task begins. This defines the starting state of the system.
+* **Functions available to the agent**: a list of functions available for the agents and their schema.
+* **Functions available to the user**: a list of functions available for the user-simulating models and their schema. When the user cannot directly call any functions, this is set to be empty.
+* **Complete Evaluation Criteria**: The complete evaluation criteria including milestone ground-truth actions (function calls), natural language assertions, and final environment state assertion to validate. The sample is considered to be flawed if one or more of these criteria is unachievable. 
+* **Ground-Truth Milestone Function Calls**: the provided ground-truth trajectory. Note that this is not a complete log of all function calls. Instead, it is a curated list containing only the key milestone function calls required to solve the task. Note that messages with `"role": "observation"` are the outputs of the immediately preceding function call.
+
+A sample is **flawed** if it exhibits one or more of the issues described below.
+
+## Flaw Categories
+
+Below is the categorization of benchmark issues, outlined according to its **relevant benchmark component**. A sample is considered flawed if it has one or more of the issues below.
+
+### Environment
+
+This category covers flaws within the agent's operating environment—the tools and API results—which can make a task unsolvable regardless of the agent's logic.
+
+* Insufficient toolsets: the environment does not provide the necessary tools (functions), making the agent impossible to solve the task even with a combination of multiple tools and reasoning.
+  * Example: A user asks for an advanced file manipulation, while the environment only provides basic tools like `mk` or `ls`.
+
+* Flawed function design: the naming or the description of an available function is misleading or contradicts its actual functionality.
+  * Example: A function named `vt_get_votes_on_ip_address` provides "example.com" as an example for its argument value in its schema.
+
+
+### Ground-Truth
+
+This category addresses errors in the provided ground-truth trajectory, where the supposed correct solution is itself incorrect, forcing any correct agent to fail the evaluation.
+
+
+* Malformed function calls: A technical error where a ground-truth function call violates the provided API schema.
+  * Example: A parameter requires a string but is given a number (e.g., dest_id: 123 instead of dest_id: "123"), a required parameter is missing, the function name is wrong, or a parameter value is misspelled (e.g., sort_by: "popularitye" instead of "popularity").
+
+* Incorrect function calls: A function call is syntactically valid but logically flawed. The function choice or a parameter value contradicts the user's request or the context from previous steps.
+  * Unjustified/Hallucinated Parameters: A value (e.g., a date, a coordinate) that appears without any grounding context. For example, searching for a hotel on a date that was not returned by a preceding flight search.
+  * Contradictory: A value that directly contradicts a constraint in the user's prompt. However, it is NOT a flaw if there is any chance that the agent's action was a necessary alternative due to constraints like an insufficient budget or a lack of available seats.
+  * Policy Violation: A function call in the ground truth trajectory directly violates the provided system policy. Example: The ground truth where the agent calls a specific function twice, although it is mentioned in the system policy that the function can only be called once.
+  * Misspelled or Incorrectly Identified Parameter Values: A misspelled name or an ID/slug that points to the wrong entity (e.g., selecting the wrong airport ID).
+
+* Redundant/ungrounded function calls: The ground truth function call trajectory consists of function calls that are redundant in solving the task, ungrounded by the context, or irrelevant in solving the task.
+  * Irrelevant tool call: A function call in the ground truth trajectory is totally irrelevant to the task or belongs to a completely different domain. Example: agent calls a function to reserve a flight, though it was asked to process product exchange.
+  * Redundant tool call: A function call that is not necessary in solving the task. Example: the agent is asked to search for attractions until it finds one that meets a certain condition; However, the agent performs the search in an arbitrary order, resulting in an excessive number of function calls.
+
+
+## Crucial Rule: Actively Reconstruct the Conversation 
+
+The ground-truth trajectory only shows key milestone function calls, not the full conversation between the user and the agent. Your primary task is to determine if a plausible, un-shown conversation could logically connect the user's initial request to the final ground-truth actions, while respecting all System Policies.
+
+Do not flag a sample as flawed simply because the final action doesn't match the initial request. Instead, actively play out a hypothetical dialogue in your reasoning process:
+* Could the agent have presented options?
+* Could the agent have asked for confirmation (as required by policy)?
+* Could the user have changed their mind based on new information or a conditional instruction (as described in the scenario)?
+
+A sample is flawed ONLY IF there is no possible conversational path that can logically justify the ground-truth actions without violating the user's instructions or the system's rules.
+
+
+## Evaluation and Output Format
+Carefully analyze the provided sample. Think step-by-step to determine if the ground-truth trajectory is a correct and logical solution to the user's prompt.
+
+Your final output must be a JSON object with the following structure, with no additional commentary:
+
+```json
+{{
+  "reasoning": "Provide a clear, step-by-step explanation for your decision. If the sample is flawed, specify what is incorrect and why it contradicts the user's prompt, system policies, or the user's role. If it is not flawed, briefly explain why the sample is valid.",
+  "reasoning_summary": "A shorter rationale for your decision. If the sample is not flawed, just mention that it is not flawed. If it is flawed, specify the issue concisely. e.g., The ground truth books a connecting flight, but the user requested a direct flight.",
+  "error_category": "The category that corresponds to the issue. e.g., \"Incorrect function calls\". If the sample is not flawed, use \"Not Flawed\".",
+  "is_flawed": <true or false>
+}}
+```
+
+
+## Target Sample
+
+### Task Description/Instructions
+
+```
+{instruction}
+```
+
+### System Policy
+
+{agent_system_prompt}
+
+### User context and relevant information
+
+{user_context}
+
+### Initial Status
+
+{initial_state}
+
+### Functions available to the agent and their schema
+
+```json
+{available_function_list}
+``` 
+
+### Functions available to the user and their schema
+
+```json
+{available_user_function_list}
+```
+
+### Complete Evaluation Criteria
+
+```json
+{evaluation_criteria}
+```
+
+### Ground-Truth Milestone Function Calls
+* Note that messages with "role": "observation" are the results of the function call right before.
+
+```json
+{gt_conv_traj}
+```
+"""
+
 SCORING_PROMPT = ""
+
+# Test
+if __name__ == "__main__":
+    from src.utils.types import Benchmark
+    from src.bench_loaders import get_bench_loader
+
+    # Test Tau2 Bench
+    tau2_loader = get_bench_loader(Benchmark.TAU2_BENCH)()
+    tau2_questions = tau2_loader.load_questions()
+    tau2_sample = None
+    for question in tau2_questions:
+        if question.question_id == "5" and question.task_name == "retail":
+            tau2_sample = question
+    print(tau2_sample.question_id)
+
+    # Generate formatted prompt using the FILTERING_PROMPT template
+    tau2_prompt = FILTERING_PROMPT.format(
+        instruction=tau2_sample.instruction,
+        agent_system_prompt=tau2_sample.agent_system_prompt,
+        user_context=tau2_sample.user_context,
+        initial_state=getattr(tau2_sample, 'initial_state', ''),
+        available_function_list=tau2_sample.available_function_list,
+        available_user_function_list=getattr(tau2_sample, 'available_user_function_list', []),
+        evaluation_criteria=getattr(tau2_sample, 'evaluation_criteria', {}),
+        gt_conv_traj=tau2_sample.gt_conv_traj
+    )
+
+    with open("tau2_bench_formatted_prompt.txt", "w", encoding="utf-8") as f:
+        f.write(tau2_prompt)
+
+    print("Tau2 Bench formatted prompt saved to tau2_bench_formatted_prompt.txt")
