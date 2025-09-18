@@ -40,12 +40,13 @@ class TauBenchLoader(BaseLoader):
         """Load tool schemas for tau-bench domain using get_info() methods"""
         all_schemas = self._extract_tool_schemas_from_domain(domain)
         # Filter to only include database-modifying functions
-        db_modifying_functions = self.FUNCTION_NAMES_MODIFYING_DATABASE.get(domain, [])
-        filtered_schemas = [
-            schema for schema in all_schemas 
-            if schema.get('function', {}).get('name') in db_modifying_functions
-        ]
-        return filtered_schemas
+        # db_modifying_functions = self.FUNCTION_NAMES_MODIFYING_DATABASE.get(domain, [])
+        # filtered_schemas = [
+        #     schema for schema in all_schemas 
+        #     if schema.get('function', {}).get('name') in db_modifying_functions
+        # ]
+        # return filtered_schemas
+        return all_schemas
     
     def format_sample(self, sample: Dict[str, Any], domain: str = None, env_data: Dict[str, Any] = None, sample_id: str = None) -> TauBenchQuestion:
         """Format tau-bench task to standard evaluation format"""
@@ -262,8 +263,8 @@ class TauBenchLoader(BaseLoader):
             action_name = action["name"]
             
             # Skip actions that don't modify the database
-            if action_name not in db_modifying_functions:
-                continue
+            # if action_name not in db_modifying_functions:
+            #     continue
                 
             # Assistant message with tool call
             conversations.append({

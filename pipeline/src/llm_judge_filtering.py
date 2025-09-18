@@ -46,27 +46,68 @@ class LLMJudge:
             self.config.steps = [LLMJudgeStep.UNIVERSAL_FILTER, LLMJudgeStep.SPECIFIC_FILTER, LLMJudgeStep.SCORE]
 
     @staticmethod
+    def _extract_json_from_response(content: str) -> dict:
+        """Extract JSON from response content that might be wrapped in code blocks."""
+        # Try to parse as is first
+        try:
+            return json.loads(content.strip())
+        except json.JSONDecodeError:
+            pass
+
+        # Look for JSON in code blocks
+        json_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
+        match = re.search(json_pattern, content, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # Look for JSON without code blocks
+        json_pattern = r'(\{.*?\})'
+        match = re.search(json_pattern, content, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        raise ValueError(f"Could not extract valid JSON from response: {content}")
+
+    @staticmethod
     def _make_api_call(client: OpenAI, model: str, evaluation_prompt: str, max_retries: int, retry_delay: float) -> Dict:
+        is_gemini = "gemini" in model
         for attempt in range(max_retries):
             try:
-                response_format = {"type": "json_object"}
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": evaluation_prompt}],
-                    temperature=0.0,
-                    response_format=response_format
-                )
+                params = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": evaluation_prompt}],
+                    "temperature": 0.0,
+                }
+
+                # For gemini models, don't use extra_body or response_format as they cause 500 errors
+                if not is_gemini:
+                    params["response_format"] = {"type": "json_object"}
+
+                response = client.chat.completions.create(**params)
 
                 response_content = response.choices[0].message.content
                 if not response_content or response_content.strip() == "":
                     raise ValueError("Empty response from API")
-                result = json.loads(response_content)
+
+                # Use the JSON extraction method for gemini models that may wrap JSON in code blocks
+                if is_gemini:
+                    result = LLMJudge._extract_json_from_response(response_content)
+                else:
+                    result = json.loads(response_content)
+
                 return result
 
             except Exception as e:
                 if attempt == max_retries - 1:  # Last attempt
                     return {"error": str(e)}
                 time.sleep(retry_delay)
+
     
     def _parse_task_name_from_question_id(self, question_id: str) -> str:
         """Parse task name from question_id by removing the last number part."""
@@ -123,12 +164,15 @@ class LLMJudge:
             if specific_results:
                 specific_assessment = specific_results[i].get("assessment", {})
                 if specific_assessment:
-                    result.specific_filter = FilterResult(
-                        is_flawed=specific_assessment['is_flawed'],
-                        error_category=specific_assessment['error_category'],
-                        reasoning=specific_assessment['reasoning'],
-                        reasoning_summary=specific_assessment['reasoning_summary']
-                    )
+                    try:
+                        result.specific_filter = FilterResult(
+                            is_flawed=specific_assessment['is_flawed'],
+                            error_category=specific_assessment['error_category'],
+                            reasoning=specific_assessment['reasoning'],
+                            reasoning_summary=specific_assessment['reasoning_summary']
+                        )
+                    except:
+                        result.specific_filter = None
 
             # Add scoring result
             if score_results:
@@ -191,17 +235,14 @@ class LLMJudge:
         if self.config.num_proc == 1:   # Single process
             results = []
             for question in tqdm(questions, desc="Processing questions"):
-                try:
-                    assessment = self._assess_question(question, step)
-                except Exception as e:
-                    logger.error(f"Error assessing question {question.question_id} in {question.benchmark.value} {e}")
-                    assessment = {"error": str(e)}
+                assessment = self._assess_question(question, step)
 
                 results.append({
                     "benchmark": question.benchmark.value,
                     "question_id": question.question_id,
                     "assessment": assessment
                 })
+                print(question.question_id, assessment)
             return results
         else:   # Multiprocessing
             logger.info(f"Using multiprocessing with {self.config.num_proc} processes")

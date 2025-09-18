@@ -202,20 +202,27 @@ Carefully analyze the provided sample using the dimensions above. Your final out
 
 # Test
 if __name__ == "__main__":
+    import argparse
     from src.utils.types import Benchmark
     from src.bench_loaders import get_bench_loader
 
-    # Test Tau Bench
+    parser = argparse.ArgumentParser(description="Generate formatted prompt for Tau Bench")
+    parser.add_argument("-q", "--question_id", type=str, 
+                       help="Question ID to format (e.g., etail-132)")
+    args = parser.parse_args()
+
+    # Parse the question ID format: TaskName-QuestionNumber
     tau_loader = get_bench_loader(Benchmark.TAU_BENCH)()
     tau_questions = tau_loader.load_questions()
     tau_sample = None
+
     for question in tau_questions:
-        if question.question_id == "1" and question.task_name == "retail":
+        if question.question_id == args.question_id:
             tau_sample = question
             break
 
     if tau_sample:
-        print(f"Tau Bench sample ID: {tau_sample.question_id}")
+        print(f"Tau Bench sample found - Task: {tau_sample.task_name}, ID: {tau_sample.question_id}")
 
         # Generate formatted prompt using the FILTERING_PROMPT template
         tau_filtering_prompt = FILTERING_PROMPT.format(
@@ -226,9 +233,10 @@ if __name__ == "__main__":
             gt_conv_traj=tau_sample.gt_conv_traj
         )
 
-        with open("tau_bench_formatted_prompt.txt", "w", encoding="utf-8") as f:
+        output_filename = f"tau_bench_formatted_prompt.txt"
+        with open(output_filename, "w", encoding="utf-8") as f:
             f.write(tau_filtering_prompt)
 
-        print("Tau Bench formatted prompt saved to tau_bench_formatted_prompt.txt")
+        print(f"Tau Bench formatted prompt saved to {output_filename}")
     else:
-        print("No Tau Bench sample found with ID '1' in retail task")
+        print(f"No Tau Bench sample found with ID '{args.question_id}'")

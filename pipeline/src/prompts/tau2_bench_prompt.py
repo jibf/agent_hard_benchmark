@@ -172,13 +172,21 @@ SCORING_PROMPT = ""
 if __name__ == "__main__":
     from src.utils.types import Benchmark
     from src.bench_loaders import get_bench_loader
+    import argparse
+
+
+    parser = argparse.ArgumentParser(description="Generate formatted prompt for Tau Bench")
+    parser.add_argument("-q", "--question_id", type=str, 
+                       help="Question ID to format (e.g., etail-132)")
+    args = parser.parse_args()
+    task_name, question_id = args.question_id.split("-")
 
     # Test Tau2 Bench
     tau2_loader = get_bench_loader(Benchmark.TAU2_BENCH)()
     tau2_questions = tau2_loader.load_questions()
     tau2_sample = None
     for question in tau2_questions:
-        if question.question_id == "5" and question.task_name == "retail":
+        if question.question_id == question_id and question.task_name == task_name:
             tau2_sample = question
     print(tau2_sample.question_id)
 

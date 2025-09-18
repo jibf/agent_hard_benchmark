@@ -201,15 +201,25 @@ User Input:
 
 # Test
 if __name__ == "__main__":
+    import argparse
     from src.utils.types import Benchmark
     from src.bench_loaders import get_bench_loader
+
+    parser = argparse.ArgumentParser(description="Generate formatted prompt for ComplexFuncBench")
+    parser.add_argument("-q", "--question_id", type=str, default="1",
+                       help="Question ID to format (e.g., Hotels-69, default: 1)")
+    args = parser.parse_args()
 
     # Test ComplexFuncBench
     cfb_loader = get_bench_loader(Benchmark.COMPLEX_FUNC_BENCH)()
     cfb_questions = cfb_loader.load_questions()
     cfb_sample = None
+
+    domain = '-'.join(args.question_id.split("-")[:-1])
+    question_id = args.question_id.split("-")[-1]
+
     for question in cfb_questions:
-        if question.question_id == "1":
+        if question.question_id == question_id and question.task_name == domain:
             cfb_sample = question
             break
 
@@ -223,9 +233,10 @@ if __name__ == "__main__":
             gt_conv_traj=cfb_sample.gt_conv_traj
         )
 
-        with open("complex_func_bench_formatted_prompt.txt", "w", encoding="utf-8") as f:
+        output_filename = f"complex_func_bench_formatted_prompt.txt"
+        with open(output_filename, "w", encoding="utf-8") as f:
             f.write(cfb_filtering_prompt)
 
-        print("ComplexFuncBench formatted prompt saved to complex_func_bench_formatted_prompt.txt")
+        print(f"ComplexFuncBench formatted prompt saved to {output_filename}")
     else:
-        print("No ComplexFuncBench sample found with ID '1'")
+        print(f"No ComplexFuncBench sample found with ID '{args.question_id}'")
