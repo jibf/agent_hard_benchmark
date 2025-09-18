@@ -203,7 +203,7 @@ class BenchmarkDataLoader:
                         reason = row.get("issue_reason", "")
                         source = row.get("issue_source", "manually")
 
-                        if task_name and task_id and reason:
+                        if task_name and task_id:
                             # Create UniqueQuestionID
                             unique_id = UniqueQuestionID(
                                 benchmark=Benchmark(benchmark_name),
