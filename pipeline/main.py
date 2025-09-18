@@ -296,8 +296,13 @@ class BenchmarkFilteringPipeline:
 
         # Compute IRT discrimination metric
         if not self.config.get("skip_measurement", False):
-            irt_discrimination = compute_irt_metric(responses_by_question, threshold=0.5)
-            logger.info(f"Benchmark IRT discrimination before filtering: {irt_discrimination:.4f}")
+            irt_discrimination_dict = compute_irt_metric(responses_by_question, threshold=0.5)
+            if irt_discrimination_dict:
+                irt_discrimination = np.mean(list(irt_discrimination_dict.values()))
+                logger.info(f"Benchmark IRT discrimination before filtering: {irt_discrimination:.4f}")
+                print(irt_discrimination)
+            else:
+                logger.warning("No IRT discrimination values computed")
 
         pipeline_outputs = {k: PipelineOutput() for k in responses_by_question.keys()}
 
@@ -312,13 +317,13 @@ class BenchmarkFilteringPipeline:
         # Store for final summary
         self.metrics_summary["original"]["separability"] = sep_list
 
-        if not self.config.get("skip_measurement", False):
-            diversity_dict = self._compute_diversity(responses_by_question)
-            logger.info(
-                f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}"
-            )
-            # Store for final summary
-            self.metrics_summary["original"]["diversity"] = diversity_dict
+        # if not self.config.get("skip_measurement", False):
+        #     diversity_dict = self._compute_diversity(responses_by_question)
+        #     logger.info(
+        #         f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}"
+        #     )
+        #     # Store for final summary
+        #     self.metrics_summary["original"]["diversity"] = diversity_dict
 
         # Calculate model ranking from original dataset for consistent ordering
         model_ranking = None
@@ -357,8 +362,23 @@ class BenchmarkFilteringPipeline:
                 responses_by_question
             )
             if not self.config.get("skip_measurement", False):
-                irt_discrimination = compute_irt_metric(step1_passed, threshold=0.5)
-                logger.info(f"Benchmark IRT discrimination After Step 1: {irt_discrimination:.4f}")
+                # Select alpha values from initial IRT dict for questions that passed step1
+                # if 'irt_discrimination_dict' in locals() and irt_discrimination_dict:
+                step1_alpha_values = []
+                for question_id in step1_passed.keys():
+                    if question_id in irt_discrimination_dict:
+                        step1_alpha_values.append(irt_discrimination_dict[question_id])
+                    
+                if step1_alpha_values:
+                    print("Step1 alpha values: ", step1_alpha_values)
+                    step1_avg_alpha = np.mean(step1_alpha_values)
+                    logger.info(f"Benchmark IRT discrimination After Step 1: {step1_avg_alpha:.4f}")
+                else:
+                    logger.warning("No matching alpha values found for Step 1 passed questions")
+                
+                # else:
+                #     logger.warning("Initial IRT discrimination dictionary not available")
+                
             log_confusion_matrix(
                 problematic_issues=remaining_problematic_issues,
                 passed_ids=set(step1_passed.keys()),
@@ -461,13 +481,13 @@ class BenchmarkFilteringPipeline:
                         "baseline_diversity",
                     )
 
-            if not self.config.get("skip_measurement", False):
-                diversity_dict = self._compute_diversity(step1_passed)
-                logger.info(
-                    f"Benchmark semantic diversity after Step 1: {json.dumps(diversity_dict, indent=2)}"
-                )
-                # Store for final summary
-                self.metrics_summary["step1"]["diversity"] = diversity_dict
+            # if not self.config.get("skip_measurement", False):
+            #     diversity_dict = self._compute_diversity(step1_passed)
+            #     logger.info(
+            #         f"Benchmark semantic diversity after Step 1: {json.dumps(diversity_dict, indent=2)}"
+            #     )
+            #     # Store for final summary
+            #     self.metrics_summary["step1"]["diversity"] = diversity_dict
         else:
             logger.info("Skipping Step 1: Rule-based filtering")
 
@@ -496,8 +516,19 @@ class BenchmarkFilteringPipeline:
                 if not self._is_question_flawed(pipeline_outputs[qid].llm_judge_output)
             }
             if not self.config.get("skip_measurement", False):
-                irt_discrimination = compute_irt_metric(step2_passed, threshold=0.5)
-                logger.info(f"Benchmark IRT discrimination After Step 2: {irt_discrimination:.4f}")
+                step2_alpha_values = []
+                for question_id in step2_passed.keys():
+                    if question_id in irt_discrimination_dict:
+                        step2_alpha_values.append(irt_discrimination_dict[question_id])
+                    
+                if step2_alpha_values:
+                    print("Step2 alpha values: ", step2_alpha_values)
+                    step2_avg_alpha = np.mean(step2_alpha_values)
+                    logger.info(f"Benchmark IRT discrimination After Step 2: {step2_avg_alpha:.4f}")
+                else:
+                    logger.warning("No matching alpha values found for Step 2 passed questions")
+            #     irt_discrimination = compute_irt_metric(step2_passed, threshold=0.5)
+            #     logger.info(f"Benchmark IRT discrimination After Step 2: {irt_discrimination:.4f}")
             log_confusion_matrix(
                 problematic_issues=remaining_problematic_issues,
                 passed_ids=set(step2_passed.keys()),
@@ -581,13 +612,13 @@ class BenchmarkFilteringPipeline:
                 sep_list.append(baseline_separability)
             self.metrics_summary["step2_baseline"]["separability"] = sep_list
 
-            if not self.config.get("skip_measurement", False):
-                diversity_dict = self._compute_diversity(step2_passed)
-                logger.info(
-                    f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}"
-                )
-                # Store for final summary
-                self.metrics_summary["step2"]["diversity"] = diversity_dict
+            # if not self.config.get("skip_measurement", False):
+            #     diversity_dict = self._compute_diversity(step2_passed)
+            #     logger.info(
+            #         f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}"
+            #     )
+            #     # Store for final summary
+            #     self.metrics_summary["step2"]["diversity"] = diversity_dict
 
             # Step 3: Top-K selection based on scores
             if LLMJudgeStep.SCORE in self.llm_config.steps:
@@ -597,8 +628,19 @@ class BenchmarkFilteringPipeline:
                 )
                 current_responses = step3_passed
                 if not self.config.get("skip_measurement", False):
-                    irt_discrimination = compute_irt_metric(step3_passed)
-                    logger.info(f"Benchmark IRT discrimination After Step 3: {irt_discrimination:.4f}")
+                    step3_alpha_values = []
+                    for question_id in step3_passed.keys():
+                        if question_id in irt_discrimination_dict:
+                            step3_alpha_values.append(irt_discrimination_dict[question_id])
+                        
+                    if step3_alpha_values:
+                        print("Step3 alpha values: ", step3_alpha_values)
+                        step3_avg_alpha = np.mean(step3_alpha_values)
+                        logger.info(f"Benchmark IRT discrimination After Step 3: {step3_avg_alpha:.4f}")
+                    else:
+                        logger.warning("No matching alpha values found for Step 3 passed questions")
+                #     irt_discrimination = compute_irt_metric(step3_passed, threshold=0.5)
+                #     logger.info(f"Benchmark IRT discrimination After Step 3: {irt_discrimination:.4f}")
                 log_confusion_matrix(
                     problematic_issues=remaining_problematic_issues,
                     passed_ids=set(step3_passed.keys()),
@@ -669,13 +711,13 @@ class BenchmarkFilteringPipeline:
                         self._current_agreement_stats.copy()
                     )
                     self._current_agreement_stats = {}
-                if not self.config.get("skip_measurement", False):
-                    diversity_dict = self._compute_diversity(step3_passed)
-                    logger.info(
-                        f"Benchmark semantic diversity after Step 3: {json.dumps(diversity_dict, indent=2)}"
-                    )
-                    # Store for final summary
-                    self.metrics_summary["step3"]["diversity"] = diversity_dict
+                # if not self.config.get("skip_measurement", False):
+                #     diversity_dict = self._compute_diversity(step3_passed)
+                #     logger.info(
+                #         f"Benchmark semantic diversity after Step 3: {json.dumps(diversity_dict, indent=2)}"
+                #     )
+                #     # Store for final summary
+                #     self.metrics_summary["step3"]["diversity"] = diversity_dict
 
                 logger.info(f"Step 3 BASELINE (vs Step 3 from all_samples)...")
                 baseline_from_all_step3 = self._create_task_wise_baseline_sample_set(
@@ -703,8 +745,19 @@ class BenchmarkFilteringPipeline:
             step4_passed, step4_dropped = self._run_comprehensive_filtering(
                 current_responses
             )
-            irt_discrimination = compute_irt_metric(step4_passed, threshold=0.5)
-            logger.info(f"Benchmark IRT discrimination After Step 4: {irt_discrimination:.4f}")
+            step4_alpha_values = []
+            for question_id in step4_passed.keys():
+                if question_id in irt_discrimination_dict:
+                    step4_alpha_values.append(irt_discrimination_dict[question_id])
+                
+            if step4_alpha_values:
+                print("Step4 alpha values: ", step4_alpha_values)
+                step4_avg_alpha = np.mean(step4_alpha_values)
+                logger.info(f"Benchmark IRT discrimination After Step 1: {step4_avg_alpha:.4f}")
+            else:
+                logger.warning("No matching alpha values found for Step 4 passed questions")
+            # irt_discrimination = compute_irt_metric(step4_passed, threshold=0.5)
+            # logger.info(f"Benchmark IRT discrimination After Step 4: {irt_discrimination:.4f}")
             log_confusion_matrix(
                 problematic_issues=remaining_problematic_issues,
                 passed_ids=set(step4_passed.keys()),
@@ -775,13 +828,13 @@ class BenchmarkFilteringPipeline:
                 sep_list.append(baseline_separability)
             self.metrics_summary["step4_baseline"]["separability"] = sep_list
 
-            if not self.config.get("skip_diversity_measurement", False):
-                diversity_dict = self._compute_diversity(step4_passed)
-                logger.info(
-                    f"Benchmark semantic diversity after Step 4: {json.dumps(diversity_dict, indent=2)}"
-                )
-                # Store for final summary
-                self.metrics_summary["step4"]["diversity"] = diversity_dict
+            # if not self.config.get("skip_diversity_measurement", False):
+            #     diversity_dict = self._compute_diversity(step4_passed)
+            #     logger.info(
+            #         f"Benchmark semantic diversity after Step 4: {json.dumps(diversity_dict, indent=2)}"
+            #     )
+            #     # Store for final summary
+            #     self.metrics_summary["step4"]["diversity"] = diversity_dict
         else:
             logger.info("Skipping Step 4: Comprehensive rule-based filtering")
 

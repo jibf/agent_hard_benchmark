@@ -30,15 +30,15 @@ class IRTMetric:
         self.threshold = threshold
 
 
-    def compute_irt_discrimination(self, responses_by_question: Dict) -> float:
+    def compute_irt_discrimination(self, responses_by_question: Dict) -> Dict:
         """
-        Compute IRT discrimination parameters and return average alpha value.
+        Compute IRT discrimination parameters and return alpha values for each question.
 
         Args:
             responses_by_question: Dict with question_id as key and list of model responses as value
 
         Returns:
-            Average alpha (discrimination) value across all items
+            Dict with question_id as key and alpha (discrimination) value as value
         """
         logger.info("Computing IRT discrimination parameters...")
 
@@ -48,7 +48,7 @@ class IRTMetric:
 
         if num_items == 0:
             logger.warning("No questions found in responses_by_question")
-            return 0.0
+            return {}
 
         # Create mapping from question_id to item index
         question_to_item = {q_id: idx for idx, q_id in enumerate(question_ids)}
@@ -66,7 +66,7 @@ class IRTMetric:
 
         if num_subjects == 0:
             logger.warning("No models found in responses")
-            return 0.0
+            return {}
 
         logger.info(f"IRT data: {num_items} items, {num_subjects} subjects")
 
@@ -92,7 +92,7 @@ class IRTMetric:
 
         if len(responses_data) == 0:
             logger.warning("No valid responses found for IRT analysis")
-            return 0.0
+            return {}
 
         # Convert to tensors
         subjects_tensor = torch.tensor(subject_indices, dtype=torch.long, device=self.device)
@@ -117,30 +117,39 @@ class IRTMetric:
 
             if 'a' not in samples:
                 logger.warning("Discrimination parameters (a) not found in MCMC samples")
-                return 0.0
+                return {}
 
-            # Calculate average alpha across all items and MCMC samples
+            # Calculate alpha values for each item across MCMC samples
             a_samples = samples['a'].cpu().numpy()
-            alpha_means = np.mean(a_samples, axis=0)  # Average across MCMC samples
-            average_alpha = np.mean(alpha_means)  # Average across items
+            alpha_means = np.mean(a_samples, axis=0)  # Average across MCMC samples for each item
 
-            return float(average_alpha)
+            # Create mapping from item index back to question_id
+            item_to_question = {idx: q_id for q_id, idx in question_to_item.items()}
+            
+            # Return dict with question_id as key and alpha value as value
+            alpha_dict = {}
+            for item_idx, alpha_value in enumerate(alpha_means):
+                question_id = item_to_question[item_idx]
+                alpha_dict[question_id] = float(alpha_value)
+
+            return alpha_dict
 
         except Exception as e:
             logger.error(f"Error during IRT model fitting: {e}")
-            return 0.0
+            return {}
 
 
-def compute_irt_metric(responses_by_question: Dict, device: str = "cuda", threshold: float=0.5) -> float:
+def compute_irt_metric(responses_by_question: Dict, device: str = "cuda", threshold: float=0.5) -> Dict:
     """
     Convenience function to compute IRT discrimination metric.
 
     Args:
         responses_by_question: Dict with question_id as key and list of model responses as value
         device: Device to run computation on
+        threshold: Threshold for binarizing scores
 
     Returns:
-        Average alpha (discrimination) value across all items
+        Dict with question_id as key and alpha (discrimination) value as value
     """
     irt_metric = IRTMetric(device=device, threshold=threshold)
     return irt_metric.compute_irt_discrimination(responses_by_question)
