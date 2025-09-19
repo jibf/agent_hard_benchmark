@@ -47,7 +47,7 @@ class TauBenchLoader(BaseLoader):
             with open(file_path, "r") as f:
                 for response_str in f:
                     response = json.loads(response_str)
-                    question_id = f"{response["task_name"]}-{response["meta"]["id"]}"
+                    question_id = f"{response['task_name']}-{response['meta']['id']}"
                     responses_by_question_id[question_id].append(response)
         return dict(responses_by_question_id)
 

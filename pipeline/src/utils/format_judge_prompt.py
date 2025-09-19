@@ -76,7 +76,10 @@ def _serialize_value(value):
     if isinstance(value, (str, int, float, bool)):
         return value
     elif isinstance(value, (dict, list)):
-        return json.dumps(value, indent=2)
+        try:
+            return json.dumps(value, indent=2)
+        except:
+            return json.dumps(dict(value), indent=2)
     elif isinstance(value, Benchmark):
         return value.value
     else:

@@ -5,6 +5,7 @@ import logging
 import toml
 import re
 from typing import Dict, Any, List, Optional
+from collections import defaultdict
 from . import BaseLoader
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.utils.types import Tau2BenchQuestion, Benchmark
@@ -16,6 +17,12 @@ class Tau2BenchLoader(BaseLoader):
         # Suppress tau2 logs
         os.environ['LOGURU_LEVEL'] = 'ERROR'
         super().__init__()
+        self.responses_by_question_id = self._load_responses()
+
+        # Cache user function schemas for each domain
+        self.user_function_schemas_cache = {}
+        for domain in ["airline", "retail", "telecom"]:
+            self.user_function_schemas_cache[domain] = self._get_user_function_schemas(domain)
     
     def load_questions(self) -> List[Tau2BenchQuestion]:
         """Load questions from the dataset"""
@@ -73,6 +80,23 @@ class Tau2BenchLoader(BaseLoader):
 
         return env_data
 
+    def _load_responses(self, response_path="benchmark/tau2-bench-evaluation") -> Dict[str, list]:
+        """Load responses for extracting relevant product IDs"""
+        responses_by_question_id = defaultdict(list)
+        if not os.path.exists(response_path):
+            return dict(responses_by_question_id)
+
+        for file_name in os.listdir(response_path):
+            file_path = os.path.join(response_path, file_name)
+            if not file_path.endswith(".jsonl"):
+                continue
+            with open(file_path, "r") as f:
+                for response_str in f:
+                    response = json.loads(response_str)
+                    question_id = f"{response['task_name']}-{response['meta']['id']}"
+                    responses_by_question_id[question_id].append(response)
+        return dict(responses_by_question_id)
+
     def _format_tau2_task(self, task: Dict[str, Any], domain: str, env_data: Dict[str, Any] = None) -> Tau2BenchQuestion:
         """Format a tau2-bench task to Tau2BenchQuestion"""
         task_id = task.get('id', 'unknown')
@@ -99,9 +123,12 @@ class Tau2BenchLoader(BaseLoader):
         instruction = "\n\n".join(instruction_parts)
         
         # Extract conversation trajectory and evaluation criteria
-        gt_conv_traj = task["evaluation_criteria"]["actions"]
+        gt_actions = task["evaluation_criteria"]["actions"]
 
-        # combine task purpose to the evaluation_criteria 
+        # Generate conversations with observations for each tool call
+        gt_conv_traj = self._convert_actions_to_conversations(gt_actions, domain, env_data)
+
+        # combine task purpose to the evaluation_criteria
         evaluation_criteria = task.get("evaluation_criteria", {})
         evaluation_criteria["task_purpose"] = task["description"]["purpose"]
         initial_state = task.get("initial_state")
@@ -115,7 +142,7 @@ class Tau2BenchLoader(BaseLoader):
             benchmark=Benchmark.TAU2_BENCH,
             agent_system_prompt=self._get_agent_system_prompt(domain),
             user_context=self._get_user_context(task, domain, env_data),
-            available_user_function_list=self._get_user_function_schemas(domain),
+            available_user_function_list=self.user_function_schemas_cache[domain],
             initial_state=initial_state,
             evaluation_criteria=evaluation_criteria,
             meta={
@@ -169,23 +196,18 @@ class Tau2BenchLoader(BaseLoader):
     
     def _get_agent_system_prompt(self, domain: str) -> str:
         """Get agent system prompt for domain"""
-        try:
-            # Add tau2-bench-envs/src to Python path for imports
-            tau2_bench_path = "data/tau2-bench-envs/src"
-            if tau2_bench_path not in sys.path:
-                sys.path.insert(0, tau2_bench_path)
+        # Add tau2-bench-envs/src to Python path for imports
+        tau2_bench_path = "data/tau2-bench-envs/src"
+        if tau2_bench_path not in sys.path:
+            sys.path.insert(0, tau2_bench_path)
 
-            from tau2.registry import registry
-            env_constructor = registry.get_env_constructor(domain)
-            environment = env_constructor()
+        from tau2.registry import registry
+        env_constructor = registry.get_env_constructor(domain)
+        environment = env_constructor()
 
-            # Get policy from environment
-            policy = getattr(environment, 'policy', '')
-            return demote_markdown_headings(policy, 3) if policy else f"You are a helpful assistant for the {domain} domain."
-
-        except Exception as e:
-            print(f"Error getting agent system prompt for domain {domain}: {e}")
-            return f"You are a helpful assistant for the {domain} domain."
+        # Get policy from environment
+        policy = getattr(environment, 'policy', '')
+        return demote_markdown_headings(policy, 3) if policy else f"You are a helpful assistant for the {domain} domain."
     
     def _get_user_context(self, task: Dict[str, Any], domain: str, env_data: Dict[str, Any] = None) -> str:
         """Generate user context from task with database information"""
@@ -249,6 +271,8 @@ class Tau2BenchLoader(BaseLoader):
     def _generate_airline_context(self, user_id: str, env_data: Dict[str, Any], task: Dict[str, Any]) -> str:
         """Generate airline domain user context"""
         context_parts = ["#### User Information"]
+        domain = "airline"
+        task_id = task.get('id', 'unknown')
 
         users = env_data.get('users', {})
         flights = env_data.get('flights', {})
@@ -314,6 +338,8 @@ class Tau2BenchLoader(BaseLoader):
     def _generate_retail_context(self, user_id: str, env_data: Dict[str, Any], task: Dict[str, Any]) -> str:
         """Generate retail domain user context"""
         context_parts = ["#### User Information"]
+        domain = "retail"
+        task_id = task.get('id', 'unknown')
 
         users = env_data.get('users', {})
         products = env_data.get('products', {})
@@ -350,6 +376,19 @@ class Tau2BenchLoader(BaseLoader):
             payment_methods = user_info['payment_methods']
             context_parts.append(f"* Payment methods:\n```json\n{json.dumps(payment_methods, indent=2)}\n```")
 
+        # Retrieve relevant product IDs from responses (for retail domain)
+        relevant_product_ids = []
+        responses = self.responses_by_question_id.get(f"{domain}-{task_id}", [])
+        for response in responses:
+            messages = response.get("messages", [])
+            for message in messages:
+                if "tool_calls" in message:
+                    for tool_call in message["tool_calls"]:
+                        function_arguments = tool_call["arguments"]
+                        if "product_id" in function_arguments:
+                            relevant_product_ids.append(function_arguments["product_id"])
+        relevant_product_ids = list(set(relevant_product_ids))
+
         # Orders
         if 'orders' in user_info:
             order_ids = user_info['orders']
@@ -362,6 +401,16 @@ class Tau2BenchLoader(BaseLoader):
                     context_parts.append(f"```json\n{order_json}\n```")
                 else:
                     context_parts.append(f"\nOrder {order_id}: Not found in system")
+
+        # Add relevant product details
+        if relevant_product_ids:
+            products = env_data.get('products', {})
+            context_parts.append(f"\n#### Relevant Product Details:")
+            for relevant_product_id in relevant_product_ids:
+                if relevant_product_id in products:
+                    context_parts.append(f"\nProduct {relevant_product_id}:")
+                    product_json = json.dumps(products[relevant_product_id], indent=2)
+                    context_parts.append(f"```json\n{product_json}\n```")
 
         # Add task-specific context
         user_scenario = task.get('user_scenario', {})
@@ -462,31 +511,153 @@ class Tau2BenchLoader(BaseLoader):
         if domain != 'telecom':
             return []
             
-        try:
-            # Add tau2-bench-envs/src to Python path for imports
-            tau2_bench_path = "data/tau2-bench-envs/src"
-            if tau2_bench_path not in sys.path:
-                sys.path.insert(0, tau2_bench_path)
+        tau2_bench_path = "data/tau2-bench-envs/src"
+        if tau2_bench_path not in sys.path:
+            sys.path.insert(0, tau2_bench_path)
+        
+        from tau2.registry import registry
+        env_constructor = registry.get_env_constructor(domain)
+        environment = env_constructor()
+        
+        # Get user tools
+        if hasattr(environment, 'get_user_tools'):
+            user_tools = environment.get_user_tools()
+            schemas = []
             
-            from tau2.registry import registry
-            env_constructor = registry.get_env_constructor(domain)
-            environment = env_constructor()
+            for tool in user_tools:
+                if hasattr(tool, 'openai_schema'):
+                    schemas.append(tool.openai_schema)
             
-            # Get user tools
-            if hasattr(environment, 'get_user_tools'):
-                user_tools = environment.get_user_tools()
-                schemas = []
-                
-                for tool in user_tools:
-                    if hasattr(tool, 'openai_schema'):
-                        schemas.append(tool.openai_schema)
-                
-                return schemas
-            
-        except Exception as e:
-            print(f"Error getting user function schemas for domain {domain}: {e}")
-
+            return schemas
+        
         return []
+
+    def _convert_actions_to_conversations(self, actions: List[Dict[str, Any]], domain: str, env_data: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """Convert tau2-bench actions to conversation format with real tool execution results"""
+        conversations = []
+        # Create a mutable copy of env_data to track state changes
+        current_env_data = json.loads(json.dumps(env_data)) if env_data else {}
+
+        # Create a single environment instance to persist state across tool calls
+        tau2_bench_path = "data/tau2-bench-envs/src"
+        if tau2_bench_path not in sys.path:
+            sys.path.insert(0, tau2_bench_path)
+
+        # Suppress loguru logs
+        try:
+            from loguru import logger
+            logger.disable("tau2")
+            logger.disable("litellm")
+        except ImportError:
+            pass
+
+        from tau2.registry import registry
+        env_constructor = registry.get_env_constructor(domain)
+        environment = env_constructor()
+
+        # Set the initial environment data
+        if hasattr(environment, '_data'):
+            environment._data.update(current_env_data)
+
+        # Convert each action to assistant message with tool call + real observation
+        for i, action in enumerate(actions):
+            action_name = action.get("func_name", action.get("name", ""))
+            action_arguments = action.get("arguments", {})
+
+            is_user_function = False
+            for user_function_schema in self.user_function_schemas_cache[domain]:
+                if action_name == user_function_schema["function"]["name"]:
+                    is_user_function = True
+
+            # Assistant message with tool call
+            conversations.append({
+                "role": "user" if is_user_function else "assistant",
+                "function_call": [
+                    {
+                        "name": action_name,
+                        "arguments": action_arguments
+                    }
+                ]
+            })
+
+            if is_user_function:
+                result = self._execute_tool_with_state_user(action_name, action_arguments, domain, environment)
+            else:
+                result = self._execute_tool_with_state_agent(action_name, action_arguments, domain, environment)
+
+            # Update current_env_data from environment state
+            if hasattr(environment, '_data'):
+                current_env_data = environment._data
+
+            observation_content = result
+
+            conversations.append({
+                "role": "observation",
+                "content": [observation_content]
+            })
+
+        return conversations
+
+    def _execute_tool_with_state_user(self, tool_name: str, arguments: Dict[str, Any], domain: str, environment) -> Dict[str, Any]:
+        """Execute a tau2-bench user tool using persistent environment"""
+        # Get user tools from the persistent environment
+        user_tools = environment.get_user_tools()
+        target_tool = None
+
+        for tool in user_tools:
+            if hasattr(tool, 'openai_schema') and tool.openai_schema.get('function', {}).get('name') == tool_name:
+                target_tool = tool
+                break
+
+        if target_tool is None:
+            return {"error": f"User tool {tool_name} not found"}
+
+        # Execute the tool
+        try:
+            result = target_tool(**arguments)
+        except Exception as e:
+            return {"error": f"Error executing user tool {tool_name}: {str(e)}"}
+
+        # User tools return plain text strings, wrap in dict for consistency
+        if isinstance(result, str):
+            parsed_result = {"content": result}
+        else:
+            parsed_result = {"content": str(result)}
+
+        return parsed_result
+
+    def _execute_tool_with_state_agent(self, tool_name: str, arguments: Dict[str, Any], domain: str, environment) -> Dict[str, Any]:
+        """Execute a tau2-bench assistant tool using persistent environment"""
+        # Get assistant tools from the persistent environment
+        assistant_tools = environment.get_tools()
+        target_tool = None
+
+        for tool in assistant_tools:
+            if hasattr(tool, 'openai_schema') and tool.openai_schema.get('function', {}).get('name') == tool_name:
+                target_tool = tool
+                break
+
+        if target_tool is None:
+            return {"error": f"Assistant tool {tool_name} not found"}
+
+        # Execute the tool
+        try:
+            result = target_tool(**arguments)
+        except Exception as e:
+            return {"error": f"Error executing assistant tool {tool_name}: {str(e)}"}
+
+        # Assistant tools return JSON-parseable strings or objects
+        if isinstance(result, str):
+            try:
+                parsed_result = json.loads(result)
+            except json.JSONDecodeError:
+                parsed_result = {"content": result}
+        elif hasattr(result, "__dict__"):
+            parsed_result = dict(result)
+        else:
+            parsed_result = {"content": str(result)}
+
+        return parsed_result
 
 
 def demote_markdown_headings(markdown_text: str, levels_to_demote: int = 3) -> str:
