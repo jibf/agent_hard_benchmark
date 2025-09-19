@@ -63,6 +63,8 @@ class ToolCallingAgent(Agent):
                 else:
                     self.base_url = os.getenv("BASE_URL")
                 self.api_key = os.getenv("API_KEY")
+        self.base_url = os.getenv("BASE_URL")
+        self.api_key = os.getenv("API_KEY")
 
     # def _is_custom_api_model(self, model: str) -> bool:
     #     """
@@ -258,6 +260,8 @@ class ToolCallingAgent(Agent):
                     custom_llm_provider=self.provider,
                     tools=self.tools_info,
                     temperature=self.temperature,
+                    api_key=self.api_key,
+                    base_url=self.base_url,
                 )
 
             next_message = res.choices[0].message.model_dump()
