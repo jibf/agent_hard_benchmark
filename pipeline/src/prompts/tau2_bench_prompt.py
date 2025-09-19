@@ -56,7 +56,6 @@ You will be provided with the following information:
 * **Functions available to the user**: a list of functions available for the user-simulating models and their schema. When the user cannot directly call any functions, this is set to be empty.
 * **Complete Evaluation Criteria**: The complete evaluation criteria including milestone ground-truth actions (function calls), natural language assertions, and final environment state assertion to validate. The sample is considered to be flawed if one or more of these criteria is unachievable. 
 * **Ground-Truth Milestone Function Calls**: the provided ground-truth trajectory. Note that this is not a complete log of all function calls. Instead, it is a curated list containing only the key milestone function calls required to solve the task. Note that messages with `"role": "observation"` are the outputs of the immediately preceding function call.
-
 A sample is **flawed** if it exhibits one or more of the issues described below.
 
 ## Flaw Categories
@@ -67,12 +66,8 @@ Below is the categorization of benchmark issues, outlined according to its **rel
 
 This category covers flaws within the agent's operating environment—the tools and API results—which can make a task unsolvable regardless of the agent's logic.
 
-* Insufficient toolsets: the environment does not provide the necessary tools (functions), making the agent impossible to solve the task even with a combination of multiple tools and reasoning.
-  * Example: A user asks for an advanced file manipulation, while the environment only provides basic tools like `mk` or `ls`.
-
 * Flawed function design: the naming or the description of an available function is misleading or contradicts its actual functionality.
-  * Example: A function named `vt_get_votes_on_ip_address` provides "example.com" as an example for its argument value in its schema.
-
+  * Example: A function named `vt_get_votes_on_ip_address` provides "example.com" as an example for its argument value in its schema. 
 
 ### Ground-Truth
 
@@ -93,16 +88,29 @@ This category addresses errors in the provided ground-truth trajectory, where th
   * Redundant tool call: A function call that is not necessary in solving the task. Example: the agent is asked to search for attractions until it finds one that meets a certain condition; However, the agent performs the search in an arbitrary order, resulting in an excessive number of function calls.
 
 
-## Crucial Rule: Actively Reconstruct the Conversation 
+## Crucial Rule: Actively Reconstruct the Conversation
 
-The ground-truth trajectory only shows key milestone function calls, not the full conversation between the user and the agent. Your primary task is to determine if a plausible, un-shown conversation could logically connect the user's initial request to the final ground-truth actions, while respecting all System Policies.
+The ground-truth trajectory only contains key milestone function calls. It intentionally omits function calls that are less important for evaluation and the natural language conversation between the user and the agent (e.g., user confirmations, request, clarifications, or follow-up questions).
+Your task is to find undeniable flaws. Therefore, you MUST operate under the following assumption:
 
-Do not flag a sample as flawed simply because the final action doesn't match the initial request. Instead, actively play out a hypothetical dialogue in your reasoning process:
-* Could the agent have presented options?
-* Could the agent have asked for confirmation (as required by policy)?
-* Could the user have changed their mind based on new information or a conditional instruction (as described in the scenario)?
+* For example, the ground truth milestone sequence may not contain a call that authenticates the user identity. It may have been intentionallly omitted from the milestone sequence, since it is considered less important than calls that explicitly process user requests. Therefore, lack of authentication, user's confirmation or request, clarification should NOT be the sole reason to judge a sample as flawed.
+* If a sequence of function calls can be justified by a plausible, un-shown conversation that does not contradict the User Scenario or System Policy, then it is NOT a flaw. The agent would have explained the user why it cannot process his request, although it is not shown in the milestone trajectory.
+* In other words, imagine a possible conversation history that would justify the ground truth milestone function call trajectory. When you contemplate of a plausible trajectory, note that the user can make a request that is not mentioned in the prompt, guided by the agent. Flag a sample as flawed ONLY if a function call is impossible to justify, even with a hypothetical conversation. Do NOT infer a flaw from missing conversational steps.
 
-A sample is flawed ONLY IF there is no possible conversational path that can logically justify the ground-truth actions without violating the user's instructions or the system's rules.
+
+## Evaluation and Output Format
+Carefully analyze the provided sample. Think step-by-step to determine if the ground-truth trajectory is a correct and logical solution to the user's prompt.
+
+Your final output must be a JSON object with the following structure, with no additional commentary:
+
+```json
+{{
+  "reasoning": "Provide a clear, step-by-step explanation for your decision. If the sample is flawed, specify what is incorrect and why it contradicts the user's prompt, system policies, or the user's role. If it is not flawed, briefly explain why the sample is valid.",
+  "reasoning_summary": "A shorter rationale for your decision. If the sample is not flawed, just mention that it is not flawed. If it is flawed, specify the issue concisely. e.g., The ground truth books a connecting flight, but the user requested a direct flight.",
+  "error_category": "The category that corresponds to the issue. e.g., \"Incorrect function calls\". If the sample is not flawed, use \"Not Flawed\".",
+  "is_flawed": <true or false>
+}}
+```
 
 
 ## Evaluation and Output Format
@@ -173,36 +181,75 @@ if __name__ == "__main__":
     from src.utils.types import Benchmark
     from src.bench_loaders import get_bench_loader
     import argparse
+    import sys
 
 
     parser = argparse.ArgumentParser(description="Generate formatted prompt for Tau Bench")
-    parser.add_argument("-q", "--question_id", type=str, 
+    parser.add_argument("-q", "--question_id", type=str,
                        help="Question ID to format (e.g., etail-132)")
+    parser.add_argument("--save-all", action="store_true",
+                       help="Save all prompts to tau2_bench_prompts folder with format task_name-question_id.txt")
     args = parser.parse_args()
-    task_name, question_id = args.question_id.split("-")
 
     # Test Tau2 Bench
     tau2_loader = get_bench_loader(Benchmark.TAU2_BENCH)()
     tau2_questions = tau2_loader.load_questions()
-    tau2_sample = None
-    for question in tau2_questions:
-        if question.question_id == question_id and question.task_name == task_name:
-            tau2_sample = question
-    print(tau2_sample.question_id)
 
-    # Generate formatted prompt using the FILTERING_PROMPT template
-    tau2_prompt = FILTERING_PROMPT.format(
-        instruction=tau2_sample.instruction,
-        agent_system_prompt=tau2_sample.agent_system_prompt,
-        user_context=tau2_sample.user_context,
-        initial_state=getattr(tau2_sample, 'initial_state', ''),
-        available_function_list=tau2_sample.available_function_list,
-        available_user_function_list=getattr(tau2_sample, 'available_user_function_list', []),
-        evaluation_criteria=getattr(tau2_sample, 'evaluation_criteria', {}),
-        gt_conv_traj=tau2_sample.gt_conv_traj
-    )
+    if args.save_all:
+        # Save all prompts to tau2_bench_prompts folder
+        import os
+        os.makedirs("tau2_bench_prompts", exist_ok=True)
 
-    with open("tau2_bench_formatted_prompt.txt", "w", encoding="utf-8") as f:
-        f.write(tau2_prompt)
+        for question in tau2_questions:
+            tau2_prompt = FILTERING_PROMPT.format(
+                instruction=question.instruction,
+                agent_system_prompt=question.agent_system_prompt,
+                user_context=question.user_context,
+                initial_state=getattr(question, 'initial_state', ''),
+                available_function_list=question.available_function_list,
+                available_user_function_list=getattr(question, 'available_user_function_list', []),
+                evaluation_criteria=getattr(question, 'evaluation_criteria', {}),
+                gt_conv_traj=question.gt_conv_traj
+            )
 
-    print("Tau2 Bench formatted prompt saved to tau2_bench_formatted_prompt.txt")
+            filename = f"tau2_bench_prompts/{question.task_name}-{question.question_id}.txt"
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(tau2_prompt)
+
+        print(f"Saved {len(tau2_questions)} prompts to tau2_bench_prompts/ folder")
+    else:
+        # Original single question functionality
+        if not args.question_id:
+            print("Error: --question_id is required when not using --save-all")
+            sys.exit(1)
+
+        task_name, question_id = args.question_id.split("-")
+
+        tau2_sample = None
+        for question in tau2_questions:
+            if question.question_id == question_id and question.task_name == task_name:
+                tau2_sample = question
+                break
+
+        if tau2_sample is None:
+            print(f"Error: Could not find question with ID {args.question_id}")
+            sys.exit(1)
+
+        print(tau2_sample.question_id)
+
+        # Generate formatted prompt using the FILTERING_PROMPT template
+        tau2_prompt = FILTERING_PROMPT.format(
+            instruction=tau2_sample.instruction,
+            agent_system_prompt=tau2_sample.agent_system_prompt,
+            user_context=tau2_sample.user_context,
+            initial_state=getattr(tau2_sample, 'initial_state', ''),
+            available_function_list=tau2_sample.available_function_list,
+            available_user_function_list=getattr(tau2_sample, 'available_user_function_list', []),
+            evaluation_criteria=getattr(tau2_sample, 'evaluation_criteria', {}),
+            gt_conv_traj=tau2_sample.gt_conv_traj
+        )
+
+        with open("tau2_bench_formatted_prompt.txt", "w", encoding="utf-8") as f:
+            f.write(tau2_prompt)
+
+        print("Tau2 Bench formatted prompt saved to tau2_bench_formatted_prompt.txt")

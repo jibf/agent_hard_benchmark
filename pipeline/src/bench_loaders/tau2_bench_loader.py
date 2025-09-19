@@ -216,6 +216,14 @@ class Tau2BenchLoader(BaseLoader):
 
         # Extract user ID from task
         user_id = self._extract_user_id(task, domain)
+
+        # If no user_id found, try to find by name from "You are [name]" pattern
+        if not user_id:
+            name_info = self._extract_user_name_from_known_info(task)
+            if name_info:
+                first_name, last_name = name_info
+                user_id = self._find_user_id_by_name_in_db(first_name, last_name, env_data, domain)
+
         if not user_id:
             return f"User context for {domain} domain task - no user ID found."
 
@@ -266,6 +274,52 @@ class Tau2BenchLoader(BaseLoader):
                 if 'customer_id' in arguments:  # For telecom
                     return arguments['customer_id']
 
+        # Fallback: Extract name from "You are [first_name] [last_name]" pattern in known_info
+        # This will be used to look up user_id by name in the context generation
+        return None
+
+    def _extract_user_name_from_known_info(self, task: Dict[str, Any]) -> Optional[tuple[str, str]]:
+        """Extract first and last name from various name patterns in known_info"""
+        import re
+
+        known_info = task["user_scenario"]["instructions"]["known_info"]
+        # Pattern to match various forms:
+        # - "You are [first_name] [last_name]"
+        # - "You're [first_name] [last_name]"
+        # - "[anything] name is [first_name] [last_name]"
+        patterns = [
+            r'(?:You are|You\'re)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)',
+            r'name is\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)'
+        ]
+
+        for pattern in patterns:
+            name_match = re.search(pattern, known_info)
+            if name_match:
+                return name_match.group(1), name_match.group(2)
+        return None
+
+    def _find_user_id_by_name_in_db(self, first_name: str, last_name: str, env_data: Dict[str, Any], domain: str) -> Optional[str]:
+        """Find user_id by searching for name in the database"""
+        if domain == "airline" or domain == "retail":
+            users = env_data.get('users', {})
+            for user_id, user_info in users.items():
+                name_info = user_info.get('name', {})
+                if isinstance(name_info, dict):
+                    user_first = name_info.get('first_name', '').lower()
+                    user_last = name_info.get('last_name', '').lower()
+                    if user_first == first_name.lower() and user_last == last_name.lower():
+                        return user_id
+        elif domain == "telecom":
+            customers = env_data.get('customers', [])
+            for customer in customers:
+                full_name = customer.get('full_name', '')
+                # Split full name and compare
+                if ' ' in full_name:
+                    parts = full_name.split(' ', 1)
+                    user_first = parts[0].lower()
+                    user_last = parts[1].lower() if len(parts) > 1 else ''
+                    if user_first == first_name.lower() and user_last == last_name.lower():
+                        return customer.get('customer_id')
         return None
 
     def _generate_airline_context(self, user_id: str, env_data: Dict[str, Any], task: Dict[str, Any]) -> str:
