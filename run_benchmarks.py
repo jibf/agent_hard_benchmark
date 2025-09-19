@@ -448,7 +448,7 @@ class BenchmarkRunner:
         benchmark_output_dir.mkdir(parents=True, exist_ok=True)
 
         # Run generation
-        command = f"bfcl generate --model {self.model_name} --num-threads {self.proc_num} --temperature {self.temperature} --result-dir {benchmark_output_dir}"
+        command = f"bfcl generate --model {self.model_name} --num-threads {self.proc_num} --temperature {self.temperature} --result-dir {benchmark_output_dir}/result"
 
         success, output = self.run_command(
             command, benchmark_dir, timeout=7200
@@ -466,7 +466,7 @@ class BenchmarkRunner:
         # Run evaluation if generation succeeded
         if success:
             self.logger.info("Running BFCL evaluation...")
-            eval_command = f"bfcl evaluate --model {self.model_name} --result-dir {benchmark_output_dir}"
+            eval_command = f"bfcl evaluate --model {self.model_name} --result-dir {benchmark_output_dir}/result --score-dir {benchmark_output_dir}/score"
 
             eval_success, eval_output = self.run_command(eval_command, benchmark_dir)
 
