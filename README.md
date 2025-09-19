@@ -51,7 +51,45 @@ USER_BASE_URL=your_user_model_endpoint_url
 RAPID_API_KEY=your_rapid_api_key_here
 ```
 
-### 3. Running Benchmarks
+### 3. Verify Available Models
+
+Before running benchmarks, check which models are available from your configured API endpoints:
+
+```bash
+# Check available models from your configured endpoints
+python list_available_models.py
+```
+
+This script will:
+- Load your `.env` configuration
+- Test connections to both agent and user model endpoints
+- Display all available model IDs that you can use
+- Show your current configuration status
+
+**Example output:**
+```
+Agent Hard Benchmark - Model Availability Checker
+============================================================
+Loaded environment from .env
+
+AGENT/CLIENT MODELS:
+------------------------------
+Agent Endpoint: Testing connection to https://api.openai.com/v1
+Agent Endpoint: Connected successfully
+Agent Endpoint: Found 15 models
+Available models for agents:
+   1. gpt-4o-2024-08-06
+   2. gpt-4o-mini-2024-07-18
+   3. gpt-4-turbo-2024-04-09
+   ...
+
+USER MODELS (for multi-agent benchmarks):
+---------------------------------------------
+USER_API_KEY and USER_BASE_URL not configured
+This is optional and only needed for multi-agent benchmarks like ToolSandbox
+```
+
+### 4. Running Benchmarks
 
 #### Basic Usage
 
