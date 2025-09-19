@@ -66,7 +66,7 @@ A sample is flawed if at least one ground-truth function call violates one of th
    – Such mismatches reflect mis-specified tools, not model reasoning, so they must be flagged.
    - NOTE: All functions are Python functions, which do not need the parameter names to be passed in the queries. If the ground truth function call passes by argument without the parameter name, then it is not a mismatch. If you are unsure, flag it as valid.
 
-2. **Ambiguous or Poorly Written User Query**
+3. **Ambiguous or Poorly Written User Query**
    - Example: User query 'E. coli doubles every 20m, 120m from 5 cells' or 'what's the clock? in London, Paris and Kiev, dude?' or 'Any big weather changes in last hour in NY, NY, dude?'. It is unclear exactly what the user is asking for.
    - Such mismatches reflect ambiguous user queries, not model reasoning, so they must be flagged.
    - However, ONLY flag this if the user query cannot be reasonably inferred from the available tools and system instructions. If you are unsure, flag it as valid.
