@@ -3,6 +3,7 @@ import os
 import sys
 import re
 from typing import Dict, Any, List
+from collections import defaultdict
 from . import BaseLoader
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.utils.types import TauBenchQuestion, Benchmark
@@ -21,6 +22,7 @@ class TauBenchLoader(BaseLoader):
     def __init__(self):
         # Add the project root to path for imports
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        self.responses_by_question_id = self._load_responses()
     
     def load_tau_bench_data(self, domain: str) -> Dict[str, Any]:
         """Load tau-bench environment data (users, flights/products, reservations)"""
@@ -35,6 +37,20 @@ class TauBenchLoader(BaseLoader):
                     env_data[file_name.replace('.json', '')] = json.load(f)
         
         return env_data
+
+    def _load_responses(self, response_path="benchmark/tau-bench-evaluation") -> Dict[str, list]:
+        responses_by_question_id = defaultdict(list)
+        for file_name in os.listdir(response_path):
+            file_path = os.path.join(response_path, file_name)
+            if not file_path.endswith(".jsonl"):
+                continue
+            with open(file_path, "r") as f:
+                for response_str in f:
+                    response = json.loads(response_str)
+                    question_id = f"{response["task_name"]}-{response["meta"]["id"]}"
+                    responses_by_question_id[question_id].append(response)
+        return dict(responses_by_question_id)
+
     
     def load_tau_bench_tools(self, domain: str) -> List[Dict[str, Any]]:
         """Load tool schemas for tau-bench domain using get_info() methods"""
@@ -58,13 +74,13 @@ class TauBenchLoader(BaseLoader):
         
         # Extract task components
         
-        user_id = sample.get('user_id')
+        user_id = sample['user_id']
         instruction = sample.get('instruction', '')
         actions = sample.get('actions', [])
         outputs = sample.get('outputs', [])
         
         agent_system_prompt = self._get_agent_system_prompt(user_id, env_data, domain)
-        user_context = self._generate_user_context(user_id, env_data, domain, instruction)
+        user_context = self._generate_user_context(user_id, env_data, sample_id)
         conversations = self._convert_actions_to_conversations(actions, domain, env_data)
         functions = self.load_tau_bench_tools(domain)
         
@@ -112,16 +128,18 @@ class TauBenchLoader(BaseLoader):
             if wiki_content:
                 return demote_markdown_headings(wiki_content, 3)
     
-    def _generate_user_context(self, user_id: str, env_data: Dict[str, Any], domain: str, instruction: str = "") -> str:
+    def _generate_user_context(self, user_id: str, env_data: Dict[str, Any], question_id: str) -> str:
         """Generate user context string based on user's orders/reservations and related products/flights."""
+        domain = question_id.split("-")[0]
+
         if domain == "retail":
-            return self._generate_retail_user_context(user_id, env_data, instruction)
+            return self._generate_retail_user_context(user_id, env_data, question_id)
         elif domain == "airline":
-            return self._generate_airline_user_context(user_id, env_data, instruction)
+            return self._generate_airline_user_context(user_id, env_data, question_id)
         else:
             raise ValueError(f"Domain {domain} is not supported")
     
-    def _generate_retail_user_context(self, user_id: str, env_data: Dict[str, Any], instruction: str = "") -> str:
+    def _generate_retail_user_context(self, user_id: str, env_data: Dict[str, Any], question_id: str) -> str:
         context_parts = []
 
         context_parts.append("\n#### User Information")
@@ -132,9 +150,8 @@ class TauBenchLoader(BaseLoader):
         user_info = users.get(user_id)
         if not user_info:
             return f"* User ID: {user_id} (No additional user information found)"
-        
         context_parts.append(f"* User ID: {user_id}")
-        
+
         # Add user details
         name_info = user_info.get('name', {})
         if isinstance(name_info, dict):
@@ -161,11 +178,26 @@ class TauBenchLoader(BaseLoader):
             payment_methods = user_info['payment_methods']
             context_parts.append(f"* Payment methods: \n```json\n{json.dumps(payment_methods, indent=2)}```")
 
+        # retrieve relevant product ids from responses
+        relevant_product_ids = []
+        try:
+            responses = self.responses_by_question_id[question_id]
+            for response in responses:
+                messages = response.get("messages", [])
+                for message in messages:
+                    if "tool_calls" in message:
+                        for tool_call in message["tool_calls"]:
+                            function_arguments = json.loads(tool_call["function"]["arguments"])
+                            if "product_id" in function_arguments:
+                                relevant_product_ids.append(function_arguments["product_id"])
+        except:
+            print(f"{question_id}: Error retrieving relevant product ids")
+        relevant_product_ids = set(relevant_product_ids)
     
         if 'orders' in user_info:
-            order_ids = user_info['orders']
+            relevant_order_ids = user_info['orders']
             context_parts.append(f"\n#### Relevant Order Details:")
-            for order_id in order_ids:
+            for order_id in relevant_order_ids:
                 order_info = orders.get(order_id)
                 if order_info:
                     context_parts.append(f"\nOrder {order_id}:")
@@ -173,10 +205,18 @@ class TauBenchLoader(BaseLoader):
                     context_parts.append(f"```json\n{order_json}\n```")
                 else:
                     context_parts.append(f"\nOrder {order_id}: Not found in system")
+
+        if relevant_product_ids:
+            context_parts.append(f"\n#### Relevant Product Details:")
+            for relevant_product_id in relevant_product_ids:
+                if relevant_product_id in products:
+                    context_parts.append(f"\nProduct {relevant_product_id}:")
+                    product_json = json.dumps(products[relevant_product_id])
+                    context_parts.append(f"```json\n{product_json}\n```")
         return "\n".join(context_parts)
     
     
-    def _generate_airline_user_context(self, user_id: str, env_data: Dict[str, Any], instruction: str = "") -> str:
+    def _generate_airline_user_context(self, user_id: str, env_data: Dict[str, Any], question_id: str) -> str:
         """Generate user context for airline domain using users, reservations, and flights."""
         import json
         context_parts = []

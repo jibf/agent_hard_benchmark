@@ -24,12 +24,8 @@ Below is the categorization of benchmark issues, outlined according to its **rel
 
 This category covers flaws within the agent's operating environment—the tools and API results—which can make a task unsolvable regardless of the agent's logic.
 
-* Insufficient toolsets: the environment does not provide the necessary tools (functions), making the agent impossible to solve the task even with a combination of multiple tools and reasoning.
-  * Example: A user asks for an advanced file manipulation, while the environment only provides basic tools like `mk` or `ls`.
-
 * Flawed function design: the naming or the description of an available function is misleading or contradicts its actual functionality.
   * Example: A function named `vt_get_votes_on_ip_address` provides "example.com" as an example for its argument value in its schema. 
-
 
 ### Ground-Truth
 
@@ -52,10 +48,11 @@ This category addresses errors in the provided ground-truth trajectory, where th
 
 ## Crucial Rule: Actively Reconstruct the Conversation
 
-The ground-truth trajectory only contains key milestone function calls. It intentionally omits the natural language conversation between the user and the agent (e.g., user confirmations, clarifications, or follow-up questions).
+The ground-truth trajectory only contains key milestone function calls. It intentionally omits function calls that are less important for evaluation and the natural language conversation between the user and the agent (e.g., user confirmations, request, clarifications, or follow-up questions).
 Your task is to find undeniable flaws. Therefore, you MUST operate under the following assumption:
 
-* If a sequence of function calls can be justified by a plausible, un-shown conversation that does not contradict the User Scenario or System Policy, then it is NOT a flaw. For example, a sample may not be flawed even if the ground truth trajectory is empty; maybe there is nothing that the agent can do for the user because of policy constraints, given the related DB entries. The agent would have explained the user why it cannot process his request, although it is not shown in the milestone trajectory.
+* For example, the ground truth milestone sequence may not contain a call that authenticates the user identity. It may have been intentionallly omitted from the milestone sequence, since it is considered less important than calls that explicitly process user requests. Therefore, lack of authentication, user's confirmation or request, clarification should NOT be the sole reason to judge a sample as flawed.
+* If a sequence of function calls can be justified by a plausible, un-shown conversation that does not contradict the User Scenario or System Policy, then it is NOT a flaw. The agent would have explained the user why it cannot process his request, although it is not shown in the milestone trajectory.
 * In other words, imagine a possible conversation history that would justify the ground truth milestone function call trajectory. When you contemplate of a plausible trajectory, note that the user can make a request that is not mentioned in the prompt, guided by the agent. Flag a sample as flawed ONLY if a function call is impossible to justify, even with a hypothetical conversation. Do NOT infer a flaw from missing conversational steps.
 
 

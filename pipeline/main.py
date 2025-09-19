@@ -745,24 +745,25 @@ class BenchmarkFilteringPipeline:
             step4_passed, step4_dropped = self._run_comprehensive_filtering(
                 current_responses
             )
-            step4_alpha_values = []
-            for question_id in step4_passed.keys():
-                if question_id in irt_discrimination_dict:
-                    step4_alpha_values.append(irt_discrimination_dict[question_id])
-                
-            if step4_alpha_values:
-                print("Step4 alpha values: ", step4_alpha_values)
-                step4_avg_alpha = np.mean(step4_alpha_values)
-                logger.info(f"Benchmark IRT discrimination After Step 4: {step4_avg_alpha:.4f}")
-            else:
-                logger.warning("No matching alpha values found for Step 4 passed questions")
-            # irt_discrimination = compute_irt_metric(step4_passed, threshold=0.5)
-            # logger.info(f"Benchmark IRT discrimination After Step 4: {irt_discrimination:.4f}")
-            log_confusion_matrix(
-                problematic_issues=remaining_problematic_issues,
-                passed_ids=set(step4_passed.keys()),
-                total_num=len(current_responses),
-            )
+            if not self.config.get("skip_measurement"):
+                step4_alpha_values = []
+                for question_id in step4_passed.keys():
+                    if question_id in irt_discrimination_dict:
+                        step4_alpha_values.append(irt_discrimination_dict[question_id])
+                    
+                if step4_alpha_values:
+                    print("Step4 alpha values: ", step4_alpha_values)
+                    step4_avg_alpha = np.mean(step4_alpha_values)
+                    logger.info(f"Benchmark IRT discrimination After Step 4: {step4_avg_alpha:.4f}")
+                else:
+                    logger.warning("No matching alpha values found for Step 4 passed questions")
+                # irt_discrimination = compute_irt_metric(step4_passed, threshold=0.5)
+                # logger.info(f"Benchmark IRT discrimination After Step 4: {irt_discrimination:.4f}")
+                log_confusion_matrix(
+                    problematic_issues=remaining_problematic_issues,
+                    passed_ids=set(step4_passed.keys()),
+                    total_num=len(current_responses),
+                )
             self._write_filter_summary(
                 passed_ids=set(step4_passed.keys()),
                 input_ids=set(current_responses.keys()),
@@ -802,7 +803,7 @@ class BenchmarkFilteringPipeline:
                     "step4_filtered_performance",
                     model_ranking=model_ranking,
                 )
-                if not self.config.get("skip_diversity_measurement", False):
+                if not self.config.get("skip_measurement", False):
                     self._visualize_diversity(
                         step4_passed,
                         "After Step 4 (Comprehensive Rule-based Filtering)",
