@@ -1,4 +1,5 @@
 import re
+import os
 import litellm
 from litellm import completion
 from typing import List, Dict, Any
@@ -30,7 +31,11 @@ class Drafter_agent:
                     temperature=self.temperature,
                 )
             else:
+                # Use unified API_KEY environment variable
+                api_key = os.getenv("API_KEY")
+
                 client = OpenAI(
+                    api_key=api_key,
                     base_url=self.vllm_url  # litellm-proxy-base url
                 )
                 kwargs = {
