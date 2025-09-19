@@ -59,10 +59,10 @@ class ToolCallingAgent(Agent):
                     if "thinking-on" in self.model:
                         self.base_url = os.getenv("CLAUDE_THINKING_API_BASE")
                     else:
-                        self.base_url = os.getenv("OPENAI_API_BASE")
+                        self.base_url = os.getenv("BASE_URL")
                 else:
-                    self.base_url = os.getenv("OPENAI_API_BASE")
-                self.api_key = os.getenv("OPENAI_API_KEY")
+                    self.base_url = os.getenv("BASE_URL")
+                self.api_key = os.getenv("API_KEY")
 
     # def _is_custom_api_model(self, model: str) -> bool:
     #     """

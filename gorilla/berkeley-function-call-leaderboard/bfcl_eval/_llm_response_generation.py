@@ -287,32 +287,31 @@ def main(args):
         all_test_entries_involved,
     ) = get_involved_test_entries(args.test_category, args.run_ids)
 
-    # Extended MODEL_CONFIG_MAPPING with dynamic models
-    extended_model_config = MODEL_CONFIG_MAPPING.copy()
+    # All models now use dynamic creation with unified API_KEY/BASE_URL pattern
+    # This ensures consistent configuration across all benchmarks
+    extended_model_config = {}
 
     for model_name in args.model:
-        if model_name not in MODEL_CONFIG_MAPPING:
-            # Try to create a dynamic model configuration from unified environment variables
-            api_key = os.getenv("API_KEY")
-            base_url = os.getenv("BASE_URL")
+        # Always try to create dynamic model configuration from unified environment variables
+        api_key = os.getenv("API_KEY")
+        base_url = os.getenv("BASE_URL")
 
-            if api_key and base_url:
-                # Create dynamic model configuration with is_fc_model=False
-                dynamic_config = create_dynamic_model_config(
-                    model_name=model_name,
-                    api_key=api_key,
-                    base_url=base_url,
-                    is_fc_model=False
-                )
-                extended_model_config[model_name] = dynamic_config
-                print(f"Created dynamic configuration for model: {model_name}")
-            else:
-                raise ValueError(
-                            f"Unknown model_name '{model_name}'.\n"
-                            "• For officially supported models, please refer to `SUPPORTED_MODELS.md`.\n"
-                            "• For running new models, please refer to `README.md` and `CONTRIBUTING.md`.\n"
-                            "• For dynamic models, set environment variables: API_KEY and BASE_URL"
-                        )
+        if api_key and base_url:
+            # Create dynamic model configuration with is_fc_model=False
+            dynamic_config = create_dynamic_model_config(
+                model_name=model_name,
+                api_key=api_key,
+                base_url=base_url,
+                is_fc_model=False
+            )
+            extended_model_config[model_name] = dynamic_config
+            print(f"Created dynamic configuration for model: {model_name}")
+        else:
+            raise ValueError(
+                        f"Model '{model_name}' requires unified environment variables.\n"
+                        "• Set environment variables: API_KEY and BASE_URL\n"
+                        "• All models now use OpenAI-compatible API pattern for consistency"
+                    )
 
     # Replace the global MODEL_CONFIG_MAPPING temporarily
     bfcl_eval.constants.model_config.MODEL_CONFIG_MAPPING = extended_model_config

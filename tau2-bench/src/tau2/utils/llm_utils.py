@@ -104,15 +104,15 @@ def _get_custom_api_client():
     Get OpenAI client for custom API using environment variables.
     """
     from openai import OpenAI
-    
-    base_url = os.getenv("OPENAI_API_BASE")
-    api_key = os.getenv("OPENAI_API_KEY")
-    
+
+    base_url = os.getenv("BASE_URL")
+    api_key = os.getenv("API_KEY")
+
     if not base_url:
-        raise ValueError("OPENAI_API_BASE environment variable is required for custom API models")
+        raise ValueError("BASE_URL environment variable is required for custom API models")
     if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable is required for custom API models")
-    
+        raise ValueError("API_KEY environment variable is required for custom API models")
+
     return OpenAI(base_url=base_url, api_key=api_key)
 
 
@@ -289,12 +289,12 @@ def _generate_single_attempt(
             else:
                 kwargs["api_base"] = os.getenv("HUGGINGFACE_API_BASE")
         else:
-            kwargs["api_key"] = os.getenv("OPENAI_API_KEY")
+            kwargs["api_key"] = os.getenv("API_KEY")
             # Use provided base_url if available, otherwise fall back to environment variable
             if base_url is not None:
                 kwargs["api_base"] = base_url
             else:
-                kwargs["api_base"] = os.getenv("OPENAI_API_BASE")
+                kwargs["api_base"] = os.getenv("BASE_URL")
 
         if "anthropic" in model:
             if "thinking-on" in model:

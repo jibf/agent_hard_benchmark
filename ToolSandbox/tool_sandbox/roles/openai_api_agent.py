@@ -36,11 +36,10 @@ class OpenAIAPIAgent(BaseRole):
     model_name: str
 
     def __init__(self) -> None:
-        # We set the `base_url` explicitly here to avoid picking up the
-        # Uses OPENAI_BASE_URL environment variable for serving models as
-        # OpenAI API compatible servers. API key is read from OPENAI_API_KEY.
-        base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-        api_key = os.getenv("OPENAI_API_KEY")
+        # Uses API_KEY and BASE_URL environment variables for OpenAI-compatible servers
+        # This provides a unified interface for all agent models
+        base_url = os.getenv("BASE_URL")
+        api_key = os.getenv("API_KEY")
         self.openai_client: OpenAI = OpenAI(base_url=base_url, api_key=api_key)
 
     def respond(self, ending_index: Optional[int] = None) -> None:

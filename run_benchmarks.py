@@ -89,20 +89,12 @@ class BenchmarkRunner:
         """Setup environment variables for benchmark execution"""
         env = os.environ.copy()
 
-        # Common environment variables - read provider-specific keys from environment
+        # Unified API key pattern - all benchmarks use OpenAI-compatible API_KEY/BASE_URL
         env_vars = {
-            "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", self.api_key),
-            "OPENAI_BASE_URL": os.getenv("OPENAI_BASE_URL", self.base_url),
-            "OPENAI_API_BASE": os.getenv("OPENAI_API_BASE", self.base_url),
-            "VLLM_API_BASE": os.getenv("VLLM_API_BASE", self.base_url),
-            "GPT_AGENT_API_KEY": os.getenv("GPT_AGENT_API_KEY", self.api_key),
-            "GPT_BASE_URL": os.getenv("GPT_BASE_URL", self.base_url),
-            "GPT_API_KEY": os.getenv("GPT_API_KEY", self.api_key),
-            "API_KEY": self.api_key,  # Keep as fallback
-            "BASE_URL": self.base_url,  # Keep as fallback
-            "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", self.api_key),
-            "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY", self.api_key),
-            "MISTRAL_API_KEY": os.getenv("MISTRAL_API_KEY", self.api_key),
+            "API_KEY": self.api_key,  # Primary agent model (OpenAI-compatible)
+            "BASE_URL": self.base_url,  # Primary agent model base URL
+            "USER_API_KEY": os.getenv("USER_API_KEY", self.api_key),  # User model (defaults to same as agent)
+            "USER_BASE_URL": os.getenv("USER_BASE_URL", self.base_url),  # User model base URL
         }
 
         # Add RAPID_API_KEY if it exists in environment
@@ -118,11 +110,10 @@ class BenchmarkRunner:
         env_file = benchmark_dir / ".env"
 
         default_vars = {
-            "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", self.api_key),
-            "OPENAI_BASE_URL": os.getenv("OPENAI_BASE_URL", self.base_url),
-            "OPENAI_API_BASE": os.getenv("OPENAI_API_BASE", self.base_url),
-            "API_KEY": self.api_key,  # Keep as fallback
-            "BASE_URL": self.base_url,  # Keep as fallback
+            "API_KEY": self.api_key,  # Primary agent model (OpenAI-compatible)
+            "BASE_URL": self.base_url,  # Primary agent model base URL
+            "USER_API_KEY": os.getenv("USER_API_KEY", self.api_key),  # User model (OpenAI-compatible)
+            "USER_BASE_URL": os.getenv("USER_BASE_URL", self.base_url),  # User model base URL
         }
 
         if custom_vars:
@@ -363,17 +354,8 @@ class BenchmarkRunner:
 
         self.logger.info(f"Running {benchmark_name}...")
 
-        # Create comprehensive .env file
-        custom_vars = {
-            "GPT_AGENT_API_KEY": os.getenv("GPT_AGENT_API_KEY", self.api_key),
-            "GPT_BASE_URL": os.getenv("GPT_BASE_URL", self.base_url),
-            "GPT_API_KEY": os.getenv("GPT_API_KEY", self.api_key),
-            "DEEPSEEK_API_KEY": os.getenv("DEEPSEEK_API_KEY", self.api_key),
-            "DEEPSEEK_BASE_URL": os.getenv("DEEPSEEK_BASE_URL", self.base_url),
-            "QWEN_API_KEY": os.getenv("QWEN_API_KEY", self.api_key),
-            "QWEN_BASE_URL": os.getenv("QWEN_BASE_URL", self.base_url),
-        }
-        self.create_env_file(benchmark_dir, custom_vars)
+        # ACEBench uses standard API_KEY/BASE_URL pattern
+        self.create_env_file(benchmark_dir)
 
         command = f"python generate.py --model {self.model_name} --user-model {self.user_model} --temperature {self.temperature} --category normal special agent --language en --num-threads {self.proc_num} --output-dir {benchmark_output_dir}"
 
@@ -413,12 +395,8 @@ class BenchmarkRunner:
         benchmark_output_dir = self.output_dir / benchmark_name
         benchmark_output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create .env file with specific variables for TauBench
-        custom_vars = {
-            "ANTHROPIC_API_BASE": os.getenv("ANTHROPIC_API_BASE", self.base_url),
-            "VLLM_API_BASE": os.getenv("VLLM_API_BASE", self.base_url),
-        }
-        self.create_env_file(benchmark_dir, custom_vars)
+        # TauBench uses standard API_KEY/BASE_URL pattern
+        self.create_env_file(benchmark_dir)
 
         provider = self.get_provider_from_model()
         user_provider = self.get_provider_from_model_name(self.user_model)

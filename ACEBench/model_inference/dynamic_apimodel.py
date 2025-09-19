@@ -20,8 +20,8 @@ def create_dynamic_apimodel_class(api_key=None, base_url=None):
             self.user_model = user_model
 
             # Use provided API key/URL or fall back to environment variables
-            self._dynamic_api_key = api_key or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
-            self._dynamic_base_url = base_url or os.getenv("BASE_URL") or os.getenv("OPENAI_BASE_URL")
+            self._dynamic_api_key = api_key or os.getenv("API_KEY")
+            self._dynamic_base_url = base_url or os.getenv("BASE_URL")
 
             if not self._dynamic_api_key:
                 raise ValueError("No API key found. Please set API_KEY environment variable.")

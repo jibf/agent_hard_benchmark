@@ -2,6 +2,8 @@
 
 This repository serves as a comprehensive collection and evaluation suite for various Large Language Model (LLM) tool-use benchmarks. It provides a standardized environment and scripts to facilitate the evaluation of LLMs' capabilities in using external tools and APIs for complex task automation.
 
+**🔧 Model Compatibility:** This suite exclusively supports **OpenAI API-compatible models**. All benchmarks use a unified API interface that requires OpenAI-compatible endpoints (OpenAI, vLLM, Ollama, custom servers, etc.).
+
 ## 🚀 Quick Start
 
 ### 1. Environment Setup
@@ -30,15 +32,20 @@ nano .env  # or use your preferred editor
 ```
 
 **Required Configuration in `.env`:**
-- `API_KEY`: Your main API key (e.g., OpenAI, Anthropic, etc.)
-- `BASE_URL`: Your API endpoint URL
+- `API_KEY`: Your API key for the OpenAI-compatible endpoint
+- `BASE_URL`: Your OpenAI-compatible API endpoint URL
 - `RAPID_API_KEY`: Required for CFBench and ToolSandbox (get from RapidAPI)
+- `USER_API_KEY` / `USER_BASE_URL`: Optional, for benchmarks needing separate user simulation models
 
 **Example `.env` configuration:**
 ```bash
 # Main API Configuration (Required)
-API_KEY=sk-your-api-key-here
-BASE_URL=https://api.openai.com/v1
+API_KEY=your_api_key_here
+BASE_URL=your_openai_compatible_endpoint_url
+
+# User Model Configuration (Optional - for multi-agent benchmarks)
+USER_API_KEY=your_user_model_key_here
+USER_BASE_URL=your_user_model_endpoint_url
 
 # RAPID_API Configuration (Required for some benchmarks)
 RAPID_API_KEY=your_rapid_api_key_here

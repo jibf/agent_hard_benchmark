@@ -33,9 +33,10 @@ class OpenAIAPIUser(BaseRole):
     model_name: str
 
     def __init__(self) -> None:
-        # Use environment variable for base URL configuration
-        base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-        api_key = os.getenv("OPENAI_API_KEY")
+        # Uses USER_API_KEY and USER_BASE_URL environment variables for user model
+        # This provides a unified interface for all user models
+        base_url = os.getenv("USER_BASE_URL")
+        api_key = os.getenv("USER_API_KEY")
         self.openai_client: OpenAI = OpenAI(base_url=base_url, api_key=api_key)
 
     def respond(self, ending_index: Optional[int] = None) -> None:

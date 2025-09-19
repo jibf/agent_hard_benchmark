@@ -25,8 +25,8 @@ def create_dynamic_handler_class(api_key=None, base_url=None, is_fc_model=False)
     class DynamicOpenAIHandler(OpenAICompletionsHandler):
         def __init__(self, model_name, temperature=0.001):
             # Store dynamic configuration
-            self._dynamic_api_key = api_key or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
-            self._dynamic_base_url = base_url or os.getenv("BASE_URL") or os.getenv("OPENAI_BASE_URL")
+            self._dynamic_api_key = api_key or os.getenv("API_KEY")
+            self._dynamic_base_url = base_url or os.getenv("BASE_URL")
             self._is_fc_model_dynamic = is_fc_model
 
             # Call parent init

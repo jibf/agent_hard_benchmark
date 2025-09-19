@@ -7,7 +7,7 @@ from tau_bench.model_utils.model.general_model import wrap_temperature
 from tau_bench.model_utils.model.utils import approx_num_tokens
 
 DEFAULT_OPENAI_MODEL = "openai/gpt-4o-mini"
-API_KEY_ENV_VAR = "OPENAI_API_KEY"
+API_KEY_ENV_VAR = "API_KEY"
 
 PRICE_PER_INPUT_TOKEN_MAP = {
     "gpt-4o-2024-08-06": 2.5 / 1000000,
