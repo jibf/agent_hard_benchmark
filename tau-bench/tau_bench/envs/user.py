@@ -45,8 +45,16 @@ class LLMUserSimulationEnv(BaseUserSimulationEnv):
         self.reset()
 
     def generate_next_message(self, messages: List[Dict[str, Any]]) -> str:
+        # Use unified USER_API_KEY and USER_BASE_URL for litellm
+        user_api_key = os.getenv("USER_API_KEY")
+        user_base_url = os.getenv("USER_BASE_URL")
+
         res = completion(
-            model=self.model, custom_llm_provider=self.provider, messages=messages
+            model=self.model,
+            custom_llm_provider=self.provider,
+            messages=messages,
+            api_key=user_api_key,
+            base_url=user_base_url
         )
         message = res.choices[0].message
         self.messages.append(message.model_dump())
@@ -116,8 +124,16 @@ User Response:
 <the user response (this will be parsed and sent to the agent)>"""
 
     def generate_next_message(self, messages: List[Dict[str, Any]]) -> str:
+        # Use unified USER_API_KEY and USER_BASE_URL for litellm
+        user_api_key = os.getenv("USER_API_KEY")
+        user_base_url = os.getenv("USER_BASE_URL")
+
         res = completion(
-            model=self.model, custom_llm_provider=self.provider, messages=messages
+            model=self.model,
+            custom_llm_provider=self.provider,
+            messages=messages,
+            api_key=user_api_key,
+            base_url=user_base_url
         )
         message = res.choices[0].message
         self.messages.append(message.model_dump())
@@ -165,8 +181,16 @@ class VerifyUserSimulationEnv(LLMUserSimulationEnv):
         attempts = 0
         cur_message = None
         while attempts < self.max_attempts:
+            # Use unified USER_API_KEY and USER_BASE_URL for litellm
+            user_api_key = os.getenv("USER_API_KEY")
+            user_base_url = os.getenv("USER_BASE_URL")
+
             res = completion(
-                model=self.model, custom_llm_provider=self.provider, messages=messages
+                model=self.model,
+                custom_llm_provider=self.provider,
+                messages=messages,
+                api_key=user_api_key,
+                base_url=user_base_url
             )
             cur_message = res.choices[0].message
             self.total_cost = res._hidden_params["response_cost"]
@@ -290,10 +314,16 @@ Your answer will be parsed, so do not include any other text than the classifica
 -----
 
 Classification:"""
+    # Use unified USER_API_KEY and USER_BASE_URL for litellm
+    user_api_key = os.getenv("USER_API_KEY")
+    user_base_url = os.getenv("USER_BASE_URL")
+
     res = completion(
         model=model,
         custom_llm_provider=provider,
         messages=[{"role": "user", "content": prompt}],
+        api_key=user_api_key,
+        base_url=user_base_url
     )
     return "true" in res.choices[0].message.content.lower()
 
@@ -324,10 +354,16 @@ Reflection:
 
 Response:
 <the response (this will be parsed and sent to the agent)>"""
+    # Use unified USER_API_KEY and USER_BASE_URL for litellm
+    user_api_key = os.getenv("USER_API_KEY")
+    user_base_url = os.getenv("USER_BASE_URL")
+
     res = completion(
         model=model,
         custom_llm_provider=provider,
         messages=[{"role": "user", "content": prompt}],
+        api_key=user_api_key,
+        base_url=user_base_url
     )
     _, response = res.choices[0].message.content.split("Response:")
     return response.strip()
