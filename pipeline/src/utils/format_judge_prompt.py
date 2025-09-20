@@ -34,6 +34,9 @@ def format_judge_prompt(question: FormattedQuestion, step: LLMJudgeStep) -> str:
         if not prompt_module:
             raise ValueError(f"Unknown benchmark: {question.benchmark.value}")
 
+        if hasattr(prompt_module, "build_prompt"):
+            return prompt_module.build_prompt(question, step)
+
         prompt_template = _get_prompt_template(prompt_module, step)
         required_fields = _extract_format_fields(prompt_template)
         format_args = _build_format_args(question, required_fields)
@@ -84,5 +87,4 @@ def _serialize_value(value):
         return value.value
     else:
         return str(value)
-
 
