@@ -87,6 +87,7 @@ USER MODELS (for multi-agent benchmarks):
 ---------------------------------------------
 USER_API_KEY and USER_BASE_URL not configured
 This is optional and only needed for multi-agent benchmarks like ToolSandbox
+Note: CFBench uses a fixed judge model (gpt-4o-2024-08-06) via USER_API_KEY for response evaluation
 ```
 
 ### 4. Running Benchmarks
