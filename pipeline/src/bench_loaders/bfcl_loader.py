@@ -4,8 +4,15 @@ import sys
 from tkinter import N
 from typing import Dict, Any, List, Optional
 import glob
+import importlib.util
+import copy
+import re
+import inspect
+import ast
 from . import BaseLoader
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+# Add the BFCL data directory to Python path so bfcl_eval can be imported
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'BFCL'))
 from src.utils.types import BFCLQuestion, Benchmark
 
 # BFCL Constants (from BFCL evaluation system)
@@ -29,6 +36,23 @@ Here is a list of functions in JSON format that you can invoke.\n{functions}\n
 MAXIMUM_STEP_LIMIT = 20
 EXPECTATION_ONLY_CATEGORIES = {"irrelevance", "live_irrelevance", "live_relevance"}
 
+# Class mapping for multi-turn function execution
+CLASS_FILE_PATH_MAPPING = {
+    "TwitterAPI": "posting_api",
+    "GorillaFileSystem": "gorilla_file_system",
+    "MathAPI": "math_api",
+    "MessageAPI": "message_api",
+    "TicketAPI": "ticket_api",
+    "TradingBot": "trading_bot",
+    "TravelAPI": "travel_booking",
+    "VehicleControlAPI": "vehicle_control",
+}
+
+# These classes are stateless and do not require any initial configuration
+STATELESS_CLASSES = [
+    "MathAPI",
+]
+
 
 class BfclLoader(BaseLoader):
     """
@@ -49,6 +73,9 @@ class BfclLoader(BaseLoader):
         self._func_docs_cache = {}
         # Cache for possible answers
         self._possible_answers_cache = {}
+        # Cache for loaded classes and instances
+        self._class_cache = {}
+        self._instances_cache = {}
         
     def _load_function_docs(self) -> None:
         """Load multi-turn function documentation files"""
@@ -102,7 +129,163 @@ class BfclLoader(BaseLoader):
             except Exception as e:
                 print(f"Error loading possible answers from {file_path}: {e}")
 
-    
+    def _load_class(self, class_name: str):
+        """Load a class dynamically from the data/BFCL/multi_turn_eval/func_source_code directory"""
+        if class_name in self._class_cache:
+            return self._class_cache[class_name]
+
+        if class_name not in CLASS_FILE_PATH_MAPPING:
+            raise ValueError(f"Unknown class: {class_name}")
+
+        module_name = CLASS_FILE_PATH_MAPPING[class_name]
+        module_path = os.path.join(self.data_path, "bfcl_eval", "eval_checker", "multi_turn_eval", "func_source_code", f"{module_name}.py")
+
+        if not os.path.exists(module_path):
+            raise FileNotFoundError(f"Module file not found: {module_path}")
+
+        # Load module dynamically
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load module spec for {module_name}")
+
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        # Get the class
+        class_obj = getattr(module, class_name)
+        self._class_cache[class_name] = class_obj
+        return class_obj
+
+    def _initialize_instances(self, involved_classes: List[str], initial_config: Dict, test_entry_id: str) -> Dict:
+        """Initialize class instances with initial configuration"""
+        instances = {}
+
+        for class_name in involved_classes:
+            instance_key = f"{test_entry_id}_{class_name}"
+
+            if instance_key in self._instances_cache:
+                instances[class_name] = self._instances_cache[instance_key]
+                continue
+
+            # Load and instantiate the class
+            class_obj = self._load_class(class_name)
+            instance = class_obj()
+
+            # Load scenario if not stateless
+            if class_name not in STATELESS_CLASSES:
+                class_initial_config = initial_config.get(class_name, {})
+                if hasattr(instance, '_load_scenario'):
+                    instance._load_scenario(copy.deepcopy(class_initial_config))
+
+            instances[class_name] = instance
+            self._instances_cache[instance_key] = instance
+
+        return instances
+
+    def _get_method_mapping(self, instances: Dict) -> Dict[str, str]:
+        """Create mapping of method names to instance names"""
+        method_mapping = {}
+
+        for class_name, instance in instances.items():
+            for method_name, method in inspect.getmembers(instance, predicate=inspect.ismethod):
+                if not method_name.startswith("_"):
+                    method_mapping[method_name] = class_name
+
+        return method_mapping
+
+    def _parse_function_call(self, func_call: str) -> tuple[str, Dict]:
+        """Parse function call string using AST parsing"""
+        try:
+            # Parse the function call as a Python expression using AST
+            tree = ast.parse(func_call.strip(), mode='eval')
+            call_node = tree.body
+
+            if not isinstance(call_node, ast.Call):
+                raise ValueError(f"Not a function call: {func_call}")
+
+            # Extract function name
+            if isinstance(call_node.func, ast.Name):
+                func_name = call_node.func.id
+            else:
+                raise ValueError(f"Complex function names not supported: {func_call}")
+
+            # Extract arguments
+            args = {}
+            positional_count = 0
+
+            # Handle positional arguments
+            for arg in call_node.args:
+                value = ast.literal_eval(arg)
+                args[f'arg_{positional_count}'] = value
+                positional_count += 1
+
+            # Handle keyword arguments
+            for keyword in call_node.keywords:
+                if keyword.arg is None:  # **kwargs
+                    raise ValueError("**kwargs not supported")
+                value = ast.literal_eval(keyword.value)
+                args[keyword.arg] = value
+
+            return func_name, args
+
+        except (SyntaxError, ValueError) as e:
+            raise ValueError(f"Failed to parse function call '{func_call}': {e}")
+
+    def _call_tool_with_state(self, func_call: str, instances: Dict, method_mapping: Dict) -> str:
+        """Execute a function call with current state and return the result"""
+        func_name, args = self._parse_function_call(func_call)
+
+        if func_name not in method_mapping:
+            raise ValueError(f"Error: Function {func_name} not found")
+
+        class_name = method_mapping[func_name]
+        instance = instances[class_name]
+        method = getattr(instance, func_name)
+
+        # Handle positional arguments by mapping to parameter names
+        if any(key.startswith('arg_') for key in args.keys()):
+            # Get function signature to map positional args to parameter names
+            sig = inspect.signature(method)
+            param_names = list(sig.parameters.keys())
+
+            # Convert arg_0, arg_1, etc. to actual parameter names
+            converted_args = {}
+
+            # First, add all keyword arguments
+            for key, value in args.items():
+                if not key.startswith('arg_'):
+                    converted_args[key] = value
+
+            # Then, add positional arguments
+            for key, value in args.items():
+                if key.startswith('arg_'):
+                    arg_index = int(key.split('_')[1])
+                    if arg_index < len(param_names):
+                        param_name = param_names[arg_index]
+                        # Don't override if keyword argument already provided
+                        if param_name not in converted_args:
+                            converted_args[param_name] = value
+                    else:
+                        # Too many arguments
+                        raise ValueError(f"Too many arguments for function {func_name}")
+            args = converted_args
+
+        # Call the method with arguments
+        result = method(**args)
+
+        # Convert result to string for consistency
+        try:
+            if isinstance(result, dict):
+                return json.dumps(result)
+            elif isinstance(result, (list, tuple)):
+                return json.dumps(list(result))
+            else:
+                return str(result)
+        except:
+            return str(result)
+
+
+
     def _get_language_specific_hint(self, test_category: str) -> str:
         """Get language-specific hint based on test category"""
         if test_category == "java":
@@ -246,14 +429,22 @@ class BfclLoader(BaseLoader):
 
         return " | ".join(instructions) if instructions else ""
 
-    def _create_interleaved_trajectory(self, question_data: List[List[Dict]], ground_truth: List[List[str]], missed_function_dict: Optional[Dict]) -> List[Dict]:
-        """Create interleaved trajectory with user questions and agent tool calls"""
+    def _create_interleaved_trajectory(self, question_data: List[List[Dict]], ground_truth: List[List[str]], missed_function_dict: Optional[Dict], initial_config: Optional[Dict] = None, involved_classes: Optional[List[str]] = None, test_entry_id: str = "unknown") -> List[Dict]:
+        """Create interleaved trajectory with user questions and agent tool calls, including function execution results"""
         if not question_data or not ground_truth:
             return []
         assert len(question_data) == len(ground_truth)
         trajectory = []
 
+        # Initialize instances if we have multi-turn data with state
+        instances = None
+        method_mapping = None
+        if initial_config and involved_classes:
+            instances = self._initialize_instances(involved_classes, initial_config, test_entry_id)
+            method_mapping = self._get_method_mapping(instances)
+
         for i in range(len(question_data)):
+            # Add user message
             if missed_function_dict and str(i) in missed_function_dict and question_data[i] == []:
                 # user provides missed function.
                 trajectory.append({
@@ -265,11 +456,31 @@ class BfclLoader(BaseLoader):
                     "role": "user",
                     "content": question_data[i]
                 })
-            trajectory.append({
+
+            # Add assistant message with tool calls
+            assistant_message = {
                 "role": "assistant",
                 "tool_calls": ground_truth[i]
+            }
+            trajectory.append(assistant_message)
 
-            })
+            # Execute tool calls and add responses if we have instances
+            if instances and method_mapping and ground_truth[i]:
+                tool_responses = []
+                for func_call in ground_truth[i]:
+                    if isinstance(func_call, str) and func_call.strip():
+                        response = self._call_tool_with_state(func_call, instances, method_mapping)
+                        tool_responses.append({
+                            "function_call": func_call,
+                            "response": response
+                        })
+
+                if tool_responses:
+                    trajectory.append({
+                        "role": "tool",
+                        "tool_responses": tool_responses
+                    })
+
         return trajectory
     
     def _determine_category_and_subcategory(self, question_id: str, filename: str = "") -> tuple[str, str]:
@@ -408,10 +619,17 @@ class BfclLoader(BaseLoader):
         missed_function = ""
         if missed_function_dict:
             for turn in missed_function_dict:
-                missed_function= f"###Missed Functions\nThe following function(s) will be provided after {turn}-th agent response; the agent should not use them before it:\n{missed_function_dict[turn]}"
+                missed_function= f"### Missed Functions\nThe following function(s) will be provided after {turn}-th agent response; the agent should not use them before it:\n{missed_function_dict[turn]}"
 
         # Create interleaved trajectory combining user questions and agent tool calls
-        interleaved_trajectory = self._create_interleaved_trajectory(question_data, ground_truth, missed_function_dict)
+        interleaved_trajectory = self._create_interleaved_trajectory(
+            question_data,
+            ground_truth or [],
+            missed_function_dict,
+            initial_config,
+            involved_classes,
+            question_id
+        )
 
         # Generate system prompt with language-specific hints
         system_prompt = self.get_system_prompt(function_list, category)

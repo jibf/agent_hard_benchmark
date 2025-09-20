@@ -7,12 +7,12 @@ Your task is to determine if a given benchmark sample has a fundamental flaw in 
 
 
 You will be provided with the following information:
-* **Instruction**: The description of the task given to the agent. When the instruction spans multiple turns, it is presented sequentially: the user provides an instruction, the agent responds (or invokes tools), and then the user delivers the next instruction.
+* **Instruction**: The description of the task given to the agent. 
 * **Agent System Prompt**: the system prompt used to initialize the agent model. This may contain a specific instruction on the answer style, domain-specific policy that the agent needs to follow, a list of available functions and their schema (in JSON format), etc.
 * **Available Functions**: a list of functions available for the agents and their schema.
-* **Missed Functions**: This is only provided in the category `multi_turn_miss_func`. This is the function that is not provided to the agent at the first turn, but is provided when the agent correctly identifies that it is missing.
+* **Missed Functions**: This is only provided in the category `multi_turn_miss_func`. This is the function that is not provided to the agent at the first turn, but will be provided after a specified number of agent responses.  
 * **Initial Configuration**: The initial environment setup and conditions before the task begins. This defines the starting state of the system. 
-* **Ground-Truth Function Call Trajectory**: the provided ground-truth trajectory of function calls. When this is empty or None, it means that the agent needs to call nothing to be scored as correct.
+* **Ground-Truth Function Call Trajectory**: the provided ground-truth trajectory of function calls. When this is empty or None, it means that the agent needs to call nothing to be scored as correct. Note that entries with `"role": "tool"` are the results of the directly preceding agent tool calls.
 A sample is **flawed** if it exhibits one or more of the issues described below.
 
 
