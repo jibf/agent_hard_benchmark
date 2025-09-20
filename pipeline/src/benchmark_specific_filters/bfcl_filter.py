@@ -39,9 +39,14 @@ class BFCLFilter(BaseBenchmarkFilter):
         
         # For now, return samples as-is since comprehensive filtering was already applied
         # TODO: Implement benchmark-specific rules
-        passed_samples = samples
-        dropped_samples = []
-        
+
+        passed_samples, dropped_samples = [], []
+        for sample in samples:
+            if sample["task_name"].startswith("multi_turn"):
+                passed_samples.append(sample)
+            else:
+                dropped_samples.append(sample)
+
         logger.info(f"BFCL filtering completed: {len(passed_samples)} passed, {len(dropped_samples)} dropped")
         return passed_samples, dropped_samples
 

@@ -105,7 +105,7 @@ class BFCLQuestion(FormattedQuestion):
     is_live_data: bool = False                  # Whether this is live data with different format
     
     # BFCL evaluation specific fields
-    missed_function: Optional[List[str]] = None # Functions that should be missing for specific turns
+    missed_function: Optional[str] = None # Functions that should be missing for specific turns
     system_prompt: Optional[str] = None         # System prompt for this question type
     max_turn_limit: int = 20                    # Maximum number of turns allowed
     exclude_state_log: bool = False            # Whether to exclude state logging for multi-turn

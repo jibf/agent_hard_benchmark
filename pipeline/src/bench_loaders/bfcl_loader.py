@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from tkinter import N
 from typing import Dict, Any, List, Optional
 import glob
 from . import BaseLoader
@@ -219,24 +220,21 @@ class BfclLoader(BaseLoader):
             "evaluation_ready": question.meta.get("evaluation_ready", True) if question.meta else True
         }
     
-    def _handle_missing_functions(self, question_data: List[List[Dict]], line: dict) -> Optional[List[str]]:
+    def _get_missing_function_info(self, line: dict) -> Optional[Dict[str, List[str]]]:
         """Extract missing function information for multi-turn miss scenarios"""
-        missed_function = line.get('missed_function', None)
-        if missed_function and isinstance(missed_function, list):
-            return missed_function
-        return None
-    
+        return line.get('missed_function', None)
+
     def _extract_instruction_from_question(self, question_data: List[List[Dict]]) -> str:
         """Extract user instruction from question data structure"""
         if not question_data or not question_data[0]:
             return ""
-        
+
         # Single-turn case: question[0][0]['content']
         if len(question_data) == 1:
             first_turn = question_data[0]
             if first_turn and isinstance(first_turn[0], dict):
                 return first_turn[0].get('content', '')
-        
+
         # Multi-turn case: combine all user messages
         instructions = []
         for turn_idx, turn in enumerate(question_data):
@@ -245,8 +243,34 @@ class BfclLoader(BaseLoader):
                 if content:
                     # Add turn number for clarity in multi-turn scenarios
                     instructions.append(f"Turn {turn_idx + 1}: {content}")
-        
+
         return " | ".join(instructions) if instructions else ""
+
+    def _create_interleaved_trajectory(self, question_data: List[List[Dict]], ground_truth: List[List[str]], missed_function_dict: Optional[Dict]) -> List[Dict]:
+        """Create interleaved trajectory with user questions and agent tool calls"""
+        if not question_data or not ground_truth:
+            return []
+        assert len(question_data) == len(ground_truth)
+        trajectory = []
+
+        for i in range(len(question_data)):
+            if missed_function_dict and str(i) in missed_function_dict and question_data[i] == []:
+                # user provides missed function.
+                trajectory.append({
+                    "role": "user",
+                    "content": f"Now you can use previously missed function(s) {missed_function_dict[str(i)]}"
+                })
+            else:
+                trajectory.append({
+                    "role": "user",
+                    "content": question_data[i]
+                })
+            trajectory.append({
+                "role": "assistant",
+                "tool_calls": ground_truth[i]
+
+            })
+        return trajectory
     
     def _determine_category_and_subcategory(self, question_id: str, filename: str = "") -> tuple[str, str]:
         """Determine category and subcategory from question_id and filename"""
@@ -310,7 +334,7 @@ class BfclLoader(BaseLoader):
         
         return all_functions
     
-    def _get_possible_answer(self, question_id: str, filename: str) -> Optional[Any]:
+    def _get_ground_truth(self, question_id: str, filename: str) -> Optional[Any]:
         """Get possible answer for a question"""
         # Try to find in possible answers cache
         for answer_filename, answers in self._possible_answers_cache.items():
@@ -355,7 +379,7 @@ class BfclLoader(BaseLoader):
         is_live_data = 'live' in category
         
         # Get possible answer
-        ground_truth = self._get_possible_answer(question_id, filename)
+        ground_truth = self._get_ground_truth(question_id, filename)
         
         # Expectation policy where there is no ground truth for these categories
         expect_call = None
@@ -379,11 +403,19 @@ class BfclLoader(BaseLoader):
                 instruction = expectation_text
 
         # Handle missing functions for multi-turn scenarios
-        missed_function = self._handle_missing_functions(question_data, line)
-        
+        missed_function_dict = self._get_missing_function_info(line)
+
+        missed_function = ""
+        if missed_function_dict:
+            for turn in missed_function_dict:
+                missed_function= f"###Missed Functions\nThe following function(s) will be provided after {turn}-th agent response; the agent should not use them before it:\n{missed_function_dict[turn]}"
+
+        # Create interleaved trajectory combining user questions and agent tool calls
+        interleaved_trajectory = self._create_interleaved_trajectory(question_data, ground_truth, missed_function_dict)
+
         # Generate system prompt with language-specific hints
         system_prompt = self.get_system_prompt(function_list, category)
-        
+
         # Set exclude state log for certain categories
         exclude_state_log = category in ['irrelevance', 'live_irrelevance']
 
@@ -394,17 +426,17 @@ class BfclLoader(BaseLoader):
             'has_ground_truth': ground_truth is not None,
             'num_functions': len(function_list),
             'num_turns': len(question_data) if question_data else 0,
-            'has_missing_functions': missed_function is not None,
+            'has_missing_functions': missed_function_dict is not None,
             'evaluation_ready': True
         }
         if expect_call is not None:
             meta_payload['expect_call'] = expect_call
-        
+
         return BFCLQuestion(
             question_id=question_id,
             task_name=category,
             instruction=instruction,
-            gt_conv_traj=question_data,    
+            gt_conv_traj=interleaved_trajectory,
             available_function_list=function_list,
             benchmark=Benchmark.BFCL,
             initial_config=initial_config,
