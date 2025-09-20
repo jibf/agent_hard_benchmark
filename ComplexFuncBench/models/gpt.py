@@ -14,23 +14,20 @@ from utils.utils import *
 from collections import defaultdict
 
 
-MODEL_NAME_MAPPING = {
-    "gpt-4o-2024-08-06": "openai/gpt-4o-20240806",
-}
-
-def actual_model_name(model_name):
-    if model_name in MODEL_NAME_MAPPING:
-        return MODEL_NAME_MAPPING[model_name]
-    return model_name
-
 class GPTModel:
-    def __init__(self, model_name):
+    def __init__(self, model_name, is_user=False):
         super().__init__()
         self.model_name = model_name
-        self.client = OpenAI(
-            api_key=os.getenv("API_KEY"),
-            base_url=os.getenv("BASE_URL")
-        )
+        if is_user:
+            self.client = OpenAI(
+                api_key=os.getenv("USER_API_KEY"),
+                base_url=os.getenv("USER_BASE_URL")
+            )
+        else:
+            self.client = OpenAI(
+                api_key=os.getenv("API_KEY"),
+                base_url=os.getenv("BASE_URL")
+            )
         
 
     def __call__(self, prefix, prompt: SimpleTemplatePrompt, **kwargs: Any):
@@ -42,7 +39,7 @@ class GPTModel:
     def _predict(self, prefix, text, **kwargs):
         try:
             completion = self.client.chat.completions.create(
-                model=actual_model_name(self.model_name),
+                model=self.model_name,
                 messages=[
                     {"role": "system", "content": prefix},
                     {"role": "user", "content": text}
@@ -73,7 +70,7 @@ class FunctionCallGPT(GPTModel):
         if "function_call" not in json.dumps(messages, ensure_ascii=False):
             self.messages = copy.deepcopy(messages)
         try:
-            model_name = actual_model_name(self.model_name)
+            model_name = self.model_name
             if "gpt-5" in model_name:
                 completion = self.client.chat.completions.create(
                     model=model_name,
