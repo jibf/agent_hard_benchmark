@@ -65,9 +65,19 @@ class BfclLoader(BaseLoader):
                             func_list.append(json.loads(line.strip()))
                     
                     # Extract class name from filename (e.g., gorilla_file_system.json -> GorillaFileSystem)
-                    class_name = os.path.basename(file_path).replace('.json', '')
-                    formatted_class_name = self._format_class_name(class_name)
-                    self._func_docs_cache[formatted_class_name] = func_list
+                    file_name = os.path.basename(file_path).replace('.json', '')
+                    FILE_NAME_TO_CLASS_NAME_DICT = {
+                        'gorilla_file_system': 'GorillaFileSystem',
+                        'math_api': 'MathAPI',
+                        'message_api': 'MessageAPI',
+                        'posting_api': 'TwitterAPI',
+                        'ticket_api': 'TicketAPI',
+                        'trading_bot': 'TradingBot',
+                        'travel_booking': 'TravelAPI',
+                        'vehicle_control': 'VehicleControlAPI'
+                    }
+                    class_name = FILE_NAME_TO_CLASS_NAME_DICT[file_name] 
+                    self._func_docs_cache[class_name] = func_list
             except Exception as e:
                 print(f"Error loading function docs from {file_path}: {e}")
     
@@ -90,12 +100,7 @@ class BfclLoader(BaseLoader):
                     self._possible_answers_cache[filename] = answers
             except Exception as e:
                 print(f"Error loading possible answers from {file_path}: {e}")
-    
-    def _format_class_name(self, class_name: str) -> str:
-        """Convert filename to proper class name format"""
-        # gorilla_file_system -> GorillaFileSystem
-        parts = class_name.split('_')
-        return ''.join(word.capitalize() for word in parts)
+
     
     def _get_language_specific_hint(self, test_category: str) -> str:
         """Get language-specific hint based on test category"""
@@ -299,8 +304,9 @@ class BfclLoader(BaseLoader):
         
         all_functions = []
         for class_name in involved_classes:
-            if class_name in self._func_docs_cache:
-                all_functions.extend(self._func_docs_cache[class_name])
+            if class_name not in self._func_docs_cache:
+                print(f"{class_name} not in doc")
+            all_functions.extend(self._func_docs_cache[class_name])
         
         return all_functions
     
