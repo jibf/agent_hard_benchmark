@@ -429,11 +429,65 @@ class BfclLoader(BaseLoader):
 
         return " | ".join(instructions) if instructions else ""
 
-    def _create_interleaved_trajectory(self, question_data: List[List[Dict]], ground_truth: List[List[str]], missed_function_dict: Optional[Dict], initial_config: Optional[Dict] = None, involved_classes: Optional[List[str]] = None, test_entry_id: str = "unknown") -> List[Dict]:
+    def _align_ground_truth_to_turns(self, question_data: List[List[Dict]], ground_truth: List[Any]) -> List[List[Any]]:
+        """Align ground truth tool call groups with the number of user turns.
+
+        Some BFCL entries (especially multi-turn stateful ones) provide tool call
+        sequences where the grouping does not perfectly align with the number of
+        user turns—for example, multiple consecutive tool call batches for a
+        single user request. This helper flattens and repartitions the tool call
+        groups so we always have one list per user turn while preserving order.
+        """
+        if not question_data or not ground_truth:
+            return ground_truth or []
+
+        num_turns = len(question_data)
+
+        # Normalise each ground truth entry into a list for easier merging
+        normalised = []
+        for entry in ground_truth:
+            if isinstance(entry, list):
+                normalised.append(entry)
+            else:
+                normalised.append([entry])
+
+        if len(normalised) == num_turns:
+            return normalised
+
+        # If there are fewer tool call groups than turns, pad with empty lists
+        if len(normalised) < num_turns:
+            normalised.extend([[] for _ in range(num_turns - len(normalised))])
+            return normalised
+
+        aligned: List[List[Any]] = []
+        idx = 0
+        for turn_idx in range(num_turns):
+            remaining_turns = num_turns - turn_idx
+            remaining_groups = len(normalised) - idx
+            # Ensure we leave at least one group for each remaining turn
+            take = max(1, remaining_groups - (remaining_turns - 1))
+
+            merged_group: List[Any] = []
+            for _ in range(take):
+                merged_group.extend(normalised[idx])
+                idx += 1
+            aligned.append(merged_group)
+
+        return aligned
+
+    def _create_interleaved_trajectory(self, question_data: List[List[Dict]], ground_truth: List[Any], missed_function_dict: Optional[Dict], initial_config: Optional[Dict] = None, involved_classes: Optional[List[str]] = None, test_entry_id: str = "unknown") -> List[Dict]:
         """Create interleaved trajectory with user questions and agent tool calls, including function execution results"""
         if not question_data or not ground_truth:
             return []
-        assert len(question_data) == len(ground_truth)
+
+        if len(question_data) != len(ground_truth):
+            ground_truth = self._align_ground_truth_to_turns(question_data, ground_truth)
+
+        if len(question_data) != len(ground_truth):
+            raise ValueError(
+                f"Ground truth length mismatch for {test_entry_id}: "
+                f"{len(question_data)} turns vs {len(ground_truth)} tool groups"
+            )
         trajectory = []
 
         # Initialize instances if we have multi-turn data with state
@@ -566,12 +620,16 @@ class BfclLoader(BaseLoader):
         """Format a single line from BFCL dataset into BFCLQuestion"""
         question_id = line.get('id', 'unknown')
         question_data = line.get("question", [])
-        
+
+        # Determine category and subcategory early so we can infer multi-turn status reliably
+        category, subcategory = self._determine_category_and_subcategory(question_id, filename)
+
         # Extract instruction
         instruction = self._extract_instruction_from_question(question_data)
-        
-        # Determine if multi-turn
-        is_multi_turn = len(question_data) > 1
+
+        # Determine if multi-turn; some multi-turn files contain a single user turn in the question list,
+        # but still require multi-turn handling (stateful execution, initial config, etc.).
+        is_multi_turn = (subcategory == 'multi_turn') or (len(question_data) > 1)
         
         # Multi-turn specific fields
         initial_config = line.get('initial_config', None) if is_multi_turn else None
@@ -585,8 +643,6 @@ class BfclLoader(BaseLoader):
         if is_multi_turn and not function_list and involved_classes:
             function_list = self._get_functions_for_multi_turn(involved_classes)
         
-        # Determine category and subcategory
-        category, subcategory = self._determine_category_and_subcategory(question_id, filename)
         is_live_data = 'live' in category
         
         # Get possible answer
