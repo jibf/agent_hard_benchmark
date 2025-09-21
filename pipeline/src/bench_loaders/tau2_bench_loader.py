@@ -4,6 +4,7 @@ import sys
 import logging
 import toml
 import re
+from copy import deepcopy
 from typing import Dict, Any, List, Optional
 from collections import defaultdict
 from . import BaseLoader
@@ -125,13 +126,29 @@ class Tau2BenchLoader(BaseLoader):
         # Extract conversation trajectory and evaluation criteria
         gt_actions = task["evaluation_criteria"]["actions"]
 
+        initial_state = task.get("initial_state")
+
         # Generate conversations with observations for each tool call
-        gt_conv_traj = self._convert_actions_to_conversations(gt_actions, domain, env_data)
+        gt_conv_traj = self._convert_actions_to_conversations(
+            gt_actions,
+            domain,
+            env_data,
+            initial_state,
+        )
 
         # combine task purpose to the evaluation_criteria
         evaluation_criteria = task.get("evaluation_criteria", {})
         evaluation_criteria["task_purpose"] = task["description"]["purpose"]
-        initial_state = task.get("initial_state")
+        initial_state_with_state_dump = deepcopy(initial_state) if initial_state is not None else None
+        if initial_state_with_state_dump is not None:
+            post_init_state = self._get_post_initialization_environment_state(
+                domain=domain,
+                initial_state=initial_state_with_state_dump,
+            )
+            if post_init_state is not None:
+                initial_state_with_state_dump[
+                    "post_initialization_environment_state"
+                ] = post_init_state
 
         return Tau2BenchQuestion(
             question_id=task_id,
@@ -143,7 +160,7 @@ class Tau2BenchLoader(BaseLoader):
             agent_system_prompt=self._get_agent_system_prompt(domain),
             user_context=self._get_user_context(task, domain, env_data),
             available_user_function_list=self.user_function_schemas_cache[domain],
-            initial_state=initial_state,
+            initial_state=initial_state_with_state_dump,
             evaluation_criteria=evaluation_criteria,
             meta={
                 'tau2_bench_context': {
@@ -152,7 +169,88 @@ class Tau2BenchLoader(BaseLoader):
                 }
             }
         )
-    
+
+    def _get_post_initialization_environment_state(
+        self, domain: str, initial_state: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Run the initialization actions for a task and capture resulting environment state."""
+
+        if not initial_state:
+            return None
+
+        initialization_actions = initial_state.get("initialization_actions") or []
+        initialization_data = initial_state.get("initialization_data")
+        message_history = initial_state.get("message_history") or []
+
+        if not initialization_actions and not initialization_data and not message_history:
+            return None
+
+        tau2_bench_path = "data/tau2-bench-envs/src"
+        if tau2_bench_path not in sys.path:
+            sys.path.insert(0, tau2_bench_path)
+
+        try:
+            from loguru import logger
+
+            logger.disable("tau2")
+            logger.disable("litellm")
+        except ImportError:
+            pass
+
+        try:
+            from tau2.registry import registry
+        except Exception:
+            return None
+
+        try:
+            environment = registry.get_env_constructor(domain)()
+        except Exception:
+            return None
+
+        init_data_obj, init_actions_obj, message_history_obj = (
+            self._prepare_initial_state_objects(initial_state)
+        )
+
+        if init_data_obj is init_actions_obj is message_history_obj is None:
+            return None
+
+        try:
+            environment.set_state(
+                initialization_data=init_data_obj,
+                initialization_actions=init_actions_obj,
+                message_history=message_history_obj or [],
+            )
+        except Exception:
+            return None
+
+        return self._snapshot_environment_state(environment)
+
+    @staticmethod
+    def _snapshot_environment_state(environment) -> Optional[Dict[str, Any]]:
+        """Serialize relevant environment state for prompt inclusion."""
+
+        snapshot: Dict[str, Any] = {}
+
+        tools = getattr(environment, "tools", None)
+        if tools is not None:
+            tool_db = getattr(tools, "db", None)
+            if tool_db is not None and hasattr(tool_db, "model_dump"):
+                try:
+                    snapshot["assistant_db"] = tool_db.model_dump(mode="json")
+                except Exception:
+                    snapshot["assistant_db"] = tool_db.model_dump()
+
+        user_tools = getattr(environment, "user_tools", None)
+        if user_tools is not None:
+            user_db = getattr(user_tools, "db", None)
+            if user_db is not None and hasattr(user_db, "model_dump"):
+                try:
+                    snapshot["user_db"] = user_db.model_dump(mode="json")
+                except Exception:
+                    snapshot["user_db"] = user_db.model_dump()
+
+        return snapshot or None
+
     def _get_tau2_tool_schemas(self, domain: str) -> List[Dict[str, Any]]:
         """Get tool schemas for tau2-bench domain using tau2 package"""
         try:
@@ -586,12 +684,17 @@ class Tau2BenchLoader(BaseLoader):
         
         return []
 
-    def _convert_actions_to_conversations(self, actions: List[Dict[str, Any]], domain: str, env_data: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    def _convert_actions_to_conversations(
+        self,
+        actions: List[Dict[str, Any]],
+        domain: str,
+        env_data: Dict[str, Any] = None,
+        initial_state: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         """Convert tau2-bench actions to conversation format with real tool execution results"""
         conversations = []
         # Create a mutable copy of env_data to track state changes
         current_env_data = json.loads(json.dumps(env_data)) if env_data else {}
-
         # Create a single environment instance to persist state across tool calls
         tau2_bench_path = "data/tau2-bench-envs/src"
         if tau2_bench_path not in sys.path:
@@ -608,6 +711,20 @@ class Tau2BenchLoader(BaseLoader):
         from tau2.registry import registry
         env_constructor = registry.get_env_constructor(domain)
         environment = env_constructor()
+
+        init_data_obj, init_actions_obj, message_history_obj = (
+            self._prepare_initial_state_objects(initial_state)
+        )
+
+        if not (init_data_obj is init_actions_obj is message_history_obj is None):
+            try:
+                environment.set_state(
+                    initialization_data=init_data_obj,
+                    initialization_actions=init_actions_obj,
+                    message_history=message_history_obj or [],
+                )
+            except Exception:
+                pass
 
         # Set the initial environment data
         if hasattr(environment, '_data'):
@@ -651,6 +768,54 @@ class Tau2BenchLoader(BaseLoader):
             })
 
         return conversations
+
+    def _prepare_initial_state_objects(
+        self, initial_state: Optional[Dict[str, Any]]
+    ) -> tuple[Optional[Any], Optional[List[Any]], Optional[List[Any]]]:
+        """Convert initial state dictionary into tau2 model instances for environment.set_state."""
+
+        if not initial_state:
+            return None, None, None
+
+        initialization_data = initial_state.get("initialization_data")
+        initialization_actions = initial_state.get("initialization_actions")
+        message_history = initial_state.get("message_history") or []
+
+        tau2_bench_path = "data/tau2-bench-envs/src"
+        if tau2_bench_path not in sys.path:
+            sys.path.insert(0, tau2_bench_path)
+
+        try:
+            from tau2.data_model.tasks import InitializationData, EnvFunctionCall
+            from tau2.data_model.message import Message
+        except Exception:
+            return None, None, None
+
+        init_data_obj = None
+        if initialization_data is not None:
+            try:
+                init_data_obj = InitializationData.model_validate(initialization_data)
+            except Exception:
+                init_data_obj = None
+
+        init_actions_obj = None
+        if initialization_actions:
+            try:
+                init_actions_obj = [
+                    EnvFunctionCall.model_validate(action)
+                    for action in initialization_actions
+                ]
+            except Exception:
+                return None, None, None
+
+        message_history_obj: Optional[List[Any]] = []
+        if message_history:
+            try:
+                message_history_obj = [Message.model_validate(msg) for msg in message_history]
+            except Exception:
+                message_history_obj = []
+
+        return init_data_obj, init_actions_obj, message_history_obj
 
     def _execute_tool_with_state_user(self, tool_name: str, arguments: Dict[str, Any], domain: str, environment) -> Dict[str, Any]:
         """Execute a tau2-bench user tool using persistent environment"""
