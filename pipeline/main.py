@@ -310,7 +310,7 @@ class BenchmarkFilteringPipeline:
         problematic_issues, all_labelled_questions = self.data_loader.load_human_labelled_ground_truth(self.config.get("target_benchmark"))
         responses_by_question = group_responses_by_question(all_responses)
         responses_by_question = self.filter_illegal_data(responses_by_question)
-        diversity_dict = self._compute_diversity(responses_by_question)
+        diversity_dict = None
 
         # Compute IRT discrimination metric
         if not self.config.get("skip_measurement", False):
@@ -321,6 +321,9 @@ class BenchmarkFilteringPipeline:
                 print(irt_discrimination)
             else:
                 logger.warning("No IRT discrimination values computed")
+
+        if not self.config.get("skip_measurement", False):
+            diversity_dict = self._compute_diversity(responses_by_question)
 
         pipeline_outputs = {k: PipelineOutput() for k in responses_by_question.keys()}
 
@@ -336,7 +339,6 @@ class BenchmarkFilteringPipeline:
         self.metrics_summary["original"]["separability"] = sep_list
 
         if not self.config.get("skip_measurement", False):
-            diversity_dict = self._compute_diversity(responses_by_question)
             logger.info(
                 f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}"
             )
@@ -2131,8 +2133,8 @@ def main():
     )
     parser.add_argument(
         "--llm-model",
-        default="openai/gpt-4.1",
-        help="LLM model to use for Step 2 (default: gpt-4.1)",
+        default="google/gemini-2.5-pro-thinking-on",
+        help="LLM model to use for Step 2 (default: google/gemini-2.5-pro-thinking-on)",
     )
     parser.add_argument(
         "--llm-max-samples",
