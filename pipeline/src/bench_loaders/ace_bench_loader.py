@@ -26,14 +26,45 @@ class AceBenchLoader(BaseLoader):
         
         for answer in ground_truths_within_task:
             if answer.get('id') == question_id:
-                ground_truth = answer.get('ground_truth')
-                if isinstance(ground_truth, dict):
-                    ground_truth = [ground_truth]
-                elif isinstance(ground_truth, str):
+                ground_truth = self._normalize_ground_truth(answer.get('ground_truth'))
+                if isinstance(ground_truth, str):
                     assert "I cannot solve this problem" in ground_truth  # ground_truth is str only if the sample is erronous
                     ground_truth = [{"response": ground_truth}]
                 return ground_truth
         return None
+
+    def _normalize_ground_truth(self, raw_ground_truth: Any) -> Optional[List[Any]]:
+        """Normalize raw ground truth to a list format while collapsing suffixed function keys."""
+
+        if raw_ground_truth is None:
+            return None
+
+        if isinstance(raw_ground_truth, dict):
+            normalized: Dict[str, Any] = {}
+
+            for key, value in raw_ground_truth.items():
+                if isinstance(key, str) and '_' in key:
+                    base, suffix = key.rsplit('_', 1)
+                    if suffix.isdigit():
+                        key = base
+
+                normalized.setdefault(key, [])
+                normalized[key].append(value)
+
+            # Collapse single-entry lists back to raw value for parity with agent outputs
+            collapsed: Dict[str, Any] = {}
+            for func_name, calls in normalized.items():
+                if len(calls) == 1:
+                    collapsed[func_name] = calls[0]
+                else:
+                    collapsed[func_name] = calls
+
+            return [collapsed]
+
+        if isinstance(raw_ground_truth, list):
+            return raw_ground_truth
+
+        return raw_ground_truth
 
     
     def _get_system_prompts(
