@@ -38,7 +38,7 @@ from src.utils.types import (
     PipelineOutput,
     RuleBasedOutput,
 )
-from src.utils import group_responses_by_question, log_confusion_matrix
+from src.utils import group_responses_by_question, log_confusion_matrix, log_confusion_matrix_human_labelled
 from metric.irt_metric import compute_irt_metric
 
 # Logger will be configured in main() function
@@ -290,7 +290,7 @@ class BenchmarkFilteringPipeline:
         logger.info("Starting benchmark filtering pipeline")
 
         all_responses = self._load_benchmark_data()
-        problematic_issues = self.data_loader.load_problematic_issues(self.config.get("target_benchmark"))
+        problematic_issues, all_labelled_questions = self.data_loader.load_human_labelled_ground_truth(self.config.get("target_benchmark"))
         responses_by_question = group_responses_by_question(all_responses)
         responses_by_question = self.filter_illegal_data(responses_by_question)
 
@@ -379,22 +379,23 @@ class BenchmarkFilteringPipeline:
                 # else:
                 #     logger.warning("Initial IRT discrimination dictionary not available")
                 
-            log_confusion_matrix(
-                problematic_issues=remaining_problematic_issues,
+            log_confusion_matrix_human_labelled(
+                problematic_issues=problematic_issues,
                 passed_ids=set(step1_passed.keys()),
-                total_num=len(responses_by_question),
+                all_labelled_questions=all_labelled_questions,
+                input_ids=set(current_responses.keys()),
             )
+            remaining_problematic_issues = {
+                question_id: remaining_problematic_issues[question_id]
+                for question_id in remaining_problematic_issues
+                if question_id in step1_passed
+            }
             self._write_filter_summary(
                 passed_ids=set(step1_passed.keys()),
                 input_ids=set(responses_by_question.keys()),
                 phase="step1",
                 problematic_issues=problematic_issues,
             )
-            remaining_problematic_issues = {
-                question_id: problematic_issues
-                for question_id in remaining_problematic_issues
-                if question_id in step1_passed
-            }
             current_responses = step1_passed
 
             # Update pipeline_outputs with step1 results
@@ -529,22 +530,23 @@ class BenchmarkFilteringPipeline:
                     logger.warning("No matching alpha values found for Step 2 passed questions")
             #     irt_discrimination = compute_irt_metric(step2_passed, threshold=0.5)
             #     logger.info(f"Benchmark IRT discrimination After Step 2: {irt_discrimination:.4f}")
-            log_confusion_matrix(
-                problematic_issues=remaining_problematic_issues,
+            log_confusion_matrix_human_labelled(
+                problematic_issues=problematic_issues,
                 passed_ids=set(step2_passed.keys()),
-                total_num=len(current_responses),
+                all_labelled_questions=all_labelled_questions,
+                input_ids=set(current_responses.keys()),
             )
+            remaining_problematic_issues = {
+                question_id: remaining_problematic_issues[question_id]
+                for question_id in remaining_problematic_issues
+                if question_id in step2_passed
+            }
             self._write_filter_summary(
                 passed_ids=set(step2_passed.keys()),
                 input_ids=set(current_responses.keys()),
                 phase="step2",
                 problematic_issues=problematic_issues,
             )
-            remaining_problematic_issues = {
-                question_id: problematic_issues
-                for question_id in remaining_problematic_issues
-                if question_id in step2_passed
-            }
             current_responses = step2_passed
             # Count unique tasks and samples in step2_passed
             step2_unique_tasks = len(step2_passed)
@@ -641,22 +643,23 @@ class BenchmarkFilteringPipeline:
                         logger.warning("No matching alpha values found for Step 3 passed questions")
                 #     irt_discrimination = compute_irt_metric(step3_passed, threshold=0.5)
                 #     logger.info(f"Benchmark IRT discrimination After Step 3: {irt_discrimination:.4f}")
-                log_confusion_matrix(
-                    problematic_issues=remaining_problematic_issues,
+                log_confusion_matrix_human_labelled(
+                    problematic_issues=problematic_issues,
                     passed_ids=set(step3_passed.keys()),
-                    total_num=len(step2_result),
+                    all_labelled_questions=all_labelled_questions,
+                    input_ids=set(step2_result.keys()),
                 )
+                remaining_problematic_issues = {
+                    question_id: remaining_problematic_issues[question_id]
+                    for question_id in remaining_problematic_issues
+                    if question_id in step3_passed
+                }
                 self._write_filter_summary(
                     passed_ids=set(step3_passed.keys()),
                     input_problematic_ids=set(step2_result.keys()),
                     phase="step3",
                     problematic_issues=problematic_issues,
                 )
-                remaining_problematic_issues = {
-                    question_id: problematic_issues
-                    for question_id in remaining_problematic_issues
-                    if question_id in step3_passed
-                }
 
                 # Count unique tasks and samples in step3_passed
                 step3_unique_tasks = len(step3_passed)
@@ -759,10 +762,11 @@ class BenchmarkFilteringPipeline:
                     logger.warning("No matching alpha values found for Step 4 passed questions")
                 # irt_discrimination = compute_irt_metric(step4_passed, threshold=0.5)
                 # logger.info(f"Benchmark IRT discrimination After Step 4: {irt_discrimination:.4f}")
-                log_confusion_matrix(
-                    problematic_issues=remaining_problematic_issues,
+                log_confusion_matrix_human_labelled(
+                    problematic_issues=problematic_issues,
                     passed_ids=set(step4_passed.keys()),
-                    total_num=len(current_responses),
+                    all_labelled_questions=all_labelled_questions,
+                    input_ids=set(current_responses.keys()),
                 )
             self._write_filter_summary(
                 passed_ids=set(step4_passed.keys()),
@@ -770,11 +774,6 @@ class BenchmarkFilteringPipeline:
                 phase="step4",
                 problematic_issues=problematic_issues,
             )
-            remaining_problematic_issues = {
-                question_id: problematic_issues
-                for question_id in remaining_problematic_issues
-                if question_id in step4_passed
-            }
 
             # Count unique tasks and samples in step4_passed
             step4_unique_tasks = len(step4_passed)

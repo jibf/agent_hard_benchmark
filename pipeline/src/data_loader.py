@@ -225,3 +225,82 @@ class BenchmarkDataLoader:
                 logger.error(f"Error loading problematic issues from {csv_file}: {e}")
 
         return problematic_issues
+
+    def load_human_labelled_ground_truth(self, target_benchmark: Optional[List[str]] = None) -> tuple[Dict[str, Dict[str, Dict]], set]:
+        """Load human labelled ground truth data from CSV files in human_labelled_ground_truth directory.
+
+        Returns:
+            tuple: (problematic_issues_dict, all_labelled_question_ids_set)
+                - problematic_issues_dict: Dict mapping problematic question IDs to their info
+                - all_labelled_question_ids_set: Set of all question IDs in the labelled dataset
+        """
+        logger.info("Loading human labelled ground truth data...")
+        target_list = [name.lower().replace("-", "") for name in target_benchmark] if target_benchmark else []
+
+        # Get the human_labelled_ground_truth directory relative to the pipeline root
+        pipeline_root = Path(__file__).parent.parent  # Go up from src to pipeline
+        ground_truth_dir = pipeline_root / "human_labelled_ground_truth"
+        ground_truth_issues = {}
+        all_labelled_questions = set()
+
+        if not ground_truth_dir.exists():
+            logger.warning(
+                f"Human labelled ground truth directory not found: {ground_truth_dir}"
+            )
+            return ground_truth_issues, all_labelled_questions
+
+        # Find all CSV files in the directory
+        csv_files = list(ground_truth_dir.glob("*.csv"))
+
+        for csv_file in csv_files:
+            # Extract benchmark name from filename (e.g., "DrafterBench.csv" -> "DrafterBench")
+            benchmark_name = csv_file.stem
+            if target_list and benchmark_name.lower().replace("-", "") not in target_list:
+                continue
+
+            try:
+                with open(csv_file, "r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    benchmark_issues = {}
+                    benchmark_all_questions = set()
+
+                    for row in reader:
+                        task_name = row.get("task_name")
+                        task_id = row.get("task_id")
+                        is_issue = row.get("is_issue", "0")
+                        issue_type = row.get("issue_type", "")
+
+                        if task_name and task_id:
+                            # Create UniqueQuestionID
+                            unique_id = UniqueQuestionID(
+                                benchmark=Benchmark(benchmark_name),
+                                task_name=task_name,
+                                question_id=task_id,
+                            )
+
+                            # Add to all_labelled_questions regardless of is_issue value
+                            benchmark_all_questions.add(unique_id)
+
+                            # Only add to ground_truth_issues if is_issue == "1"
+                            if is_issue == "1":
+                                benchmark_issues[unique_id] = {
+                                    "reason": issue_type,
+                                    "source": "human_labelled",
+                                }
+
+                    if benchmark_issues:
+                        ground_truth_issues.update(benchmark_issues)
+                        logger.info(
+                            f"Loaded {len(benchmark_issues)} problematic issues from human labelled ground truth for {benchmark_name}"
+                        )
+
+                    if benchmark_all_questions:
+                        all_labelled_questions.update(benchmark_all_questions)
+                        logger.info(
+                            f"Loaded {len(benchmark_all_questions)} total labelled questions for {benchmark_name}"
+                        )
+
+            except Exception as e:
+                logger.error(f"Error loading human labelled ground truth from {csv_file}: {e}")
+
+        return ground_truth_issues, all_labelled_questions

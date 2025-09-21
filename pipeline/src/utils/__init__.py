@@ -107,3 +107,39 @@ def log_confusion_matrix(problematic_issues: Dict, passed_ids: set, total_num: i
         compute_confusion_matrix(manually_ids, passed_ids, total_num)
     else:
         logger.info("No manually annotated problematic issues found")
+
+
+def log_confusion_matrix_human_labelled(problematic_issues: Dict, passed_ids: set, all_labelled_questions: set, input_ids: set) -> None:
+    """Log confusion matrix for human labelled ground truth data.
+
+    Args:
+        problematic_issues: Dict mapping problematic question IDs to their info (should be human labelled)
+        passed_ids: Set of question IDs that passed all filters
+        all_labelled_questions: Set of all question IDs in the human labelled dataset
+        input_ids: Set of question IDs that were input to the current step
+    """
+    # Find which human labelled questions are in the current step's input
+    labelled_questions_in_input = all_labelled_questions & input_ids
+
+    # Find which of these are problematic
+    problematic_ids_in_input = set(problematic_issues.keys()) & input_ids
+
+    # Find which human labelled questions passed the filter
+    labelled_questions_passed = all_labelled_questions & passed_ids
+
+    if not labelled_questions_in_input:
+        logger.info("=== Human Labelled Ground Truth Evaluation ===")
+        logger.info("No human labelled questions found in current step input")
+        return
+
+    logger.info("=== Human Labelled Ground Truth Evaluation ===")
+    logger.info(f"Human labelled questions in current step: {len(labelled_questions_in_input)}")
+    logger.info(f"- Problematic: {len(problematic_ids_in_input)}")
+    logger.info(f"- Normal: {len(labelled_questions_in_input) - len(problematic_ids_in_input)}")
+
+    # Use the original compute_confusion_matrix function with the right parameters
+    compute_confusion_matrix(
+        problematic_ids=problematic_ids_in_input,
+        passed_ids=labelled_questions_passed,
+        total_num=len(labelled_questions_in_input)
+    )
