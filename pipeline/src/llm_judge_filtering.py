@@ -6,18 +6,27 @@ Evaluates benchmark quality using LLM-based assessment.
 
 import json
 import logging
-from typing import Dict, List, Optional
-from dataclasses import dataclass
-from openai import OpenAI
-import time
 import os
-from multiprocessing import Pool
-from dotenv import load_dotenv
-from tqdm import tqdm
-from src.bench_loaders import get_bench_loader
-from src.utils.types import Benchmark, FormattedQuestion, LLMJudgeOutput, LLMJudgeStep, UniqueQuestionID, FilterResult
-from src.utils.format_judge_prompt import format_judge_prompt
 import re
+import time
+from dataclasses import dataclass
+from multiprocessing import Pool
+from typing import Dict, List, Optional
+
+from dotenv import load_dotenv
+from openai import OpenAI
+from tqdm import tqdm
+
+from src.bench_loaders import get_bench_loader
+from src.utils.format_judge_prompt import format_judge_prompt
+from src.utils.types import (
+    Benchmark,
+    FilterResult,
+    FormattedQuestion,
+    LLMJudgeOutput,
+    LLMJudgeStep,
+    UniqueQuestionID,
+)
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -32,6 +41,7 @@ class LLMJudgeConfig:
     model: str = "openai/gpt-4.1"       # Default model
     max_retries: int = 3
     retry_delay: float = 1.0
+    request_timeout: float = 180.0
     num_proc: int = 32
     max_samples: Optional[int] = None   # Limit for testing
     steps: List[LLMJudgeStep] = None            # Which steps to run (default: both FILTER and SCORE)
@@ -75,7 +85,7 @@ class LLMJudge:
         raise ValueError(f"Could not extract valid JSON from response: {content}")
 
     @staticmethod
-    def _make_api_call(client: OpenAI, model: str, evaluation_prompt: str, max_retries: int, retry_delay: float) -> Dict:
+    def _make_api_call(client: OpenAI, model: str, evaluation_prompt: str, max_retries: int, retry_delay: float, request_timeout: float) -> Dict:
         is_gemini = "gemini" in model
         for attempt in range(max_retries):
             try:
@@ -89,7 +99,7 @@ class LLMJudge:
                 if not is_gemini:
                     params["response_format"] = {"type": "json_object"}
 
-                response = client.chat.completions.create(**params)
+                response = client.chat.completions.create(timeout=request_timeout, **params)
 
                 response_content = response.choices[0].message.content
                 if not response_content or response_content.strip() == "":
@@ -105,7 +115,17 @@ class LLMJudge:
 
             except Exception as e:
                 if attempt == max_retries - 1:  # Last attempt
-                    return {"error": str(e)}
+                    error_message = str(e)
+                    lowercase_error = error_message.lower()
+                    is_timeout = isinstance(e, TimeoutError) or "timeout" in lowercase_error
+                    error_category = "llm_judge_timeout" if is_timeout else "llm_judge_error"
+                    return {
+                        "is_flawed": True,
+                        "error_category": error_category,
+                        "reasoning": f"LLM judge request failed: {error_message}",
+                        "reasoning_summary": "LLM judge request failed",
+                        "error": error_message
+                    }
                 time.sleep(retry_delay)
 
     
@@ -227,7 +247,8 @@ class LLMJudge:
 
         return self._make_api_call(
             client, self.config.model, evaluation_prompt,
-            self.config.max_retries, self.config.retry_delay
+            self.config.max_retries, self.config.retry_delay,
+            self.config.request_timeout
         )
     
     def assess_questions(self, questions: List[FormattedQuestion], step: LLMJudgeStep) -> List[Dict]:
@@ -236,7 +257,6 @@ class LLMJudge:
             results = []
             for question in tqdm(questions, desc="Processing questions"):
                 assessment = self._assess_question(question, step)
-
                 results.append({
                     "benchmark": question.benchmark.value,
                     "question_id": question.question_id,
@@ -248,17 +268,17 @@ class LLMJudge:
             logger.info(f"Using multiprocessing with {self.config.num_proc} processes")
             
             args_list = []
-            for question in questions:
+            for idx, question in enumerate(questions):
                 args_list.append((
-                    question, step, self.config.model, os.getenv("API_KEY"), os.getenv("BASE_URL"), 
-                    self.config.max_retries, self.config.retry_delay
+                    idx, question, step, self.config.model, os.getenv("API_KEY"), os.getenv("BASE_URL"), 
+                    self.config.max_retries, self.config.retry_delay, self.config.request_timeout
                 ))
             
+            results = [None] * len(args_list)
             with Pool(processes=self.config.num_proc) as pool:
-                results = []
                 with tqdm(total=len(args_list), desc="Processing questions (multiprocessing)") as pbar:
-                    for result in pool.imap(_assess_question_worker, args_list):
-                        results.append(result)
+                    for idx, result in pool.imap_unordered(_assess_question_worker, args_list):
+                        results[idx] = result
                         pbar.update(1)
             
             return results
@@ -266,9 +286,14 @@ class LLMJudge:
 
 def _assess_question_worker(args):
     """Worker function for multiprocessing question assessment."""
-    question, step, model, api_key, base_url, max_retries, retry_delay = args
+    idx, question, step, model, api_key, base_url, max_retries, retry_delay, request_timeout = args
     client = OpenAI(api_key=api_key, base_url=base_url)
     evaluation_prompt = format_judge_prompt(question, step)
 
-    result = LLMJudge._make_api_call(client, model, evaluation_prompt, max_retries, retry_delay)
-    return {"question": question, "assessment": result}
+    assessment = LLMJudge._make_api_call(client, model, evaluation_prompt, max_retries, retry_delay, request_timeout)
+    entry = {
+        "benchmark": question.benchmark.value,
+        "question_id": question.question_id,
+        "assessment": assessment
+    }
+    return idx, entry

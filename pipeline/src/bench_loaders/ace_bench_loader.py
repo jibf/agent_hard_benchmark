@@ -36,45 +36,136 @@ class AceBenchLoader(BaseLoader):
         return None
 
     
-    def _get_system_prompts(self, question_id: str, question_text: str, functions: list, time_info: str, profile: str, lang: str) -> tuple[Optional[str], Optional[str]]:
-        """Get system prompts based on data type and language."""
+    def _get_system_prompts(
+        self,
+        question_id: str,
+        question_text: str,
+        functions: list,
+        time_info: str,
+        profile: str,
+        involved_classes: Optional[List[str]],
+        lang: str,
+    ) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        """Get system prompts based on data type and language.
+
+        Returns a tuple of (agent_system_prompt, conversation_history_prompt, user_system_prompt).
+        The user_system_prompt is only populated for agent-style categories that simulate a user LLM.
+        """
         prompt_file = os.path.join(self.data_dir, "model_inference", f"prompt_{lang}.py")
         if not os.path.exists(prompt_file):
-            return None, None
+            return None, None, None
             
         sys.path.insert(0, os.path.dirname(prompt_file))
         
         # Extract category from question_id (similar to original implementation)
         category = question_id.rsplit("_", 1)[0] if question_id else ""
+
+        user_system_prompt = None
         
         if lang == 'en':
-            from prompt_en import (SYSTEM_PROMPT_FOR_NORMAL_DATA_EN, SYSTEM_PROMPT_FOR_PREFERENCE_DATA_EN,
-                                   SYSTEM_PROMPT_FOR_SPECIAL_DATA_EN, USER_PROMPT_EN)
-            
-            if "special" in category:
+            from prompt_en import (
+                SYSTEM_PROMPT_FOR_NORMAL_DATA_EN,
+                SYSTEM_PROMPT_FOR_PREFERENCE_DATA_EN,
+                SYSTEM_PROMPT_FOR_SPECIAL_DATA_EN,
+                USER_PROMPT_EN,
+            )
+
+            if category.startswith('agent'):
+                agent_prompt = self._compose_agent_system_prompt_en(functions, involved_classes)
+                user_prompt = self._compose_agent_user_prompt_en(question_text, functions)
+                user_system_prompt = self._compose_agent_user_system_prompt_en(question_text, involved_classes)
+            elif "special" in category:
                 agent_prompt = SYSTEM_PROMPT_FOR_SPECIAL_DATA_EN.format(time=time_info, function=functions)
+                user_prompt = USER_PROMPT_EN.format(question=question_text)
             elif "preference" in category:
                 agent_prompt = SYSTEM_PROMPT_FOR_PREFERENCE_DATA_EN.format(profile=profile, function=functions)
+                user_prompt = USER_PROMPT_EN.format(question=question_text)
             else:
                 agent_prompt = SYSTEM_PROMPT_FOR_NORMAL_DATA_EN.format(time=time_info, function=functions)
-            
-            user_prompt = USER_PROMPT_EN.format(question=question_text)
-            
+                user_prompt = USER_PROMPT_EN.format(question=question_text)
+
         else:
-            from prompt_zh import (SYSTEM_PROMPT_FOR_NORMAL_DATA_ZH, SYSTEM_PROMPT_FOR_PREFERENCE_DATA_ZH,
-                                   SYSTEM_PROMPT_FOR_SPECIAL_DATA_ZH, USER_PROMPT_ZH)
-            
-            if "special" in category:
+            from prompt_zh import (
+                SYSTEM_PROMPT_FOR_NORMAL_DATA_ZH,
+                SYSTEM_PROMPT_FOR_PREFERENCE_DATA_ZH,
+                SYSTEM_PROMPT_FOR_SPECIAL_DATA_ZH,
+                USER_PROMPT_ZH,
+            )
+
+            if category.startswith('agent'):
+                agent_prompt = self._compose_agent_system_prompt_zh(functions, involved_classes)
+                user_prompt = self._compose_agent_user_prompt_zh(question_text, functions)
+                user_system_prompt = self._compose_agent_user_system_prompt_zh(question_text, involved_classes)
+            elif "special" in category:
                 agent_prompt = SYSTEM_PROMPT_FOR_SPECIAL_DATA_ZH.format(time=time_info or "", function=functions)
+                user_prompt = USER_PROMPT_ZH.format(question=question_text)
             elif "preference" in category:
                 agent_prompt = SYSTEM_PROMPT_FOR_PREFERENCE_DATA_ZH.format(profile=profile or "", function=functions)
+                user_prompt = USER_PROMPT_ZH.format(question=question_text)
             else:
                 agent_prompt = SYSTEM_PROMPT_FOR_NORMAL_DATA_ZH.format(time=time_info or "", function=functions)
-            
-            user_prompt = USER_PROMPT_ZH.format(question=question_text)
+                user_prompt = USER_PROMPT_ZH.format(question=question_text)
         
-        return agent_prompt, user_prompt
-    
+        return agent_prompt, user_prompt, user_system_prompt
+
+    def _compose_agent_system_prompt_en(self, functions: list, involved_classes: Optional[List[str]]) -> str:
+        from multi_step.common_agent_step import MULTI_TURN_AGENT_PROMPT_SYSTEM_EN
+        from prompt_en import BASE_PROMPT_EN, TRAVEL_PROMPT_EN
+
+        prompt = MULTI_TURN_AGENT_PROMPT_SYSTEM_EN.strip()
+        classes = involved_classes or []
+        if any("Travel" in cls for cls in classes):
+            prompt = f"{prompt}\n\n{TRAVEL_PROMPT_EN.strip()}"
+        if any("BaseApi" in cls for cls in classes):
+            prompt = f"{prompt}\n\n{BASE_PROMPT_EN.strip()}"
+        return prompt
+
+    def _compose_agent_user_prompt_en(self, question_text: str, functions: list) -> str:
+        from multi_step.common_agent_step import MULTI_TURN_AGENT_PROMPT_USER_EN
+
+        functions_str = json.dumps(functions, indent=2)
+        history = question_text or ""
+        return MULTI_TURN_AGENT_PROMPT_USER_EN.format(functions=functions_str, history=history)
+
+    def _compose_agent_user_system_prompt_en(self, instruction: str, involved_classes: Optional[List[str]]) -> str:
+        from multi_turn.APIModel_user import SYSTEM_PROMPT_BASE_EN, SYSTEM_PROMPT_TRAVEL_EN
+
+        classes = involved_classes or []
+        if any("Travel" in cls for cls in classes):
+            template = SYSTEM_PROMPT_TRAVEL_EN
+        else:
+            template = SYSTEM_PROMPT_BASE_EN
+        return template.format(instruction=instruction)
+
+    def _compose_agent_system_prompt_zh(self, functions: list, involved_classes: Optional[List[str]]) -> str:
+        from multi_step.common_agent_step import MULTI_TURN_AGENT_PROMPT_SYSTEM_ZH
+        from prompt_zh import BASE_PROMPT_ZH, TRAVEL_PROMPT_ZH
+
+        prompt = MULTI_TURN_AGENT_PROMPT_SYSTEM_ZH.strip()
+        classes = involved_classes or []
+        if any("Travel" in cls for cls in classes):
+            prompt = f"{prompt}\n\n{TRAVEL_PROMPT_ZH.strip()}"
+        if any("BaseApi" in cls for cls in classes):
+            prompt = f"{prompt}\n\n{BASE_PROMPT_ZH.strip()}"
+        return prompt
+
+    def _compose_agent_user_prompt_zh(self, question_text: str, functions: list) -> str:
+        from multi_step.common_agent_step import MULTI_TURN_AGENT_PROMPT_USER_ZH
+
+        functions_str = json.dumps(functions, indent=2, ensure_ascii=False)
+        history = question_text or ""
+        return MULTI_TURN_AGENT_PROMPT_USER_ZH.format(functions=functions_str, history=history)
+
+    def _compose_agent_user_system_prompt_zh(self, instruction: str, involved_classes: Optional[List[str]]) -> str:
+        from multi_turn.APIModel_user import SYSTEM_PROMPT_BASE_ZH, SYSTEM_PROMPT_TRAVEL_ZH
+
+        classes = involved_classes or []
+        if any("Travel" in cls for cls in classes):
+            template = SYSTEM_PROMPT_TRAVEL_ZH
+        else:
+            template = SYSTEM_PROMPT_BASE_ZH
+        return template.format(instruction=instruction or "")
+
     def _load_questions_from_file(self, question_file_path: str, lang: str) -> List[AceBenchQuestion]:
         """Load questions from a single JSON file."""
         results = []
@@ -103,7 +194,15 @@ class AceBenchLoader(BaseLoader):
             ground_truth = self._get_ground_truth(question_id, task_file_name)
             
             # Get prompts for this specific question
-            agent_prompt, previous_conversation_history = self._get_system_prompts(question_id, question_text, functions, time_info, profile, lang)
+            agent_prompt, previous_conversation_history, user_system_prompt = self._get_system_prompts(
+                question_id,
+                question_text,
+                functions,
+                time_info,
+                profile,
+                involved_classes,
+                lang
+            )
             
             # Create the question object
             question = AceBenchQuestion(
@@ -118,6 +217,7 @@ class AceBenchLoader(BaseLoader):
                 path=path,
                 involved_classes=involved_classes,
                 agent_system_prompt=agent_prompt,
+                user_system_prompt=user_system_prompt,
                 previous_conversation_history=previous_conversation_history,
                 meta={
                     'data_type': task_file_name,
