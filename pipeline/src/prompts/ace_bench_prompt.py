@@ -29,7 +29,7 @@ Below is the categorization of benchmark issues, outlined according to its **rel
 ### User
 
 * Vague instruction: The user's prompt is too ambiguous or underspecified for a single, correct function call, yet the benchmark expects one.
-  * Example: The user asks "Where's the Golden Gate Bridge?", but the ground truth arbitrarily expects a distance calculation from a specific, unmentioned point.
+  * Example: The user requests for a "summary", but this is ambiguous since there are tools for both a "detailed" and a "brief" summary.
 
 ### Environment
 
