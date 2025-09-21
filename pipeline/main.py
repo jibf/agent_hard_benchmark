@@ -39,6 +39,7 @@ from src.utils.types import (
     RuleBasedOutput,
 )
 from src.utils import group_responses_by_question, log_confusion_matrix, log_confusion_matrix_human_labelled
+from src.bench_loaders import get_bench_loader
 from metric.irt_metric import compute_irt_metric
 
 # Logger will be configured in main() function
@@ -283,6 +284,21 @@ class BenchmarkFilteringPipeline:
             return llm_output.universal_filter.is_flawed
         return False
 
+    def _get_all_questions_from_loader(self):
+        benchmark_names = self.config.get("target_benchmark", None)
+        all_questions = {}
+        benchmark_names = benchmark_names if benchmark_names is not None else [i.value for i in Benchmark]
+
+        for benchmark_name in benchmark_names:
+            benchmark = Benchmark(benchmark_name)
+            loader_class = get_bench_loader(benchmark)
+            loader = loader_class()
+            benchmark_questions = loader.load_questions()
+            all_questions[benchmark_name] = benchmark_questions
+
+        return all_questions
+
+
     def run_pipeline(
         self, skip_llm_judge: bool = False, skip_rule_based: bool = False
     ) -> Dict[UniqueQuestionID, PipelineOutput]:
@@ -290,9 +306,11 @@ class BenchmarkFilteringPipeline:
         logger.info("Starting benchmark filtering pipeline")
 
         all_responses = self._load_benchmark_data()
+        self.all_questions = self._get_all_questions_from_loader()
         problematic_issues, all_labelled_questions = self.data_loader.load_human_labelled_ground_truth(self.config.get("target_benchmark"))
         responses_by_question = group_responses_by_question(all_responses)
         responses_by_question = self.filter_illegal_data(responses_by_question)
+        diversity_dict = self._compute_diversity(responses_by_question)
 
         # Compute IRT discrimination metric
         if not self.config.get("skip_measurement", False):
@@ -317,13 +335,13 @@ class BenchmarkFilteringPipeline:
         # Store for final summary
         self.metrics_summary["original"]["separability"] = sep_list
 
-        # if not self.config.get("skip_measurement", False):
-        #     diversity_dict = self._compute_diversity(responses_by_question)
-        #     logger.info(
-        #         f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}"
-        #     )
-        #     # Store for final summary
-        #     self.metrics_summary["original"]["diversity"] = diversity_dict
+        if not self.config.get("skip_measurement", False):
+            diversity_dict = self._compute_diversity(responses_by_question)
+            logger.info(
+                f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}"
+            )
+            # Store for final summary
+            self.metrics_summary["original"]["diversity"] = diversity_dict
 
         # Calculate model ranking from original dataset for consistent ordering
         model_ranking = None
@@ -482,13 +500,13 @@ class BenchmarkFilteringPipeline:
                         "baseline_diversity",
                     )
 
-            # if not self.config.get("skip_measurement", False):
-            #     diversity_dict = self._compute_diversity(step1_passed)
-            #     logger.info(
-            #         f"Benchmark semantic diversity after Step 1: {json.dumps(diversity_dict, indent=2)}"
-            #     )
-            #     # Store for final summary
-            #     self.metrics_summary["step1"]["diversity"] = diversity_dict
+            if not self.config.get("skip_measurement", False):
+                diversity_dict = self._compute_diversity(step1_passed)
+                logger.info(
+                    f"Benchmark semantic diversity after Step 1: {json.dumps(diversity_dict, indent=2)}"
+                )
+                # Store for final summary
+                self.metrics_summary["step1"]["diversity"] = diversity_dict
         else:
             logger.info("Skipping Step 1: Rule-based filtering")
 
@@ -614,13 +632,13 @@ class BenchmarkFilteringPipeline:
                 sep_list.append(baseline_separability)
             self.metrics_summary["step2_baseline"]["separability"] = sep_list
 
-            # if not self.config.get("skip_measurement", False):
-            #     diversity_dict = self._compute_diversity(step2_passed)
-            #     logger.info(
-            #         f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}"
-            #     )
-            #     # Store for final summary
-            #     self.metrics_summary["step2"]["diversity"] = diversity_dict
+            if not self.config.get("skip_measurement", False):
+                diversity_dict = self._compute_diversity(step2_passed)
+                logger.info(
+                    f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}"
+                )
+                # Store for final summary
+                self.metrics_summary["step2"]["diversity"] = diversity_dict
 
             # Step 3: Top-K selection based on scores
             if LLMJudgeStep.SCORE in self.llm_config.steps:
@@ -714,13 +732,13 @@ class BenchmarkFilteringPipeline:
                         self._current_agreement_stats.copy()
                     )
                     self._current_agreement_stats = {}
-                # if not self.config.get("skip_measurement", False):
-                #     diversity_dict = self._compute_diversity(step3_passed)
-                #     logger.info(
-                #         f"Benchmark semantic diversity after Step 3: {json.dumps(diversity_dict, indent=2)}"
-                #     )
-                #     # Store for final summary
-                #     self.metrics_summary["step3"]["diversity"] = diversity_dict
+                if not self.config.get("skip_measurement", False):
+                    diversity_dict = self._compute_diversity(step3_passed)
+                    logger.info(
+                        f"Benchmark semantic diversity after Step 3: {json.dumps(diversity_dict, indent=2)}"
+                    )
+                    # Store for final summary
+                    self.metrics_summary["step3"]["diversity"] = diversity_dict
 
                 logger.info(f"Step 3 BASELINE (vs Step 3 from all_samples)...")
                 baseline_from_all_step3 = self._create_task_wise_baseline_sample_set(
@@ -828,13 +846,13 @@ class BenchmarkFilteringPipeline:
                 sep_list.append(baseline_separability)
             self.metrics_summary["step4_baseline"]["separability"] = sep_list
 
-            # if not self.config.get("skip_diversity_measurement", False):
-            #     diversity_dict = self._compute_diversity(step4_passed)
-            #     logger.info(
-            #         f"Benchmark semantic diversity after Step 4: {json.dumps(diversity_dict, indent=2)}"
-            #     )
-            #     # Store for final summary
-            #     self.metrics_summary["step4"]["diversity"] = diversity_dict
+            if not self.config.get("skip_diversity_measurement", False):
+                diversity_dict = self._compute_diversity(step4_passed)
+                logger.info(
+                    f"Benchmark semantic diversity after Step 4: {json.dumps(diversity_dict, indent=2)}"
+                )
+                # Store for final summary
+                self.metrics_summary["step4"]["diversity"] = diversity_dict
         else:
             logger.info("Skipping Step 4: Comprehensive rule-based filtering")
 
@@ -1037,13 +1055,23 @@ class BenchmarkFilteringPipeline:
         is bounded in [0, 1] per the expression: (2 / (N * (N - 1))) * sum{i<j} [1 - cos(e_i, e_j)]
         where N is the number of samples and cos(·,·) is cosine similarity.
         """
-        id_to_data_by_benchmark = self._extract_texts_for_diversity(
-            responses_by_question
-        )
 
         diversity_dict: Dict[str, float] = {}
-        for benchmark_name, id_to_data in id_to_data_by_benchmark.items():
-            texts = [data["text"] for data in id_to_data.values()]
+
+        for benchmark_name, question_list in self.all_questions.items():
+            texts = []
+            for question in question_list:
+                if question not in responses_by_question:
+                    continue
+                system_prompt = getattr(question, "agent_system_prompt",
+                                            getattr(question, "system_prompt", "")
+                                        )
+                assert system_prompt != "" or benchmark_name == "complex-func-bench"
+                instruction = question.instruction
+
+                text = system_prompt + "\n" + instruction
+                texts.append(text)
+
             N = len(texts)
             if N < 2:
                 diversity_dict[benchmark_name] = 0.0
