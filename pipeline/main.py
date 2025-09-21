@@ -38,7 +38,7 @@ from src.utils.types import (
     PipelineOutput,
     RuleBasedOutput,
 )
-from src.utils import group_responses_by_question, log_confusion_matrix, log_confusion_matrix_human_labelled
+from src.utils import group_responses_by_question, log_confusion_matrix_human_labelled
 from src.bench_loaders import get_bench_loader
 from metric.irt_metric import compute_irt_metric
 
@@ -70,16 +70,32 @@ class BenchmarkFilteringPipeline:
         self.use_specific_filters = self.config.get("use_specific_filters", False)
 
         # Store metrics for final summary
+        results_template = {
+            "separability": [],
+            "separability_baseline": [],
+            "diversity": None,
+            "irt": None,
+            "agreement": {},
+            "human_alignment": {
+                "precision": None,
+                "recall": None,
+                "f1": None,
+                "tp": None,
+                "fp": None,
+                "fn": None,
+                "tn": None
+            },
+            "retention_ratio": None,
+            "total_num": None,
+            "subtask_size": {},
+            "model_performance": {},
+        }
         self.metrics_summary = {
-            "original": {"separability": None, "diversity": None, "agreement": None},
-            "step1": {"separability": None, "diversity": None, "agreement": None},
-            "step1_baseline": {"separability": None},
-            "step2": {"separability": None, "diversity": None, "agreement": None},
-            "step2_baseline": {"separability": None},
-            "step3": {"separability": None, "diversity": None, "agreement": None},
-            "step3_baseline": {"separability": None},
-            "step4": {"separability": None, "diversity": None, "agreement": None},
-            "step4_baseline": {"separability": None},
+            "original": deepcopy(results_template),
+            "step1": deepcopy(results_template),
+            "step2": deepcopy(results_template),
+            "step3": deepcopy(results_template),
+            "step4": deepcopy(results_template),
         }
 
         # Determine which LLM judge steps to run based on filtering scheme
@@ -130,12 +146,10 @@ class BenchmarkFilteringPipeline:
             "Benchmark": None,
             "task_type": None,
             "task_id": None,
-            "is_issue": None,
-            "issue_type": None,
-            "comp_passed": None,
             "specific_rule_passed": None,
             "specific_llm_passed": None,
             "topk_selection_passed": None,
+            "comp_passed": None,
         }
         self.filtering_summary = {}
 
@@ -307,73 +321,25 @@ class BenchmarkFilteringPipeline:
 
         all_responses = self._load_benchmark_data()
         self.all_questions = self._get_all_questions_from_loader()
-        problematic_issues, all_labelled_questions = self.data_loader.load_human_labelled_ground_truth(self.config.get("target_benchmark"))
+        self.human_labelled_details = self.data_loader.load_human_labelled_ground_truth(self.config.get("target_benchmark"))
+        current_human_labelled = set(self.human_labelled_details.keys())
+
         responses_by_question = group_responses_by_question(all_responses)
         responses_by_question = self.filter_illegal_data(responses_by_question)
-        diversity_dict = None
-
-        # Compute IRT discrimination metric
-        if not self.config.get("skip_measurement", False):
-            irt_discrimination_dict = compute_irt_metric(responses_by_question, threshold=0.5)
-            if irt_discrimination_dict:
-                irt_discrimination = np.mean(list(irt_discrimination_dict.values()))
-                logger.info(f"Benchmark IRT discrimination before filtering: {irt_discrimination:.4f}")
-                print(irt_discrimination)
-            else:
-                logger.warning("No IRT discrimination values computed")
-
-        if not self.config.get("skip_measurement", False):
-            diversity_dict = self._compute_diversity(responses_by_question)
 
         pipeline_outputs = {k: PipelineOutput() for k in responses_by_question.keys()}
+        self.initial_baseline_ids = set(responses_by_question.keys())
 
-        sep_list = []
-        for i in range(3):
-            ori_separability = self._compute_separability(responses_by_question)
-            logger.info(
-                f"Benchmark separability before filtering: {json.dumps(ori_separability, indent=2)}"
-            )
-            sep_list.append(ori_separability)
-
-        # Store for final summary
-        self.metrics_summary["original"]["separability"] = sep_list
-
-        if not self.config.get("skip_measurement", False):
-            logger.info(
-                f"Benchmark semantic diversity before filtering: {json.dumps(diversity_dict, indent=2)}"
-            )
-            # Store for final summary
-            self.metrics_summary["original"]["diversity"] = diversity_dict
-
-        # Calculate model ranking from original dataset for consistent ordering
-        model_ranking = None
-        if not self.config.get("skip_visualization", False):
-            model_ranking = self._calculate_model_ranking(responses_by_question)
-            self._visualize_model_performance(
-                responses_by_question,
-                "Original Dataset",
-                "original_performance",
-                model_ranking=model_ranking,
-            )
-            if not self.config.get("skip_measurement", False):
-                self._visualize_diversity(
-                    responses_by_question, "Original Dataset", "original_diversity"
-                )
-            # Store agreement stats for original dataset
-            if hasattr(self, "_current_agreement_stats"):
-                self.metrics_summary["original"]["agreement"] = (
-                    self._current_agreement_stats.copy()
-                )
-                self._current_agreement_stats = {}
+        # Compute and log metrics for original/initial dataset
+        self.compute_and_log_metrics(
+            passed_responses=responses_by_question,
+            input_ids=self.initial_baseline_ids,
+            phase="initial",
+            human_labelled_questions=current_human_labelled,
+            baseline_source=responses_by_question,
+        )
 
         current_responses = responses_by_question
-        remaining_problematic_issues = deepcopy(problematic_issues)
-        self._write_filter_summary(
-            passed_ids=set(responses_by_question.keys()),
-            input_ids=set(responses_by_question.keys()),
-            phase="initial",
-            problematic_issues=problematic_issues,
-        )
 
         if not skip_rule_based:
             # Step 1: Apply benchmark-specific filtering for benchmarks that have specific filters
@@ -381,42 +347,17 @@ class BenchmarkFilteringPipeline:
             step1_passed, step1_dropped = self._run_benchmark_specific_filtering(
                 responses_by_question
             )
-            if not self.config.get("skip_measurement", False):
-                # Select alpha values from initial IRT dict for questions that passed step1
-                # if 'irt_discrimination_dict' in locals() and irt_discrimination_dict:
-                step1_alpha_values = []
-                for question_id in step1_passed.keys():
-                    if question_id in irt_discrimination_dict:
-                        step1_alpha_values.append(irt_discrimination_dict[question_id])
-                    
-                if step1_alpha_values:
-                    print("Step1 alpha values: ", step1_alpha_values)
-                    step1_avg_alpha = np.mean(step1_alpha_values)
-                    logger.info(f"Benchmark IRT discrimination After Step 1: {step1_avg_alpha:.4f}")
-                else:
-                    logger.warning("No matching alpha values found for Step 1 passed questions")
-                
-                # else:
-                #     logger.warning("Initial IRT discrimination dictionary not available")
-                
-            log_confusion_matrix_human_labelled(
-                problematic_issues=problematic_issues,
-                passed_ids=set(step1_passed.keys()),
-                all_labelled_questions=all_labelled_questions,
-                input_ids=set(current_responses.keys()),
-            )
-            remaining_problematic_issues = {
-                question_id: remaining_problematic_issues[question_id]
-                for question_id in remaining_problematic_issues
-                if question_id in step1_passed
-            }
-            self._write_filter_summary(
-                passed_ids=set(step1_passed.keys()),
+            # Compute and log all metrics for step1 (including baseline)
+            self.compute_and_log_metrics(
+                passed_responses=step1_passed,
                 input_ids=set(responses_by_question.keys()),
                 phase="step1",
-                problematic_issues=problematic_issues,
+                human_labelled_questions=current_human_labelled,
+                baseline_source=responses_by_question,
             )
             current_responses = step1_passed
+            # Update human labelled questions to only include those that passed step1
+            current_human_labelled = current_human_labelled & set(step1_passed.keys())
 
             # Update pipeline_outputs with step1 results
             step1_passed_questions = set(step1_passed.keys())
@@ -434,81 +375,6 @@ class BenchmarkFilteringPipeline:
             logger.info(
                 f"Step 1 passed: {step1_sample_count} samples from {step1_unique_tasks} unique tasks"
             )
-
-            sep_list = []
-            for i in range(3):
-                separability_dict = self._compute_separability(step1_passed)
-                logger.info(
-                    f"Benchmark separability after Step 1: {json.dumps(separability_dict, indent=2)}"
-                )
-                sep_list.append(separability_dict)
-            # Store for final summary
-            self.metrics_summary["step1"]["separability"] = sep_list
-
-            # Visualize Step 1 filtered performance
-            if not self.config.get("skip_visualization", False):
-                self._visualize_model_performance(
-                    step1_passed,
-                    "After Step 1 (Rule-based Filtering)",
-                    "step1_filtered_performance",
-                    model_ranking=model_ranking,
-                )
-                if not self.config.get("skip_measurement", False):
-                    self._visualize_diversity(
-                        step1_passed,
-                        "After Step 1 (Rule-based Filtering)",
-                        "step1_filtered_diversity",
-                    )
-                if hasattr(self, "_current_agreement_stats"):
-                    self.metrics_summary["step1"]["agreement"] = (
-                        self._current_agreement_stats.copy()
-                    )
-                    self._current_agreement_stats = {}
-
-            # Create baseline sample set by randomly sampling N tasks from original samples
-            logger.info(f"Step 1 BASELINE...")
-            baseline_responses = self._create_task_wise_baseline_sample_set(
-                responses_by_question, step1_unique_tasks
-            )
-            baseline_sample_count = sum(
-                len(responses) for responses in baseline_responses.values()
-            )
-            logger.info(
-                f"Created task-wise baseline sample set with {baseline_sample_count} samples from {step1_unique_tasks} tasks"
-            )
-
-            # Compute separability for baseline for comparison
-            sep_list = []
-            for i in range(3):
-                baseline_separability = self._compute_separability(baseline_responses)
-                logger.info(
-                    f"Benchmark separability baseline (vs. step1): {json.dumps(baseline_separability, indent=2)}"
-                )
-                sep_list.append(baseline_separability)
-            self.metrics_summary["step1_baseline"]["separability"] = sep_list
-
-            # Visualize baseline performance
-            if not self.config.get("skip_visualization", False):
-                self._visualize_model_performance(
-                    baseline_responses,
-                    "Baseline (Random Sampling)",
-                    "baseline_performance",
-                    model_ranking=model_ranking,
-                )
-                if not self.config.get("skip_measurement", False):
-                    self._visualize_diversity(
-                        baseline_responses,
-                        "Baseline (Random Sampling)",
-                        "baseline_diversity",
-                    )
-
-            if not self.config.get("skip_measurement", False):
-                diversity_dict = self._compute_diversity(step1_passed)
-                logger.info(
-                    f"Benchmark semantic diversity after Step 1: {json.dumps(diversity_dict, indent=2)}"
-                )
-                # Store for final summary
-                self.metrics_summary["step1"]["diversity"] = diversity_dict
         else:
             logger.info("Skipping Step 1: Rule-based filtering")
 
@@ -536,38 +402,17 @@ class BenchmarkFilteringPipeline:
                 for qid in step1_passed_qids
                 if not self._is_question_flawed(pipeline_outputs[qid].llm_judge_output)
             }
-            if not self.config.get("skip_measurement", False):
-                step2_alpha_values = []
-                for question_id in step2_passed.keys():
-                    if question_id in irt_discrimination_dict:
-                        step2_alpha_values.append(irt_discrimination_dict[question_id])
-                    
-                if step2_alpha_values:
-                    print("Step2 alpha values: ", step2_alpha_values)
-                    step2_avg_alpha = np.mean(step2_alpha_values)
-                    logger.info(f"Benchmark IRT discrimination After Step 2: {step2_avg_alpha:.4f}")
-                else:
-                    logger.warning("No matching alpha values found for Step 2 passed questions")
-            #     irt_discrimination = compute_irt_metric(step2_passed, threshold=0.5)
-            #     logger.info(f"Benchmark IRT discrimination After Step 2: {irt_discrimination:.4f}")
-            log_confusion_matrix_human_labelled(
-                problematic_issues=problematic_issues,
-                passed_ids=set(step2_passed.keys()),
-                all_labelled_questions=all_labelled_questions,
-                input_ids=set(current_responses.keys()),
-            )
-            remaining_problematic_issues = {
-                question_id: remaining_problematic_issues[question_id]
-                for question_id in remaining_problematic_issues
-                if question_id in step2_passed
-            }
-            self._write_filter_summary(
-                passed_ids=set(step2_passed.keys()),
-                input_ids=set(current_responses.keys()),
+            # Compute and log all metrics for step2 (including baseline)
+            self.compute_and_log_metrics(
+                passed_responses=step2_passed,
+                input_ids=set(step1_passed_qids),
                 phase="step2",
-                problematic_issues=problematic_issues,
+                human_labelled_questions=current_human_labelled,
+                baseline_source=responses_by_question,
             )
             current_responses = step2_passed
+            # Update human labelled questions to only include those that passed step2
+            current_human_labelled = current_human_labelled & set(step2_passed.keys())
             # Count unique tasks and samples in step2_passed
             step2_unique_tasks = len(step2_passed)
             step2_sample_count = sum(
@@ -577,109 +422,23 @@ class BenchmarkFilteringPipeline:
                 f"Step 2 passed: {step2_sample_count} samples from {step2_unique_tasks} unique tasks"
             )
 
-            sep_list = []
-            for i in range(3):
-                separability_dict = self._compute_separability(step2_passed)
-                logger.info(
-                    f"Benchmark separability after Step 2: {json.dumps(separability_dict, indent=2)}"
-                )
-                sep_list.append(separability_dict)
-
-            # Store for final summary
-            self.metrics_summary["step2"]["separability"] = sep_list
-            # Visualize Step 2 filtered performance
-            if not self.config.get("skip_visualization", False):
-                self._visualize_model_performance(
-                    step2_passed,
-                    "After Step 2 (LLM-as-Judge Filtering)",
-                    "step2_filtered_performance",
-                    model_ranking=model_ranking,
-                )
-                if not self.config.get("skip_measurement", False):
-                    self._visualize_diversity(
-                        step2_passed,
-                        "After Step 2 (LLM-as-Judge Filtering)",
-                        "step2_filtered_diversity",
-                    )
-
-            # Store agreement stats for step2
-            if hasattr(self, "_current_agreement_stats"):
-                self.metrics_summary["step2"]["agreement"] = (
-                    self._current_agreement_stats.copy()
-                )
-                self._current_agreement_stats = {}
-
-            # Create baseline sample set by randomly sampling N tasks from step1_passed
-            # logger.info(f"Step 2 BASELINE (vs. Step 1 from step1_passed)...")
-            # baseline_from_step1 = self._create_task_wise_baseline_sample_set(
-            #     step1_passed, step2_unique_tasks
-            # )
-            # baseline_separability = self._compute_separability(baseline_from_step1)
-
-            # logger.info(
-            #     f"Benchmark separability baseline (vs. Step 2 from step1_passed): {json.dumps(baseline_separability, indent=2)}"
-            # )
-
-            # Create baseline sample set by randomly sampling N tasks from all_samples
-            logger.info(f"Step 2 BASELINE (vs. Step 1 from all_samples)...")
-            baseline_from_all = self._create_task_wise_baseline_sample_set(
-                responses_by_question, step2_unique_tasks
-            )
-            sep_list = []
-            for i in range(3):
-                baseline_separability = self._compute_separability(baseline_from_all)
-                logger.info(
-                    f"Benchmark separability baseline (vs. Step 2 from all_samples): {json.dumps(baseline_separability, indent=2)}"
-                )
-                sep_list.append(baseline_separability)
-            self.metrics_summary["step2_baseline"]["separability"] = sep_list
-
-            if not self.config.get("skip_measurement", False):
-                diversity_dict = self._compute_diversity(step2_passed)
-                logger.info(
-                    f"Benchmark semantic diversity after Step 2: {json.dumps(diversity_dict, indent=2)}"
-                )
-                # Store for final summary
-                self.metrics_summary["step2"]["diversity"] = diversity_dict
-
             # Step 3: Top-K selection based on scores
             if LLMJudgeStep.SCORE in self.llm_config.steps:
                 logger.info("Step 3: Selecting top 50 samples based on total scores")
                 step3_passed = self._run_step3_top_k_selection(
                     step2_result, responses_by_question, 50
                 )
-                current_responses = step3_passed
-                if not self.config.get("skip_measurement", False):
-                    step3_alpha_values = []
-                    for question_id in step3_passed.keys():
-                        if question_id in irt_discrimination_dict:
-                            step3_alpha_values.append(irt_discrimination_dict[question_id])
-                        
-                    if step3_alpha_values:
-                        print("Step3 alpha values: ", step3_alpha_values)
-                        step3_avg_alpha = np.mean(step3_alpha_values)
-                        logger.info(f"Benchmark IRT discrimination After Step 3: {step3_avg_alpha:.4f}")
-                    else:
-                        logger.warning("No matching alpha values found for Step 3 passed questions")
-                #     irt_discrimination = compute_irt_metric(step3_passed, threshold=0.5)
-                #     logger.info(f"Benchmark IRT discrimination After Step 3: {irt_discrimination:.4f}")
-                log_confusion_matrix_human_labelled(
-                    problematic_issues=problematic_issues,
-                    passed_ids=set(step3_passed.keys()),
-                    all_labelled_questions=all_labelled_questions,
+                # Compute and log all metrics for step3 (including baseline)
+                self.compute_and_log_metrics(
+                    passed_responses=step3_passed,
                     input_ids=set(step2_result.keys()),
-                )
-                remaining_problematic_issues = {
-                    question_id: remaining_problematic_issues[question_id]
-                    for question_id in remaining_problematic_issues
-                    if question_id in step3_passed
-                }
-                self._write_filter_summary(
-                    passed_ids=set(step3_passed.keys()),
-                    input_problematic_ids=set(step2_result.keys()),
                     phase="step3",
-                    problematic_issues=problematic_issues,
+                    human_labelled_questions=current_human_labelled,
+                    baseline_source=responses_by_question,
                 )
+                current_responses = step3_passed
+                # Update human labelled questions to only include those that passed step3
+                current_human_labelled = current_human_labelled & set(step3_passed.keys())
 
                 # Count unique tasks and samples in step3_passed
                 step3_unique_tasks = len(step3_passed)
@@ -689,73 +448,6 @@ class BenchmarkFilteringPipeline:
                 logger.info(
                     f"Step 3 passed: {step3_sample_count} samples from {step3_unique_tasks} unique tasks"
                 )
-
-                # # Create baseline sample sets for step3 comparison
-                # logger.info(f"Step 3 BASELINE (vs Step 2 from step2_passed)...")
-                # baseline_from_step2 = self._create_task_wise_baseline_sample_set(
-                #     step2_passed, step3_unique_tasks
-                # )
-                # baseline_separability_step2 = self._compute_separability(
-                #     baseline_from_step2
-                # )
-                # logger.info(
-                #     f"Benchmark separability for baseline (vs Step 3 from step2_passed): {json.dumps(baseline_separability_step2, indent=2)}"
-                # )
-
-                # Compute separability for step3 results
-                sep_list = []
-                for i in range(3):
-                    separability_dict_step3 = self._compute_separability(step3_passed)
-                    logger.info(
-                        f"Benchmark separability after Step 3: {json.dumps(separability_dict_step3, indent=2)}"
-                    )
-                    sep_list.append(separability_dict_step3)
-                # Store for final summary
-                self.metrics_summary["step3"]["separability"] = sep_list
-
-                # Visualize Step 3 filtered performance
-                if not self.config.get("skip_visualization", False):
-                    self._visualize_model_performance(
-                        step3_passed,
-                        "After Step 3 (Top-K Selection)",
-                        "step3_filtered_performance",
-                        model_ranking=model_ranking,
-                    )
-                    if not self.config.get("skip_measurement", False):
-                        self._visualize_diversity(
-                            step3_passed,
-                            "After Step 3 (Top-K Selection)",
-                            "step3_filtered_diversity",
-                        )
-
-                # Store agreement stats for step3
-                if hasattr(self, "_current_agreement_stats"):
-                    self.metrics_summary["step3"]["agreement"] = (
-                        self._current_agreement_stats.copy()
-                    )
-                    self._current_agreement_stats = {}
-                if not self.config.get("skip_measurement", False):
-                    diversity_dict = self._compute_diversity(step3_passed)
-                    logger.info(
-                        f"Benchmark semantic diversity after Step 3: {json.dumps(diversity_dict, indent=2)}"
-                    )
-                    # Store for final summary
-                    self.metrics_summary["step3"]["diversity"] = diversity_dict
-
-                logger.info(f"Step 3 BASELINE (vs Step 3 from all_samples)...")
-                baseline_from_all_step3 = self._create_task_wise_baseline_sample_set(
-                    responses_by_question, step3_unique_tasks
-                )
-                sep_list = []
-                for i in range(3):
-                    baseline_separability_all_step3 = self._compute_separability(
-                        baseline_from_all_step3
-                    )
-                    logger.info(
-                        f"Benchmark separability for baseline (vs Step 3 from all_samples): {json.dumps(baseline_separability_all_step3, indent=2)}"
-                    )
-                    sep_list.append(baseline_separability_all_step3)
-                self.metrics_summary["step3_baseline"]["separability"] = sep_list
 
             else:
                 logger.info("Skipping Step 3: Scoring not enabled")
@@ -768,31 +460,13 @@ class BenchmarkFilteringPipeline:
             step4_passed, step4_dropped = self._run_comprehensive_filtering(
                 current_responses
             )
-            if not self.config.get("skip_measurement"):
-                step4_alpha_values = []
-                for question_id in step4_passed.keys():
-                    if question_id in irt_discrimination_dict:
-                        step4_alpha_values.append(irt_discrimination_dict[question_id])
-                    
-                if step4_alpha_values:
-                    print("Step4 alpha values: ", step4_alpha_values)
-                    step4_avg_alpha = np.mean(step4_alpha_values)
-                    logger.info(f"Benchmark IRT discrimination After Step 4: {step4_avg_alpha:.4f}")
-                else:
-                    logger.warning("No matching alpha values found for Step 4 passed questions")
-                # irt_discrimination = compute_irt_metric(step4_passed, threshold=0.5)
-                # logger.info(f"Benchmark IRT discrimination After Step 4: {irt_discrimination:.4f}")
-                log_confusion_matrix_human_labelled(
-                    problematic_issues=problematic_issues,
-                    passed_ids=set(step4_passed.keys()),
-                    all_labelled_questions=all_labelled_questions,
-                    input_ids=set(current_responses.keys()),
-                )
-            self._write_filter_summary(
-                passed_ids=set(step4_passed.keys()),
+            # Compute and log all metrics for step4 (including baseline)
+            self.compute_and_log_metrics(
+                passed_responses=step4_passed,
                 input_ids=set(current_responses.keys()),
                 phase="step4",
-                problematic_issues=problematic_issues,
+                human_labelled_questions=current_human_labelled,
+                baseline_source=responses_by_question,
             )
 
             # Count unique tasks and samples in step4_passed
@@ -803,58 +477,8 @@ class BenchmarkFilteringPipeline:
             logger.info(
                 f"Step 4 passed: {step4_sample_count} samples from {step4_unique_tasks} unique tasks"
             )
-
-            sep_list = []
-            for i in range(3):
-                separability_dict = self._compute_separability(step4_passed)
-                logger.info(
-                    f"Benchmark separability after Step 4: {json.dumps(separability_dict, indent=2)}"
-                )
-                sep_list.append(separability_dict)
-            # Store for final summary
-            self.metrics_summary["step4"]["separability"] = sep_list
-
-            # Visualize Step 4 filtered performance
-            if not self.config.get("skip_visualization", False):
-                self._visualize_model_performance(
-                    step4_passed,
-                    "After Step 4 (Comprehensive Rule-based Filtering)",
-                    "step4_filtered_performance",
-                    model_ranking=model_ranking,
-                )
-                if not self.config.get("skip_measurement", False):
-                    self._visualize_diversity(
-                        step4_passed,
-                        "After Step 4 (Comprehensive Rule-based Filtering)",
-                        "step4_filtered_diversity",
-                    )
-                if hasattr(self, "_current_agreement_stats"):
-                    self.metrics_summary["step4"]["agreement"] = (
-                        self._current_agreement_stats.copy()
-                    )
-                    self._current_agreement_stats = {}
-
-            # Create baseline sample set for step4 comparison
-            logger.info(f"Step 4 BASELINE...")
-            baseline_from_all_step4 = self._create_task_wise_baseline_sample_set(
-                responses_by_question, step4_unique_tasks
-            )
-            sep_list = []
-            for i in range(3):
-                baseline_separability = self._compute_separability(baseline_from_all_step4)
-                logger.info(
-                    f"Benchmark separability baseline (vs. step4): {json.dumps(baseline_separability, indent=2)}"
-                )
-                sep_list.append(baseline_separability)
-            self.metrics_summary["step4_baseline"]["separability"] = sep_list
-
-            if not self.config.get("skip_diversity_measurement", False):
-                diversity_dict = self._compute_diversity(step4_passed)
-                logger.info(
-                    f"Benchmark semantic diversity after Step 4: {json.dumps(diversity_dict, indent=2)}"
-                )
-                # Store for final summary
-                self.metrics_summary["step4"]["diversity"] = diversity_dict
+            # Update human labelled questions to only include those that passed step4
+            current_human_labelled = current_human_labelled & set(step4_passed.keys())
         else:
             logger.info("Skipping Step 4: Comprehensive rule-based filtering")
 
@@ -964,6 +588,157 @@ class BenchmarkFilteringPipeline:
         )
         self._save_unified_step1_results(step1_passed, step1_dropped)
 
+    def compute_and_log_metrics(
+        self,
+        passed_responses: Dict,
+        input_ids: set,
+        phase: str,
+        human_labelled_questions: set,
+        baseline_source: Dict = None
+    ) -> None:
+        """Compute and log all metrics for a given filtering phase.
+
+        Args:
+            passed_responses: Dict of responses that passed the filter (contains question IDs as keys)
+            input_ids: Set of question IDs that were input to the filter
+            phase: Phase name (e.g., 'initial', 'step1', 'step2', 'step3', 'step4')
+            human_labelled_questions: Set of all human labelled questions for current filtering stage
+            baseline_source: Source data for creating baseline (original responses_by_question)
+        """
+        skip_measurement = self.config.get("skip_measurement", False)
+        if skip_measurement:
+            return
+
+        logger.info(f"\n=== Computing Metrics for {phase.upper()} ===")
+        summary_key = "original" if phase == "initial" else phase
+
+        # Extract passed_ids from passed_responses
+        passed_ids = set(passed_responses.keys()) if passed_responses else set()
+        baseline_task_count = len(passed_ids)
+        self.metrics_summary[summary_key]["total_num"] = baseline_task_count
+
+        # ============================== save filtered csv ==============================
+        self._write_filter_summary(
+            passed_ids=passed_ids,
+            input_ids=input_ids,
+            phase=phase,
+        )
+
+        # ============================== model ranking ==============================
+        model_ranking, model_performance = self._calculate_model_ranking(passed_responses)
+        if phase == "initial":
+            self.model_ranking = model_ranking
+
+        # Store model performance data (assuming single benchmark)
+        self.metrics_summary[summary_key]["model_performance"] = model_performance
+
+        # ============================== compute embeddings (initial phase only) ==============================
+        if phase == "initial":
+            self._compute_embeddings_dict(passed_responses)
+
+        # ============================== compute Separability ==============================
+        sep_list = []
+        for i in range(3):
+            separability_dict = self._compute_separability(passed_responses)
+            phase_label = "before filtering" if phase == "initial" else f"after {phase}"
+            logger.info(f"Benchmark separability {phase_label}: {json.dumps(separability_dict, indent=2)}")
+            sep_list.append(separability_dict)
+        self.metrics_summary[summary_key]["separability"] = sep_list
+
+        # ============================== compute IRT metric ==============================
+        if phase == "initial":
+            # Initial calculation: compute IRT discrimination for all questions
+            self.irt_discrimination_dict = compute_irt_metric(passed_responses, threshold=0.5)
+            irt_discrimination = np.mean(list(self.irt_discrimination_dict.values()))
+            logger.info(f"Benchmark IRT discrimination before filtering: {irt_discrimination:.4f}")
+        else:
+            passed_irt_values = [self.irt_discrimination_dict[qid] for qid in passed_ids if qid in self.irt_discrimination_dict]
+            irt_discrimination = np.mean(passed_irt_values)
+            logger.info(f"Benchmark IRT discrimination after {phase}: {irt_discrimination:.4f}")
+        self.metrics_summary[summary_key]["irt"] = irt_discrimination
+
+        # ============================== compute diversity metrics ==============================
+        diversity_dict = self._compute_diversity(passed_ids)
+        self.metrics_summary[summary_key]["diversity"] = diversity_dict
+        phase_label = "before filtering" if phase == "initial" else f"for {phase}"
+        logger.info(f"Benchmark semantic diversity {phase_label}: {json.dumps(diversity_dict, indent=2)}")
+
+        # ============================== visualize agreement & diversity metrics ==============================
+        phase_titles = {
+            "initial": "Original Dataset",
+            "step1": "After Step 1 (Rule-based Filtering)",
+            "step2": "After Step 2 (LLM-as-Judge Filtering)",
+            "step3": "After Step 3 (Top-K Selection)",
+            "step4": "After Step 4 (Comprehensive Rule-based Filtering)"
+        }
+        title = phase_titles.get(phase, f"After {phase}")
+        filename = f"{phase}_filtered_performance" if phase != "initial" else "original_performance"
+        diversity_filename = f"{phase}_filtered_diversity" if phase != "initial" else "original_diversity"
+
+        self._visualize_diversity(passed_ids, title, diversity_filename)
+        self._visualize_model_performance(passed_responses, title, filename, model_ranking=model_ranking)
+
+        # ============================== compute agreement ==============================
+        # Store agreement stats by benchmark (computed in `_visualize_model_performance`)
+        agreement_by_benchmark = {}
+        for benchmark_name, benchmark_stats in self._current_agreement_stats.items():
+            agreement_by_benchmark[benchmark_name] = {
+                "min": float(benchmark_stats["min_agreement"]),
+                "max": float(benchmark_stats["max_agreement"]),
+                "avg": float(benchmark_stats["avg_agreement"])
+            }
+
+        self.metrics_summary[summary_key]["agreement"] = agreement_by_benchmark
+
+        # ============================== compute retention ratio ==============================
+        retention_metrics = self.compute_retention_ratio(passed_ids, self.initial_baseline_ids)
+        self.metrics_summary[summary_key]["retention_ratio"] = retention_metrics["retention_ratio"]
+        self.metrics_summary[summary_key]["subtask_size"] = retention_metrics["subtask_size"]
+        # Store complete retention metrics including subtask_details
+        self.metrics_summary[summary_key]["retention_metrics"] = retention_metrics
+        if phase == "initial":
+            self.metrics_summary[summary_key]["question_num"] = len(human_labelled_questions)
+
+        if phase != "initial":
+            # Confusion matrix calculation using current human labelled set
+            human_alignment_metrics = log_confusion_matrix_human_labelled(
+                human_labelled_questions=human_labelled_questions,
+                human_labelled_details=self.human_labelled_details,
+                passed_ids=passed_ids,
+                input_ids=input_ids,
+            )
+            self.metrics_summary[summary_key]["human_alignment"] = human_alignment_metrics
+            # =====================================================================
+            # Compute baseline metrics based on same number of samples
+            baseline_responses = self._create_task_wise_baseline_sample_set(baseline_source, baseline_task_count)
+            baseline_sample_count = sum(len(responses) for responses in baseline_responses.values())
+            logger.info(f"Created task-wise baseline sample set with {baseline_sample_count} samples from {baseline_task_count} tasks")
+
+            # Compute baseline separability (run 3 times for stability)
+            sep_list = []
+            for i in range(3):
+                baseline_separability = self._compute_separability(baseline_responses)
+                logger.info(f"Benchmark separability baseline (vs. {phase}): {json.dumps(baseline_separability, indent=2)}")
+                sep_list.append(baseline_separability)
+            self.metrics_summary[summary_key]["separability_baseline"] = sep_list
+
+            stored_model_ranking = getattr(self, 'model_ranking', None)
+            self._visualize_model_performance(
+                baseline_responses,
+                "Baseline (Random Sampling)",
+                f"{phase}_baseline_performance",
+                model_ranking=stored_model_ranking
+            )
+            
+            self._visualize_diversity(
+                set(baseline_responses.keys()),
+                "Baseline (Random Sampling)",
+                f"{phase}_baseline_diversity"
+            )
+        
+        output_path = self.config.get("report_filename")
+        self.write_metrics_to_csv(output_path)
+
     def _compute_separability(
         self,
         responses_by_question: Dict[str, List[Dict]],
@@ -1048,51 +823,28 @@ class BenchmarkFilteringPipeline:
 
     # Semantic diversity metric
     def _compute_diversity(
-        self, responses_by_question: Dict[str, List[Dict]]
+        self, question_ids: set
     ) -> Dict[str, float]:
         """Compute semantic diversity for each benchmark using average pairwise cosine distance.
 
-        For each benchmark, we embed the `messages` field of every sample and then
-        compute the average cosine distance across all unique pairs. The metric
-        is bounded in [0, 1] per the expression: (2 / (N * (N - 1))) * sum{i<j} [1 - cos(e_i, e_j)]
+        Uses pre-computed embeddings for efficiency.
+        The metric is bounded in [0, 1] per the expression: (2 / (N * (N - 1))) * sum{i<j} [1 - cos(e_i, e_j)]
         where N is the number of samples and cos(·,·) is cosine similarity.
-        """
 
+        Args:
+            question_ids: Set of question IDs to compute diversity for
+        """
         diversity_dict: Dict[str, float] = {}
 
-        for benchmark_name, question_list in self.all_questions.items():
-            texts = []
-            for question in question_list:
-                if question not in responses_by_question:
-                    continue
-                system_prompt = getattr(question, "agent_system_prompt",
-                                            getattr(question, "system_prompt", "")
-                                        )
-                assert system_prompt != "" or benchmark_name == "complex-func-bench"
-                instruction = question.instruction
-
-                text = system_prompt + "\n" + instruction
-                texts.append(text)
-
-            N = len(texts)
-            if N < 2:
-                diversity_dict[benchmark_name] = 0.0
-                continue
-            print("diversity texts[0]:", texts[0])
-            # Encode texts -> unit-normalised embeddings
-            embeddings = self.embedder.encode(
-                texts,
-                batch_size=self.embedding_batch_size,
-                show_progress_bar=True,
-                convert_to_numpy=True,
-                normalize_embeddings=True,
-            )
+        for benchmark_name in self.all_questions:
+            # Get pre-computed embeddings for these questions
+            embeddings = np.array([self.embeddings_dict[qid] for qid in question_ids if qid.benchmark.value == benchmark_name])
 
             # Cosine similarity matrix via dot product because embeddings are normalised
             sim_matrix = np.matmul(embeddings, embeddings.T)
 
             # Extract upper triangle (i < j)
-            triu_indices = np.triu_indices(N, k=1)
+            triu_indices = np.triu_indices(len(embeddings), k=1)
             cosine_sims = sim_matrix[triu_indices]
             avg_distance = np.mean(1 - cosine_sims)
 
@@ -1100,80 +852,85 @@ class BenchmarkFilteringPipeline:
 
         return diversity_dict
 
-    def _extract_texts_for_diversity(
-        self, responses_by_question: Dict[str, List[Dict]]
-    ) -> Dict[str, Dict[str, Dict]]:
-        """Helper to extract unique texts and task names from samples for diversity computation/visualization."""
-        id_to_data_by_benchmark: Dict[str, Dict[str, Dict]] = {}
-        for responses in responses_by_question.values():
-            for sample in responses:
-                benchmark_name = str(sample["benchmark_name"])
-                meta_id = str(sample["meta"]["id"])
-                if not meta_id or meta_id in id_to_data_by_benchmark.get(
-                    benchmark_name, {}
-                ):
+    def compute_retention_ratio(self, passed_ids: set, baseline_ids: set) -> Dict:
+        """Compute retention ratio metrics.
+
+        Args:
+            passed_ids: Set of question IDs that passed current filter
+            baseline_ids: Set of question IDs from initial baseline (for overall retention ratio)
+
+        Returns:
+            Dict: {
+                "retention_ratio": float,  # overall retention ratio
+                "subtask_size": Dict[str, float],  # retention ratio by task type
+                "subtask_details": Dict[str, Dict]  # detailed stats for each subtask
+            }
+        """
+        # Overall retention ratio
+        overall_retention_ratio = len(passed_ids) / len(baseline_ids) if len(baseline_ids) > 0 else 0.0
+
+        # Task-level retention ratio
+        retention_task_types = [question_id.task_name for question_id in passed_ids]
+        baseline_task_types = [question_id.task_name for question_id in baseline_ids]
+
+        retention_stat = Counter(retention_task_types)
+        baseline_stat = Counter(baseline_task_types)
+
+        subtask_retention = {}
+        subtask_details = {}
+
+        for task_type in baseline_stat:
+            base_num = baseline_stat[task_type]
+            retention_num = retention_stat.get(task_type, 0)
+            ratio = retention_num / base_num if base_num > 0 else 0.0
+
+            subtask_retention[task_type] = ratio
+            subtask_details[task_type] = {
+                "base_num": base_num,
+                "retention_num": retention_num,
+                "ratio": ratio
+            }
+
+        return {
+            "retention_ratio": overall_retention_ratio,
+            "subtask_size": subtask_retention,
+            "subtask_details": subtask_details
+        }
+
+    def _compute_embeddings_dict(self, responses_by_question: Dict[str, List[Dict]]) -> None:
+        """Compute embeddings for all questions and store them for reuse.
+
+        This function should be called once at the beginning to compute embeddings
+        for all questions in the dataset.
+
+        Args:
+            responses_by_question: Dict mapping question IDs to their responses
+        """
+        logger.info("Computing embeddings for all questions (one-time calculation)...")
+        self.embeddings_dict = {}
+
+        # Process each benchmark
+        for benchmark_name, question_list in self.all_questions.items():
+            texts = []
+            question_ids = []
+
+            for question in question_list:
+                if question not in responses_by_question:
                     continue
+                # Extract text for embedding
+                system_prompt = getattr(question, "agent_system_prompt",
+                                      getattr(question, "system_prompt", "")
+                                    )
+                instruction = question.instruction
+                text = system_prompt + "\n" + instruction
 
-                messages_field = sample.get("messages")
-                if not messages_field:
-                    continue
+                texts.append(text)
+                question_ids.append(question)
 
-                if self.embed_all_initial_prompts:
-                    initial_contents = []
-                    for m in messages_field:
-                        role = m.get("role")
-                        if role not in {"system", "user"}:
-                            break
-                        if m.get("content"):
-                            initial_contents.append(m["content"].strip())
-                    msg_content = "\n".join(initial_contents).strip()
-                else:
-                    msg_content = ""
-                    for m in messages_field:
-                        role = m.get("role")
-                        if role == "system":
-                            continue
-                        if role == "user":
-                            msg_content = m["content"]
-                            continue
-                        break
-
-                if msg_content:
-                    task_name = sample.get("task_name", "unknown")
-                    id_to_data_by_benchmark.setdefault(benchmark_name, {})[meta_id] = {
-                        "text": msg_content,
-                        "task_name": task_name,
-                    }
-        return id_to_data_by_benchmark
-
-    def _visualize_diversity(
-        self, responses_by_question: Dict[str, List[Dict]], title: str, filename: str
-    ):
-        """Create visualizations for semantic diversity: 2D embedding projection and pairwise distance histogram."""
-        logger.info(f"Creating diversity visualization: {title}")
-
-        plots_dir = "pipeline_results/plots"
-        os.makedirs(plots_dir, exist_ok=True)
-
-        id_to_data_by_benchmark = self._extract_texts_for_diversity(
-            responses_by_question
-        )
-        print(
-            "vis diversity lens:",
-            len(responses_by_question),
-            len(id_to_data_by_benchmark),
-        )
-        for benchmark_name, id_to_data in id_to_data_by_benchmark.items():
-            if len(id_to_data) < 2:
+            if len(texts) == 0:
                 continue
 
-            texts = [data["text"] for data in id_to_data.values()]
-            task_names = [data["task_name"] for data in id_to_data.values()]
-
-            logger.info(
-                f"Generating diversity plots for {benchmark_name} with {len(texts)} unique questions."
-            )
-
+            # Compute embeddings for this benchmark
             embeddings = self.embedder.encode(
                 texts,
                 batch_size=self.embedding_batch_size,
@@ -1182,6 +939,31 @@ class BenchmarkFilteringPipeline:
                 normalize_embeddings=True,
             )
 
+            # Store embeddings by question ID (same type as passed_ids)
+            for i, question_id in enumerate(question_ids):
+                self.embeddings_dict[question_id] = embeddings[i]
+
+    def _visualize_diversity(
+        self, question_ids: set, title: str, filename: str
+    ):
+        """Create visualizations for semantic diversity: 2D embedding projection and pairwise distance histogram.
+
+        Uses pre-computed embeddings for efficiency.
+
+        Args:
+            question_ids: Set of question IDs to visualize
+            title: Plot title
+            filename: Base filename for saved plots
+        """
+        logger.info(f"Creating diversity visualization: {title}")
+
+        plots_dir = "pipeline_results/plots"
+        os.makedirs(plots_dir, exist_ok=True)
+
+        for benchmark_name in self.all_questions:
+            # Get pre-computed embeddings for these questions
+            embeddings = np.array([self.embeddings_dict[qid] for qid in question_ids if qid.benchmark.value == benchmark_name])
+            task_names = [qid.task_name for qid in question_ids if qid.benchmark.value == benchmark_name]
             # 1. 2D Embedding Representation (t-SNE)
             if len(embeddings) > 1:
                 tsne = TSNE(
@@ -1274,33 +1056,70 @@ class BenchmarkFilteringPipeline:
 
     def _calculate_model_ranking(
         self, responses_by_question: Dict[str, List[Dict]]
-    ) -> Dict[str, List[str]]:
-        """Calculate model ranking based on performance for consistent ordering across visualizations."""
+    ) -> tuple[Dict[str, List[str]], Dict]:
+        """Calculate model ranking and detailed performance data.
+
+        Returns:
+            tuple: (model_ranking_dict, model_performance_dict)
+                - model_ranking_dict: Dict[benchmark_name, List[model_name]] sorted by performance
+                - model_performance_dict: Dict with overall and subtask performance data
+        """
         benchmark_data = {}
+        task_data = {}  # For subtask-level performance
+
         for responses in responses_by_question.values():
             for sample in responses:
                 benchmark_name = str(sample["benchmark_name"])
                 model_name = sample["model_path"]
+                task_name = sample.get("task_name", "unknown")
                 score = sample["eval_result"]["score"]
 
+                # Benchmark-level data
                 if benchmark_name not in benchmark_data:
                     benchmark_data[benchmark_name] = {}
                 if model_name not in benchmark_data[benchmark_name]:
                     benchmark_data[benchmark_name][model_name] = []
                 benchmark_data[benchmark_name][model_name].append(score)
 
+                # Task-level data
+                if benchmark_name not in task_data:
+                    task_data[benchmark_name] = {}
+                if task_name not in task_data[benchmark_name]:
+                    task_data[benchmark_name][task_name] = {}
+                if model_name not in task_data[benchmark_name][task_name]:
+                    task_data[benchmark_name][task_name][model_name] = []
+                task_data[benchmark_name][task_name][model_name].append(score)
+
         # Calculate ranking for each benchmark
         model_ranking = {}
+        model_performance = {}
+
         for benchmark_name, model_scores in benchmark_data.items():
             model_means = {}
             for model_name, scores in model_scores.items():
                 model_means[model_name] = np.mean(scores)
+
             # Sort by performance (descending)
             model_ranking[benchmark_name] = sorted(
                 model_means.keys(), key=lambda x: model_means[x], reverse=True
             )
 
-        return model_ranking
+            # Store performance data
+            model_performance[benchmark_name] = {}
+            for model_name, avg_score in model_means.items():
+                model_performance[benchmark_name][model_name] = {
+                    "overall_score": float(avg_score),
+                    "subtask_scores": {}
+                }
+
+                # Add subtask scores
+                if benchmark_name in task_data:
+                    for task_name, task_models in task_data[benchmark_name].items():
+                        if model_name in task_models:
+                            task_avg = np.mean(task_models[model_name])
+                            model_performance[benchmark_name][model_name]["subtask_scores"][task_name] = float(task_avg)
+
+        return model_ranking, model_performance
 
     def _visualize_model_performance(
         self,
@@ -1444,16 +1263,6 @@ class BenchmarkFilteringPipeline:
             self._create_model_agreement_heatmap(
                 responses_by_question, benchmark_name, title, filename, model_order
             )
-
-            # Print summary statistics
-            # logger.info(f"\n{benchmark_name} - Model Performance Summary:")
-            # logger.info("=" * 60)
-            # for model_name, mean, ci_low, ci_high in zip(
-            #     model_names, means, ci_lowers, ci_uppers
-            # ):
-            #     logger.info(
-            #         f"{model_name:30} | Mean: {mean:.4f} | CI: [{ci_low:.4f}, {ci_high:.4f}]"
-            #     )
 
     def _create_model_agreement_heatmap(
         self,
@@ -1674,7 +1483,7 @@ class BenchmarkFilteringPipeline:
         return baseline
 
     def _write_filter_summary(
-        self, passed_ids: set, input_ids: set, phase: str, problematic_issues: Dict = None
+        self, passed_ids: set, input_ids: set, phase: str
     ):
         """Record filtering summary for each phase.
 
@@ -1682,7 +1491,6 @@ class BenchmarkFilteringPipeline:
             passed_ids: Set of question IDs that passed current phase
             input_ids: Set of question IDs that input to current phase
             phase: Phase name ("initial", "step0", "step1", "step2", "step3", "final")
-            problematic_issues: Dict of problematic issues for getting issue reasons
         """
         logger.info(f"Recording filter summary for phase: {phase}")
 
@@ -1703,16 +1511,6 @@ class BenchmarkFilteringPipeline:
                         question_id.task_name if question_id.task_name else ""
                     )
                     entry["task_id"] = question_id.question_id
-
-                    # Check if this is a problematic question
-                    is_problematic = False
-                    issue_reason = None
-                    if question_id in problematic_issues:
-                        is_problematic = True
-                        issue_reason = problematic_issues[question_id]["reason"]
-
-                    entry["is_issue"] = is_problematic
-                    entry["issue_type"] = issue_reason
 
                     self.filtering_summary[question_id] = entry
 
@@ -1736,17 +1534,14 @@ class BenchmarkFilteringPipeline:
                     else:
                         entry[field_name] = True
 
-        retention_task_types = [question_id.task_name for question_id in passed_ids]
-        baseline_types = [question_id.task_name for question_id in self.filtering_summary]
-        retention_stat = Counter(retention_task_types)
-        baseline_stat = Counter(baseline_types)
+            # Use the new compute_retention_ratio function
+            retention_metrics = self.compute_retention_ratio(passed_ids, self.initial_baseline_ids)
 
-        if phase not in ["initial"]:
             logging.info(f"==================== Retention ratio after {phase} ====================")
-            for task_type in baseline_stat:
-                base_num = baseline_stat[task_type]
-                retention_num = retention_stat[task_type]
-                logging.info(f"{task_type}: {retention_num}/{base_num} = {retention_num/base_num*100 :.2f}%")
+            logging.info(f"Overall retention: {len(passed_ids)}/{len(self.initial_baseline_ids)} = {retention_metrics['retention_ratio']*100:.2f}%")
+
+            for task_type, ratio in retention_metrics['subtask_size'].items():
+                logging.info(f"{task_type}: {ratio*100:.2f}%")
 
         self._save_filter_summary_csv()
 
@@ -1875,6 +1670,244 @@ class BenchmarkFilteringPipeline:
         logger.info(
             f"Benchmark-specific results saved for {len(benchmark_passed)} benchmarks"
         )
+
+    def write_metrics_to_csv(self, output_path: str = "pipeline_results/metrics_summary.csv"):
+        """Write metrics_summary to CSV file with benchmark comparisons and model performance."""
+        logger.info(f"Writing metrics summary to {output_path}")
+
+        # Create output directory if it doesn't exist
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        rows = []
+
+        # Helper function to handle None values and format numbers
+        def format_value(value):
+            if value is None:
+                return "-"
+            if isinstance(value, (int, float)):
+                return f"{value:.3f}"
+            return str(value)
+
+        # Header row for metrics comparison
+        rows.append(["Metrics Comparison", "Baseline", "Step1", "Step2", "Step4"])
+        rows.append([])  # Empty row for separation
+
+        # Get baseline data (from "original" step)
+        baseline_data = self.metrics_summary.get("original", {})
+        steps = ["step1", "step2", "step4"]
+
+        # Agreement in format (avg/min/max) - extract from benchmark dict
+        agreement_row = ["Agreement"]
+        baseline_agreement_data = baseline_data.get("agreement", {})
+        # Extract DrafterBench data (assuming single benchmark)
+        baseline_bench_data = baseline_agreement_data.get("DrafterBench", {}) if isinstance(baseline_agreement_data, dict) else {}
+        baseline_avg = baseline_bench_data.get("avg")
+        baseline_min = baseline_bench_data.get("min")
+        baseline_max = baseline_bench_data.get("max")
+        baseline_formatted = f"({format_value(baseline_avg)}/{format_value(baseline_min)}/{format_value(baseline_max)})"
+        agreement_row.append(baseline_formatted)
+
+        for step in steps:
+            step_data = self.metrics_summary.get(step, {})
+            current_agreement_data = step_data.get("agreement", {})
+            # Extract DrafterBench data (assuming single benchmark)
+            current_bench_data = current_agreement_data.get("DrafterBench", {}) if isinstance(current_agreement_data, dict) else {}
+            current_avg = current_bench_data.get("avg")
+            current_min = current_bench_data.get("min")
+            current_max = current_bench_data.get("max")
+            current_formatted = f"({format_value(current_avg)}/{format_value(current_min)}/{format_value(current_max)})"
+            agreement_row.append(current_formatted)
+        rows.append(agreement_row)
+
+        # CI Overlap (separability with step-specific baselines)
+        ci_overlap_row = ["CI Overlap"]
+        # For baseline column, use separability from original step
+        baseline_separability = baseline_data.get("separability", [])
+        baseline_sep_value = baseline_separability[0].get("DrafterBench") if baseline_separability else None
+        ci_overlap_row.append(format_value(baseline_sep_value))
+
+        for step in steps:
+            step_data = self.metrics_summary.get(step, {})
+            # Current step separability
+            current_separability = step_data.get("separability", [])
+            current_sep_value = current_separability[0].get("DrafterBench") if current_separability else None
+
+            # Step-specific baseline separability
+            step_baseline_separability = step_data.get("separability_baseline", [])
+            step_baseline_value = step_baseline_separability[0].get("DrafterBench") if step_baseline_separability else None
+
+            baseline_val = format_value(step_baseline_value)
+            current_val = format_value(current_sep_value)
+            ci_overlap_row.append(f"{baseline_val}/{current_val}")
+        rows.append(ci_overlap_row)
+
+        # Diversity (extract value from dict)
+        diversity_row = ["Diversity"]
+        baseline_diversity = baseline_data.get("diversity", {})
+        baseline_div_value = baseline_diversity.get("DrafterBench") if isinstance(baseline_diversity, dict) else baseline_diversity
+        diversity_row.append(format_value(baseline_div_value))
+
+        for step in steps:
+            step_data = self.metrics_summary.get(step, {})
+            current_diversity = step_data.get("diversity", {})
+            current_div_value = current_diversity.get("DrafterBench") if isinstance(current_diversity, dict) else current_diversity
+            diversity_row.append(format_value(current_div_value))
+        rows.append(diversity_row)
+
+        # IRT (direct values, no baseline comparison)
+        irt_row = ["IRT"]
+        baseline_irt = baseline_data.get("irt")
+        irt_row.append(format_value(baseline_irt))
+        for step in steps:
+            step_data = self.metrics_summary.get(step, {})
+            current_irt = step_data.get("irt")
+            irt_row.append(format_value(current_irt))
+        rows.append(irt_row)
+
+        # Precision
+        precision_row = ["Precision"]
+        precision_row.append("-")  # No baseline precision
+        for step in steps:
+            step_data = self.metrics_summary.get(step, {})
+            human_alignment = step_data.get("human_alignment", {})
+            precision_row.append(format_value(human_alignment.get("precision")))
+        rows.append(precision_row)
+
+        # Recall
+        recall_row = ["Recall"]
+        recall_row.append("-")  # No baseline recall
+        for step in steps:
+            step_data = self.metrics_summary.get(step, {})
+            human_alignment = step_data.get("human_alignment", {})
+            recall_row.append(format_value(human_alignment.get("recall")))
+        rows.append(recall_row)
+
+        # Question Num (TP + FP + TN + FN from human alignment)
+        question_num_row = ["Question Num"]
+        question_num_row.append("-")  # No baseline question num
+        for step in steps:
+            step_data = self.metrics_summary.get(step, {})
+            human_alignment = step_data.get("human_alignment", {})
+            tn = human_alignment.get("tn", 0) or 0
+            fn = human_alignment.get("fn", 0) or 0
+            question_remain = tn + fn
+            question_num_row.append(str(question_remain) if question_remain > 0 else "-")
+        rows.append(question_num_row)
+
+        # Total Num (from metrics_summary.total_num)
+        total_num_row = ["Total Num"]
+        baseline_total_num = baseline_data.get("total_num")
+        total_num_row.append(str(baseline_total_num))
+        for step in steps:
+            step_data = self.metrics_summary.get(step, {})
+            current_total_num = step_data.get("total_num")
+            total_num_row.append(str(current_total_num))
+        rows.append(total_num_row)
+
+        # Retention Ratio
+        retention_row = ["Retention Ratio"]
+        retention_row.append("-")  # No baseline retention ratio
+        for step in steps:
+            step_data = self.metrics_summary.get(step, {})
+            retention_ratio = step_data.get("retention_ratio")
+            retention_row.append(format_value(retention_ratio))
+        rows.append(retention_row)
+
+        # Add empty rows for separation
+        rows.append([])
+        rows.append([])
+
+        # Model Performance section
+        rows.append(["Model Performance"])
+        rows.append([])
+
+        # Get all models and subtasks from the data
+        all_models = set()
+        all_subtasks = set()
+
+        for step in steps:
+            step_data = self.metrics_summary.get(step, {})
+            model_performance = step_data.get("model_performance", {})
+
+            # Model performance is nested: {benchmark: {model: {scores...}}}
+            for benchmark_data in model_performance.values():
+                for model_name, model_data in benchmark_data.items():
+                    all_models.add(model_name)
+                    subtask_scores = model_data.get("subtask_scores", {})
+                    all_subtasks.update(subtask_scores.keys())
+
+        all_models = sorted(list(all_models))
+        all_subtasks = sorted(list(all_subtasks))
+
+        # Create model performance table for each step
+        for step in steps:
+            step_data = self.metrics_summary.get(step, {})
+            model_performance = step_data.get("model_performance", {})
+
+            if not model_performance:
+                continue
+
+            # Step header
+            rows.append([f"{step.upper()} - Model Performance"])
+
+            # Headers: Model, Overall, subtask1, subtask2, ...
+            header = ["Model", "Overall"] + all_subtasks
+            rows.append(header)
+
+            # Get benchmark data (assuming single benchmark)
+            benchmark_data = list(model_performance.values())[0] if model_performance else {}
+
+            # Model data rows
+            for model_name in all_models:
+                if model_name in benchmark_data:
+                    model_data = benchmark_data[model_name]
+                    overall_score = format_value(model_data.get("overall_score"))
+                    subtask_scores = model_data.get("subtask_scores", {})
+
+                    row = [model_name, overall_score]
+                    for subtask in all_subtasks:
+                        row.append(format_value(subtask_scores.get(subtask)))
+                    rows.append(row)
+
+            # Add subtask statistics table after model performance
+            rows.append([])  # Empty row before subtask stats
+            rows.append([f"{step.upper()} - Subtask Statistics"])
+
+            # Get subtask details from retention ratio computation
+            retention_metrics = step_data.get("retention_metrics")
+            if isinstance(retention_metrics, dict) and "subtask_details" in retention_metrics:
+                subtask_details = retention_metrics["subtask_details"]
+
+                # Headers: Subtask, Base Num, Retention Num, Ratio
+                subtask_header = ["Subtask", "Base Num", "Retention Num", "Ratio"]
+                rows.append(subtask_header)
+
+                # Data rows
+                for subtask_name, details in subtask_details.items():
+                    base_num = details.get("base_num", 0)
+                    retention_num = details.get("retention_num", 0)
+                    ratio = details.get("ratio", 0.0)
+
+                    subtask_row = [
+                        subtask_name,
+                        str(base_num),
+                        str(retention_num),
+                        format_value(ratio)
+                    ]
+                    rows.append(subtask_row)
+            else:
+                # If no subtask details available, show placeholder
+                rows.append(["No subtask statistics available"])
+
+            rows.append([])  # Empty row between steps
+
+        # Write to CSV
+        with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            for row in rows:
+                writer.writerow(row)
+
+        logger.info(f"Metrics summary CSV written to {output_path}")
 
     def _save_unified_dataset(self, all_samples: List[Dict]):
         """Save the unified dataset before any filtering."""
@@ -2030,9 +2063,9 @@ class BenchmarkFilteringPipeline:
                 logger.info(f"Model agreement statistics:")
                 for benchmark, stats in step_metrics["agreement"].items():
                     logger.info(f"  {benchmark}:")
-                    logger.info(f"    Average agreement: {stats['avg_agreement']:.3f}")
-                    logger.info(f"    Min agreement: {stats['min_agreement']:.3f}")
-                    logger.info(f"    Max agreement: {stats['max_agreement']:.3f}")
+                    logger.info(f"    Average agreement: {stats['avg']:.3f}")
+                    logger.info(f"    Min agreement: {stats['min']:.3f}")
+                    logger.info(f"    Max agreement: {stats['max']:.3f}")
                     logger.info(f"    Models: {stats['num_models']}")
             elif "agreement" in available_keys:
                 logger.info(f"Model agreement: Not computed")
@@ -2165,11 +2198,6 @@ def main():
         help="Skip scoring step even when using 'both' filtering scheme",
     )
     parser.add_argument(
-        "--skip-visualization",
-        action="store_true",
-        help="Skip creating performance visualization plots",
-    )
-    parser.add_argument(
         "--embedding-model",
         default="Qwen/Qwen3-Embedding-8B",
         help="SentenceTransformer model for semantic diversity computation (default: Qwen/Qwen3-Embedding-8B)",
@@ -2177,7 +2205,7 @@ def main():
     parser.add_argument(
         "--embedding-batch-size",
         type=int,
-        default=8,
+        default=4,
         help="Batch size when encoding texts for diversity (default: 8)",
     )
 
@@ -2206,6 +2234,7 @@ def main():
     # Generate filenames with unified naming convention
     log_filename = f"{output_dir}/{benchmark_prefix}_{timestamp}_pipeline.log"
     csv_filename = f"{output_dir}/{benchmark_prefix}_{timestamp}_filtering_summary.csv"
+    report_filename = f"{output_dir}/{benchmark_prefix}_{timestamp}_report.csv"
 
     # Configuration
     config = {
@@ -2215,12 +2244,12 @@ def main():
         "target_benchmark": args.target_benchmark,
         "llm_filter_mode": args.llm_filter_mode,
         "skip_scoring": args.skip_scoring,
-        "skip_visualization": args.skip_visualization,
         "embedding_model": args.embedding_model,
         "embedding_batch_size": args.embedding_batch_size,
         "embed_all_initial_prompts": args.embed_all_initial_prompts,
         "skip_measurement": args.skip_measurement,
         "csv_filename": csv_filename,
+        "report_filename": report_filename,
     }
 
     # Set up logging with dynamic filename

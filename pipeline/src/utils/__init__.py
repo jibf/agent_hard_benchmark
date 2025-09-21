@@ -109,37 +109,78 @@ def log_confusion_matrix(problematic_issues: Dict, passed_ids: set, total_num: i
         logger.info("No manually annotated problematic issues found")
 
 
-def log_confusion_matrix_human_labelled(problematic_issues: Dict, passed_ids: set, all_labelled_questions: set, input_ids: set) -> None:
-    """Log confusion matrix for human labelled ground truth data.
+def log_confusion_matrix_human_labelled(human_labelled_questions: set, human_labelled_details: Dict, passed_ids: set, input_ids: set) -> Dict:
+    """Log confusion matrix for human labelled ground truth data and return metrics.
 
     Args:
-        problematic_issues: Dict mapping problematic question IDs to their info (should be human labelled)
+        human_labelled_questions: Set of current human labelled question IDs (filtered by previous steps)
+        human_labelled_details: Dict mapping question IDs to their details {"is_issue": "0"/"1", "issue_type": "..."}
         passed_ids: Set of question IDs that passed all filters
-        all_labelled_questions: Set of all question IDs in the human labelled dataset
         input_ids: Set of question IDs that were input to the current step
+
+    Returns:
+        Dict: Dictionary containing precision, recall, f1, tp, fp, fn, tn values
     """
     # Find which human labelled questions are in the current step's input
-    labelled_questions_in_input = all_labelled_questions & input_ids
-
-    # Find which of these are problematic
-    problematic_ids_in_input = set(problematic_issues.keys()) & input_ids
-
-    # Find which human labelled questions passed the filter
-    labelled_questions_passed = all_labelled_questions & passed_ids
+    labelled_questions_in_input = human_labelled_questions & input_ids
 
     if not labelled_questions_in_input:
         logger.info("=== Human Labelled Ground Truth Evaluation ===")
         logger.info("No human labelled questions found in current step input")
-        return
+        return {"precision": None, "recall": None, "f1": None, "tp": 0, "fp": 0, "fn": 0, "tn": 0}
 
-    logger.info("=== Human Labelled Ground Truth Evaluation ===")
-    logger.info(f"Human labelled questions in current step: {len(labelled_questions_in_input)}")
-    logger.info(f"- Problematic: {len(problematic_ids_in_input)}")
-    logger.info(f"- Normal: {len(labelled_questions_in_input) - len(problematic_ids_in_input)}")
+    # Split into problematic (is_issue=1) and normal (is_issue=0) questions using human_labelled_details
+    problematic_questions_in_input = {
+        qid for qid in labelled_questions_in_input
+        if human_labelled_details.get(qid, {}).get("is_issue") == "1"
+    }
+    normal_questions_in_input = labelled_questions_in_input - problematic_questions_in_input
 
-    # Use the original compute_confusion_matrix function with the right parameters
-    compute_confusion_matrix(
-        problematic_ids=problematic_ids_in_input,
-        passed_ids=labelled_questions_passed,
-        total_num=len(labelled_questions_in_input)
-    )
+    # Calculate confusion matrix components
+    # TN: Normal questions that passed (correctly kept)
+    tn = len(normal_questions_in_input & passed_ids)
+
+    # TP: Problematic questions that were filtered (correctly removed)
+    tp = len(problematic_questions_in_input - passed_ids)
+
+    # FP: Normal questions that were filtered (incorrectly removed)
+    fp = len(normal_questions_in_input - passed_ids)
+
+    # FN: Problematic questions that passed (incorrectly kept)
+    fn = len(problematic_questions_in_input & passed_ids)
+
+    # Log confusion matrix
+    logger.info("=== Confusion Matrix ===")
+    logger.info(f"               Filtered | Passed")
+    logger.info(f" Problematic     {tp:4d}   |  {fn:4d} = {len(problematic_questions_in_input)}")
+    logger.info(f" Normal          {fp:4d}   |  {tn:4d} = {len(normal_questions_in_input)}")
+    logger.info(f"                 {tp+fp:4d}   |  {fn+tn:4d} = {len(labelled_questions_in_input)}")
+    logger.info("=" * 45)
+
+    # Calculate performance metrics
+    if len(problematic_questions_in_input) > 0:
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1_score = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+        accuracy = (tp + tn) / len(labelled_questions_in_input)
+
+        logger.info(f"  Precision: {precision:.3f} ({tp}/{tp + fp})")
+        logger.info(f"  Recall:    {recall:.3f} ({tp}/{tp + fn})")
+        logger.info(f"  F1-Score:  {f1_score:.3f}")
+        logger.info(f"  Accuracy:  {accuracy:.3f} ({tp + tn}/{len(labelled_questions_in_input)})")
+    else:
+        logger.info("No problematic questions in this step for metrics calculation")
+        precision = recall = f1_score = None
+
+    # Return metrics
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1": f1_score,
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "tn": tn
+    }
+
+
