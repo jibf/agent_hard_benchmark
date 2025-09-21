@@ -96,6 +96,7 @@ class DrafterBenchQuestion(FormattedQuestion):
 
 class BFCLQuestion(FormattedQuestion):
     initial_config: Optional[Dict] = None       # Initial state configuration for multi-turn scenarios
+    initial_pwd_description: Optional[str] = None       # Initial state configuration for multi-turn scenarios
     expected_path: Optional[List[str]] = None   # Expected function call path for multi-turn scenarios
     involved_classes: Optional[List[str]] = None # Classes involved in multi-turn scenarios
     is_multi_turn: bool = False                 # Whether this question is multi-turn
@@ -109,6 +110,7 @@ class BFCLQuestion(FormattedQuestion):
     system_prompt: Optional[str] = None         # System prompt for this question type
     max_turn_limit: int = 20                    # Maximum number of turns allowed
     exclude_state_log: bool = False            # Whether to exclude state logging for multi-turn
+    default_states: Optional[str] = None        # Human-readable snapshot of tool default states
 
 
 
@@ -147,5 +149,4 @@ class LLMJudgeStep(Enum):
     UNIVERSAL_FILTER = "universal_filter"
     SPECIFIC_FILTER = "specific_filter"
     SCORE = "score"
-
 

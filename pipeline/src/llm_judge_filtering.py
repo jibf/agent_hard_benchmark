@@ -11,6 +11,7 @@ import re
 import time
 from dataclasses import dataclass
 from multiprocessing import Pool
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
@@ -45,6 +46,7 @@ class LLMJudgeConfig:
     num_proc: int = 32
     max_samples: Optional[int] = None   # Limit for testing
     steps: List[LLMJudgeStep] = None            # Which steps to run (default: both FILTER and SCORE)
+    partial_log_dir: Optional[str] = "llm_judge_partial_logs"
 
 
 class LLMJudge:
@@ -133,6 +135,21 @@ class LLMJudge:
         """Parse task name from question_id by removing the last number part."""
         match = re.match(r'^(.+)[-_](\d+)$', question_id)
         return match.group(1) if match else "" 
+
+    def _write_result_to_file(self, step: LLMJudgeStep, entry: Dict) -> None:
+        log_dir = self.config.partial_log_dir
+        if not log_dir:
+            return
+
+        try:
+            base_path = Path(log_dir)
+            base_path.mkdir(parents=True, exist_ok=True)
+            file_path = base_path / f"{step.value}_results.jsonl"
+            record = {"step": step.value, **entry}
+            with file_path.open("a", encoding="utf-8") as fp:
+                fp.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception as exc:
+            logger.warning("Failed to append partial log: %s", exc)
 
     def judge_questions(self, responses_by_question: Dict[UniqueQuestionID, List[Dict]]) -> Dict[UniqueQuestionID, LLMJudgeOutput]:
         """Run configured assessments on questions enriched with model responses from step1."""
@@ -257,11 +274,13 @@ class LLMJudge:
             results = []
             for question in tqdm(questions, desc="Processing questions"):
                 assessment = self._assess_question(question, step)
-                results.append({
+                entry = {
                     "benchmark": question.benchmark.value,
                     "question_id": question.question_id,
                     "assessment": assessment
-                })
+                }
+                results.append(entry)
+                self._write_result_to_file(step, entry)
                 print(question.question_id, assessment)
             return results
         else:   # Multiprocessing
@@ -279,6 +298,7 @@ class LLMJudge:
                 with tqdm(total=len(args_list), desc="Processing questions (multiprocessing)") as pbar:
                     for idx, result in pool.imap_unordered(_assess_question_worker, args_list):
                         results[idx] = result
+                        self._write_result_to_file(step, result)
                         pbar.update(1)
             
             return results

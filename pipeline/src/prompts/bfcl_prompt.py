@@ -1,5 +1,7 @@
 # IN BFCL, agent system prompt includes available_function_list
 
+import json
+
 FILTERING_PROMPT = """
 
 You are an expert evaluator for BFCL, a benchmark designed to assess an agent's multi-turn and multi-step function calling abilities.
@@ -9,10 +11,10 @@ Your task is to determine if a given benchmark sample has a fundamental flaw in 
 You will be provided with the following information:
 * **Instruction**: The description of the task given to the agent. 
 * **Agent System Prompt**: the system prompt used to initialize the agent model. This may contain a specific instruction on the answer style, domain-specific policy that the agent needs to follow, a list of available functions and their schema (in JSON format), etc.
-* **Available Functions**: a list of functions available for the agents and their schema.
+* **Available Functions**: a list of functions available for the agents and their schema. Note that functions related to the file system (e.g., `wc`, `ls`, `sort`, etc.), if provied, abide by the standard Unix semantics unless specified otherwise directly.
 * **Missed Functions**: This is only provided in the category `multi_turn_miss_func`. This is the function that is not provided to the agent at the first turn, but will be provided after a specified number of agent responses.  
-* **Initial Configuration**: The initial environment setup and conditions before the task begins. This defines the starting state of the system. 
-* **Ground-Truth Function Call Trajectory**: the provided ground-truth trajectory of function calls. When this is empty or None, it means that the agent needs to call nothing to be scored as correct. Note that entries with `"role": "tool"` are the results of the directly preceding agent tool calls.
+* **Initial Configuration**: The initial environment setup and conditions before the task begins. 
+* **Ground-Truth Milestone Function Call Trajectory**: the provided ground-truth trajectory of crucial function calls. When this is empty or None, it means that the agent needs to call nothing to be scored as correct. Note that entries with `"role": "tool"` are the results of the directly preceding agent tool calls.
 A sample is **flawed** if it exhibits one or more of the issues described below.
 
 
@@ -52,15 +54,20 @@ This category addresses errors in the provided ground-truth trajectory, where th
   * Irrelevant tool call: A function call in the ground truth trajectory is totally irrelevant to the task or belongs to a completely different domain. Example: agent calls a function to reserve a flight, though it was asked to process product exchange.
   * Redundant tool call: A function call that is not necessary in solving the task. Example: the agent is asked to search for attractions until it finds one that meets a certain condition; However, the agent performs the search in an arbitrary order, resulting in an excessive number of function calls.
 
-## Crucial Rule: Actively Reconstruct the Conversation
+## Crucial Rules
 
-The ground-truth trajectory only contains function calls from the agent's response. It intentionally omits agents responses in natural language (e.g., confirmations, request, clarifications, or follow-up questions).
+### Actively Reconstruct the Conversation
+
+The ground-truth trajectory only contains crucial function calls from the agent's response. It intentionally omits agents responses in natural language (e.g., confirmations, request, clarifications, or follow-up questions), or less important and obvious function calls, such as `get_user_id`.
 Your task is to find undeniable flaws. Therefore, you MUST operate under the following assumption:
 
 * For example, the user may provide an additional information or permits to use a new function after an agent prints an empty response with no tool call. This is not a flaw, since the agent would have requested for the information or the function, though it is not revealed in the provided ground truth.
 * If a sequence of function calls can be justified by a plausible, un-shown conversation, then it is NOT a flaw.
 
-  
+### Do NOT Judge Tool Results
+
+The tool results in the ground-truth trajectory are automatically generated via actually calling the corresponding tools, and are not subject to judgement. Flaws in tool results should NOT be the reason you mark a sample as flawed.
+ 
 ## Evaluation and Output Format
 Carefully analyze the provided sample. Think step-by-step to determine if the ground-truth trajectory is a correct and logical solution to the user's prompt.
 
@@ -93,7 +100,14 @@ Your final output must be a JSON object with the following structure, with no ad
 
 ### Initial Config
 
+{initial_pwd_description}
+```json
 {initial_config}
+```
+
+### Tool Default States
+
+{default_states}
 
 ### Ground-Truth Function Call(s):
 ```json
@@ -133,6 +147,14 @@ if __name__ == "__main__":
     bfcl_loader = get_bench_loader(Benchmark.BFCL)()
     bfcl_questions = bfcl_loader.load_questions()
 
+    def to_pretty_json(value):
+        if value is None:
+            return "null"
+        return json.dumps(value, indent=2, ensure_ascii=False, default=str)
+
+    def as_text(value, fallback=""):
+        return value if value is not None else fallback
+
     if args.save_all:
         # Save all prompts to bfcl_prompts folder
         os.makedirs("bfcl_prompts", exist_ok=True)
@@ -143,7 +165,11 @@ if __name__ == "__main__":
                 subcategory=getattr(question, 'subcategory', ''),
                 instruction=question.instruction,
                 system_prompt=getattr(question, 'system_prompt', ''),
-                ground_truth=getattr(question, 'ground_truth', '')
+                initial_pwd_description=as_text(getattr(question, 'initial_pwd_description', ''), ''),
+                initial_config=to_pretty_json(getattr(question, 'initial_config', None)),
+                default_states=as_text(getattr(question, 'default_states', ''), '* (no tool default states provided)'),
+                gt_conv_traj=to_pretty_json(getattr(question, 'gt_conv_traj', [])),
+                missed_function=as_text(getattr(question, 'missed_function', ''), '')
             )
 
             filename = f"bfcl_prompts/{question.question_id}.txt"
@@ -172,10 +198,12 @@ if __name__ == "__main__":
             category=getattr(bfcl_sample, 'category', ''),
             subcategory=getattr(bfcl_sample, 'subcategory', ''),
             instruction=bfcl_sample.instruction,
-            initial_config=bfcl_sample.initial_config,
+            initial_config=to_pretty_json(bfcl_sample.initial_config),
+            initial_pwd_description=as_text(bfcl_sample.initial_pwd_description, ''),
             system_prompt=getattr(bfcl_sample, 'system_prompt', ''),
-            gt_conv_traj=bfcl_sample.gt_conv_traj,
-            missed_function=bfcl_sample.missed_function
+            default_states=as_text(bfcl_sample.default_states, '* (no tool default states provided)'),
+            gt_conv_traj=to_pretty_json(bfcl_sample.gt_conv_traj),
+            missed_function=as_text(bfcl_sample.missed_function, '')
         )
 
         with open("bfcl_formatted_prompt.txt", "w", encoding="utf-8") as f:

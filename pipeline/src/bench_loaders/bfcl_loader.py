@@ -48,6 +48,17 @@ CLASS_FILE_PATH_MAPPING = {
     "VehicleControlAPI": "vehicle_control",
 }
 
+FILE_NAME_TO_CLASS_NAME_DICT = {
+    'gorilla_file_system': 'GorillaFileSystem',
+    'math_api': 'MathAPI',
+    'message_api': 'MessageAPI',
+    'posting_api': 'TwitterAPI',
+    'ticket_api': 'TicketAPI',
+    'trading_bot': 'TradingBot',
+    'travel_booking': 'TravelAPI',
+    'vehicle_control': 'VehicleControlAPI'
+}
+
 # These classes are stateless and do not require any initial configuration
 STATELESS_CLASSES = [
     "MathAPI",
@@ -76,7 +87,16 @@ class BfclLoader(BaseLoader):
         # Cache for loaded classes and instances
         self._class_cache = {}
         self._instances_cache = {}
-        
+
+    @staticmethod
+    def _ordinal(number: int) -> str:
+        """Return the ordinal representation of a positive integer (1 -> 1st)."""
+        if 10 <= number % 100 <= 20:
+            suffix = "th"
+        else:
+            suffix = {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th")
+        return f"{number}{suffix}"
+
     def _load_function_docs(self) -> None:
         """Load multi-turn function documentation files"""
         if not os.path.exists(self.func_doc_path):
@@ -94,16 +114,7 @@ class BfclLoader(BaseLoader):
                     
                     # Extract class name from filename (e.g., gorilla_file_system.json -> GorillaFileSystem)
                     file_name = os.path.basename(file_path).replace('.json', '')
-                    FILE_NAME_TO_CLASS_NAME_DICT = {
-                        'gorilla_file_system': 'GorillaFileSystem',
-                        'math_api': 'MathAPI',
-                        'message_api': 'MessageAPI',
-                        'posting_api': 'TwitterAPI',
-                        'ticket_api': 'TicketAPI',
-                        'trading_bot': 'TradingBot',
-                        'travel_booking': 'TravelAPI',
-                        'vehicle_control': 'VehicleControlAPI'
-                    }
+                    
                     class_name = FILE_NAME_TO_CLASS_NAME_DICT[file_name] 
                     self._func_docs_cache[class_name] = func_list
             except Exception as e:
@@ -181,6 +192,69 @@ class BfclLoader(BaseLoader):
             self._instances_cache[instance_key] = instance
 
         return instances
+
+    def _load_default_state(self, class_name: str):
+        if class_name not in CLASS_FILE_PATH_MAPPING:
+            return None
+        if class_name == "GorillaFileSystem":
+            return None
+
+        module_name = CLASS_FILE_PATH_MAPPING[class_name]
+        module_path = os.path.join(self.data_path, "bfcl_eval", "eval_checker", "multi_turn_eval", "func_source_code", f"{module_name}.py")
+
+        if not os.path.exists(module_path):
+            return None
+
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if spec is None or spec.loader is None:
+            return None
+
+        module = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            return None
+
+        return getattr(module, "DEFAULT_STATE", None)
+
+    def _format_state_lines(self, class_name: str, state) -> List[str]:
+        lines: List[str] = []
+
+        lines.append(f"#### {class_name}\n")
+
+        assert isinstance(state, dict)
+        for key, value in state.items():
+            sanitized = self._serialize_tool_result(value)
+            lines.append(f"* {key}: {sanitized}")
+        lines.append("")
+
+        return lines
+
+    def _serialize_tool_result(self, value):
+        if hasattr(value, "_mpf_"):
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                pass
+
+        if isinstance(value, dict):
+            return {k: self._serialize_tool_result(v) for k, v in value.items()}
+
+        if isinstance(value, (list, tuple, set)):
+            return [self._serialize_tool_result(v) for v in value]
+
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped and ((stripped[0] == '{' and stripped[-1] == '}') or (stripped[0] == '[' and stripped[-1] == ']')):
+                try:
+                    parsed = json.loads(stripped)
+                except json.JSONDecodeError:
+                    return value
+                else:
+                    return self._serialize_tool_result(parsed)
+            return value
+
+        return value
 
     def _get_method_mapping(self, instances: Dict) -> Dict[str, str]:
         """Create mapping of method names to instance names"""
@@ -273,16 +347,11 @@ class BfclLoader(BaseLoader):
         # Call the method with arguments
         result = method(**args)
 
-        # Convert result to string for consistency
-        try:
-            if isinstance(result, dict):
-                return json.dumps(result)
-            elif isinstance(result, (list, tuple)):
-                return json.dumps(list(result))
-            else:
-                return str(result)
-        except:
-            return str(result)
+        if result is None:
+            return "null"
+
+        sanitized = self._serialize_tool_result(result)
+        return sanitized
 
 
 
@@ -511,28 +580,33 @@ class BfclLoader(BaseLoader):
                     "content": question_data[i]
                 })
 
-            # Add assistant message with tool calls
-            assistant_message = {
-                "role": "assistant",
-                "tool_calls": ground_truth[i]
-            }
-            trajectory.append(assistant_message)
+            # Normalize current turn tool calls to a list
+            current_turn_calls = ground_truth[i]
+            if not isinstance(current_turn_calls, list):
+                current_turn_calls = [current_turn_calls]
 
-            # Execute tool calls and add responses if we have instances
-            if instances and method_mapping and ground_truth[i]:
-                tool_responses = []
-                for func_call in ground_truth[i]:
-                    if isinstance(func_call, str) and func_call.strip():
+            if not current_turn_calls:
+                trajectory.append({"role": "assistant", "tool_calls": []})
+                continue
+
+            for func_call in current_turn_calls:
+                trajectory.append({
+                    "role": "assistant",
+                    "tool_calls": [func_call]
+                })
+
+                if instances and method_mapping and isinstance(func_call, str) and func_call.strip():
+                    try:
                         response = self._call_tool_with_state(func_call, instances, method_mapping)
-                        tool_responses.append({
-                            "function_call": func_call,
-                            "response": response
-                        })
+                    except Exception as exec_error:
+                        response = f"Execution error: {exec_error}"
 
-                if tool_responses:
                     trajectory.append({
                         "role": "tool",
-                        "tool_responses": tool_responses
+                        "tool_responses": [{
+                            "function_call": func_call,
+                            "response": response
+                        }]
                     })
 
         return trajectory
@@ -674,8 +748,35 @@ class BfclLoader(BaseLoader):
 
         missed_function = ""
         if missed_function_dict:
-            for turn in missed_function_dict:
-                missed_function= f"### Missed Functions\nThe following function(s) will be provided after {turn}-th agent response; the agent should not use them before it:\n{missed_function_dict[turn]}"
+            missed_lines = ["### Missed Functions"]
+            for turn_key, funcs in missed_function_dict.items():
+                try:
+                    human_turn = int(turn_key) + 1
+                    descriptor = f"{self._ordinal(human_turn)} user message"
+                except (TypeError, ValueError):
+                    descriptor = f"turn {turn_key}"
+
+                missed_lines.append(
+                    f"The following function(s) will be provided with the {descriptor}; the agent should not use them before it:\n{funcs}"
+                )
+            missed_function = "\n".join(missed_lines)
+
+        # Prepare default state summary for prompt readability
+        default_state_lines = []
+
+        # if question_id == "multi_turn_miss_func_62":
+            # import pdb; pdb.set_trace()
+        if involved_classes:
+            for class_name in involved_classes:
+                raw_state = self._load_default_state(class_name)
+                if raw_state is None:
+                    continue
+
+                default_state_lines.extend(
+                    self._format_state_lines(class_name, raw_state)
+                )
+
+        default_states = "\n".join(default_state_lines) if default_state_lines else "* (no tool default states provided)"
 
         # Create interleaved trajectory combining user questions and agent tool calls
         interleaved_trajectory = self._create_interleaved_trajectory(
@@ -692,6 +793,16 @@ class BfclLoader(BaseLoader):
 
         # Set exclude state log for certain categories
         exclude_state_log = category in ['irrelevance', 'live_irrelevance']
+
+        # Construct a description of the initial pwd
+        initial_pwd_description = ""
+        if initial_config:
+            gorilla_fs_config = initial_config.get('GorillaFileSystem', None)
+            if gorilla_fs_config:
+                # assert len(gorilla_fs_config["root"]) == 1
+                initial_pwd = list(gorilla_fs_config["root"].keys())[0]
+                initial_pwd_description = f"Note that root directory in the file system is `{initial_pwd}`, not `root`. This is the initial working directory of the system."
+
 
         # Build meta (attach expect_call if set)
         meta_payload = {
@@ -714,6 +825,7 @@ class BfclLoader(BaseLoader):
             available_function_list=function_list,
             benchmark=Benchmark.BFCL,
             initial_config=initial_config,
+            initial_pwd_description=initial_pwd_description,
             expected_path=expected_path,
             involved_classes=involved_classes,
             is_multi_turn=is_multi_turn,
@@ -725,7 +837,8 @@ class BfclLoader(BaseLoader):
             system_prompt=system_prompt,
             max_turn_limit=MAXIMUM_STEP_LIMIT,
             exclude_state_log=exclude_state_log,
-            meta=meta_payload)
+            meta=meta_payload,
+            default_states=default_states)
     
     def load_questions(self) -> List[BFCLQuestion]:
         """Load questions from all BFCL dataset files"""
