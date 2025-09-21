@@ -212,12 +212,12 @@ Apply the ACEBench flaw categories (user, environment, ground-truth) with extra 
 SPECIAL_FILTERING_PROMPT = """You are a placeholder evaluator for ACEBench special-category samples. Just output the following JSON as it is.
 
 
-{
+{{
   "reasoning": "LLM Judge disabled for `special` category",
   "reasoning_summary": "LLM judge skipped",
   "error_category": "LLM Judge disabled",
   "is_flawed": false
-}
+}}
 
 Do not perform any analysis beyond filling in the reasoning message."""
 
