@@ -34,37 +34,40 @@ class AceBenchLoader(BaseLoader):
         return None
 
     def _normalize_ground_truth(self, raw_ground_truth: Any) -> Optional[List[Any]]:
-        """Normalize raw ground truth to a list format while collapsing suffixed function keys."""
-
         if raw_ground_truth is None:
             return None
 
         if isinstance(raw_ground_truth, dict):
-            normalized: Dict[str, Any] = {}
-
-            for key, value in raw_ground_truth.items():
-                if isinstance(key, str) and '_' in key:
-                    base, suffix = key.rsplit('_', 1)
-                    if suffix.isdigit():
-                        key = base
-
-                normalized.setdefault(key, [])
-                normalized[key].append(value)
-
-            # Collapse single-entry lists back to raw value for parity with agent outputs
-            collapsed: Dict[str, Any] = {}
-            for func_name, calls in normalized.items():
-                if len(calls) == 1:
-                    collapsed[func_name] = calls[0]
-                else:
-                    collapsed[func_name] = calls
-
-            return [collapsed]
+            return self._expand_ground_truth_dict(raw_ground_truth)
 
         if isinstance(raw_ground_truth, list):
-            return raw_ground_truth
+            normalized_list: List[Any] = []
+            for item in raw_ground_truth:
+                if isinstance(item, dict) and len(item) == 1:
+                    normalized_list.extend(self._expand_ground_truth_dict(item))
+                else:
+                    normalized_list.append(item)
+            return normalized_list
 
         return raw_ground_truth
+
+    def _expand_ground_truth_dict(self, raw_dict: Dict[str, Any]) -> List[Dict[str, Any]]:
+        calls: List[Dict[str, Any]] = []
+
+        for key, value in raw_dict.items():
+            base_key = key
+            if isinstance(key, str) and '_' in key:
+                base, suffix = key.rsplit('_', 1)
+                if suffix.isdigit():
+                    base_key = base
+
+            if isinstance(value, list):
+                for item in value:
+                    calls.append({base_key: item})
+            else:
+                calls.append({base_key: value})
+
+        return calls
 
     
     def _get_system_prompts(
