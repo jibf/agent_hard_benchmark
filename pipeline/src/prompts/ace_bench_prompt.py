@@ -209,6 +209,17 @@ Decide whether the provided ground-truth trajectory is fundamentally flawed.
 ```
 
 Apply the ACEBench flaw categories (user, environment, ground-truth) with extra attention to missing clarifications, invalid parameters, or policy violations raised in the special instructions. Respond in JSON with `is_flawed` and `reasoning`."""
+SPECIAL_FILTERING_PROMPT = """You are a placeholder evaluator for ACEBench special-category samples. Just output the following JSON as it is.
+
+
+{
+  "reasoning": "LLM Judge disabled for `special` category",
+  "reasoning_summary": "LLM judge skipped",
+  "error_category": "LLM Judge disabled",
+  "is_flawed": false
+}
+
+Do not perform any analysis beyond filling in the reasoning message."""
 
 
 SPECIAL_SCORING_PROMPT = """You are an expert evaluator for ACEBench (special category). Score how well the ground-truth trajectory adheres to agent policies when facing problematic instructions.
