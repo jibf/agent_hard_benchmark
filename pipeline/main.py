@@ -1693,67 +1693,69 @@ class BenchmarkFilteringPipeline:
 
         # Header row for metrics comparison
         rows.append(["Metrics Comparison", "Baseline", "Step1", "Step2", "Step4"])
-        rows.append([])  # Empty row for separation
 
-        # Get baseline data (from "original" step)
+        # Get baseline data and benchmark name (from "original" step)
         baseline_data = self.metrics_summary.get("original", {})
         steps = ["step1", "step2", "step4"]
 
-        # Agreement in format (avg/min/max) - extract from benchmark dict
-        agreement_row = ["Agreement"]
+        # Get benchmark name from the first available data (assuming single benchmark)
+        benchmark_name = list(baseline_data["diversity"].keys())[0]
+
+        # Add benchmark name row
+        rows.append([f"Benchmark: {benchmark_name or 'Unknown'}", "", "", "", ""])
+        rows.append([])  # Empty row for separation
+
+        # Agreement in format (avg/min/max) - extract using benchmark_name
+        agreement_row = ["Agreement (avg/min/max)"]
         baseline_agreement_data = baseline_data.get("agreement", {})
-        # Extract first benchmark data (assuming single benchmark)
-        baseline_bench_data = list(baseline_agreement_data.values())[0] if isinstance(baseline_agreement_data, dict) and baseline_agreement_data else {}
+        baseline_bench_data = baseline_agreement_data[benchmark_name]
         baseline_avg = baseline_bench_data.get("avg")
         baseline_min = baseline_bench_data.get("min")
         baseline_max = baseline_bench_data.get("max")
-        baseline_formatted = f"({format_value(baseline_avg)}/{format_value(baseline_min)}/{format_value(baseline_max)})"
+        baseline_formatted = f"{format_value(baseline_avg)}/{format_value(baseline_min)}/{format_value(baseline_max)}"
         agreement_row.append(baseline_formatted)
 
         for step in steps:
             step_data = self.metrics_summary.get(step, {})
             current_agreement_data = step_data.get("agreement", {})
-            # Extract first benchmark data (assuming single benchmark)
-            current_bench_data = list(current_agreement_data.values())[0] if isinstance(current_agreement_data, dict) and current_agreement_data else {}
+            current_bench_data = current_agreement_data.get(benchmark_name, {})
             current_avg = current_bench_data.get("avg")
             current_min = current_bench_data.get("min")
             current_max = current_bench_data.get("max")
-            current_formatted = f"({format_value(current_avg)}/{format_value(current_min)}/{format_value(current_max)})"
+            current_formatted = f"{format_value(current_avg)}/{format_value(current_min)}/{format_value(current_max)}"
             agreement_row.append(current_formatted)
         rows.append(agreement_row)
 
         # CI Overlap (separability with step-specific baselines)
-        ci_overlap_row = ["CI Overlap"]
+        ci_overlap_row = ["CI Overlap (sampled_baseline/after_step)"]
         # For baseline column, use separability from original step
         baseline_separability = baseline_data.get("separability", [])
-        baseline_sep_value = list(baseline_separability[0].values())[0] if baseline_separability and baseline_separability[0] else None
+        baseline_sep_value = baseline_separability[0][benchmark_name]
         ci_overlap_row.append(format_value(baseline_sep_value))
 
         for step in steps:
             step_data = self.metrics_summary.get(step, {})
             # Current step separability
             current_separability = step_data.get("separability", [])
-            current_sep_value = list(current_separability[0].values())[0] if current_separability and current_separability[0] else None
+            current_sep_value = current_separability[0].get(benchmark_name) if len(current_separability) > 0 else None
 
             # Step-specific baseline separability
             step_baseline_separability = step_data.get("separability_baseline", [])
-            step_baseline_value = list(step_baseline_separability[0].values())[0] if step_baseline_separability and step_baseline_separability[0] else None
+            step_baseline_value = step_baseline_separability[0].get(benchmark_name) if len(step_baseline_separability) > 0 else None
 
             baseline_val = format_value(step_baseline_value)
             current_val = format_value(current_sep_value)
             ci_overlap_row.append(f"{baseline_val}/{current_val}")
         rows.append(ci_overlap_row)
 
-        # Diversity (extract value from dict)
+        # Diversity (extract value using benchmark_name)
         diversity_row = ["Diversity"]
-        baseline_diversity = baseline_data.get("diversity", {})
-        baseline_div_value = list(baseline_diversity.values())[0] if isinstance(baseline_diversity, dict) and baseline_diversity else baseline_diversity
+        baseline_div_value = baseline_data["diversity"][benchmark_name]
         diversity_row.append(format_value(baseline_div_value))
 
         for step in steps:
-            step_data = self.metrics_summary.get(step, {})
-            current_diversity = step_data.get("diversity", {})
-            current_div_value = list(current_diversity.values())[0] if isinstance(current_diversity, dict) and current_diversity else current_diversity
+            current_diversity = self.metrics_summary[step].get("diversity", {})
+            current_div_value = current_diversity.get(benchmark_name) if current_diversity is not None else None
             diversity_row.append(format_value(current_div_value))
         rows.append(diversity_row)
 
@@ -1828,6 +1830,15 @@ class BenchmarkFilteringPipeline:
         all_models = set()
         all_subtasks = set()
 
+        # Include baseline data
+        baseline_model_performance = baseline_data.get("model_performance", {})
+        for benchmark_data in baseline_model_performance.values():
+            for model_name, model_data in benchmark_data.items():
+                all_models.add(model_name)
+                subtask_scores = model_data.get("subtask_scores", {})
+                all_subtasks.update(subtask_scores.keys())
+
+        # Include step data
         for step in steps:
             step_data = self.metrics_summary.get(step, {})
             model_performance = step_data.get("model_performance", {})
@@ -1841,6 +1852,32 @@ class BenchmarkFilteringPipeline:
 
         all_models = sorted(list(all_models))
         all_subtasks = sorted(list(all_subtasks))
+
+        # Create baseline model performance table
+        baseline_model_performance = baseline_data.get("model_performance", {})
+        if baseline_model_performance:
+            rows.append(["BASELINE - Model Performance"])
+
+            # Headers: Model, Overall, subtask1, subtask2, ...
+            header = ["Model", "Overall"] + all_subtasks
+            rows.append(header)
+
+            # Get benchmark data (using benchmark_name)
+            benchmark_data = baseline_model_performance.get(benchmark_name, {}) if benchmark_name else {}
+
+            # Model data rows
+            for model_name in all_models:
+                if model_name in benchmark_data:
+                    model_data = benchmark_data[model_name]
+                    overall_score = format_value(model_data.get("overall_score"))
+                    subtask_scores = model_data.get("subtask_scores", {})
+
+                    row = [model_name, overall_score]
+                    for subtask in all_subtasks:
+                        row.append(format_value(subtask_scores.get(subtask)))
+                    rows.append(row)
+
+            rows.append([])  # Empty row after baseline
 
         # Create model performance table for each step
         for step in steps:
@@ -1857,8 +1894,8 @@ class BenchmarkFilteringPipeline:
             header = ["Model", "Overall"] + all_subtasks
             rows.append(header)
 
-            # Get benchmark data (assuming single benchmark)
-            benchmark_data = list(model_performance.values())[0] if model_performance else {}
+            # Get benchmark data (using benchmark_name)
+            benchmark_data = model_performance[benchmark_name]
 
             # Model data rows
             for model_name in all_models:
