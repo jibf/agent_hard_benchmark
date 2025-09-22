@@ -193,6 +193,9 @@ class BenchmarkFilteringPipeline:
 
         # filter out duplicate questions from same model
         for qid, responses in response_dict.items():
+            # hardcode for BFCL, only loading multi_turn data
+            if qid.benchmark.value == "BFCL" and "multi_turn" not in qid.task_name:
+                continue
             model_names = []
             valid_responses = []
             for response in responses:
@@ -1699,8 +1702,8 @@ class BenchmarkFilteringPipeline:
         # Agreement in format (avg/min/max) - extract from benchmark dict
         agreement_row = ["Agreement"]
         baseline_agreement_data = baseline_data.get("agreement", {})
-        # Extract DrafterBench data (assuming single benchmark)
-        baseline_bench_data = baseline_agreement_data.get("DrafterBench", {}) if isinstance(baseline_agreement_data, dict) else {}
+        # Extract first benchmark data (assuming single benchmark)
+        baseline_bench_data = list(baseline_agreement_data.values())[0] if isinstance(baseline_agreement_data, dict) and baseline_agreement_data else {}
         baseline_avg = baseline_bench_data.get("avg")
         baseline_min = baseline_bench_data.get("min")
         baseline_max = baseline_bench_data.get("max")
@@ -1710,8 +1713,8 @@ class BenchmarkFilteringPipeline:
         for step in steps:
             step_data = self.metrics_summary.get(step, {})
             current_agreement_data = step_data.get("agreement", {})
-            # Extract DrafterBench data (assuming single benchmark)
-            current_bench_data = current_agreement_data.get("DrafterBench", {}) if isinstance(current_agreement_data, dict) else {}
+            # Extract first benchmark data (assuming single benchmark)
+            current_bench_data = list(current_agreement_data.values())[0] if isinstance(current_agreement_data, dict) and current_agreement_data else {}
             current_avg = current_bench_data.get("avg")
             current_min = current_bench_data.get("min")
             current_max = current_bench_data.get("max")
@@ -1723,18 +1726,18 @@ class BenchmarkFilteringPipeline:
         ci_overlap_row = ["CI Overlap"]
         # For baseline column, use separability from original step
         baseline_separability = baseline_data.get("separability", [])
-        baseline_sep_value = baseline_separability[0].get("DrafterBench") if baseline_separability else None
+        baseline_sep_value = list(baseline_separability[0].values())[0] if baseline_separability and baseline_separability[0] else None
         ci_overlap_row.append(format_value(baseline_sep_value))
 
         for step in steps:
             step_data = self.metrics_summary.get(step, {})
             # Current step separability
             current_separability = step_data.get("separability", [])
-            current_sep_value = current_separability[0].get("DrafterBench") if current_separability else None
+            current_sep_value = list(current_separability[0].values())[0] if current_separability and current_separability[0] else None
 
             # Step-specific baseline separability
             step_baseline_separability = step_data.get("separability_baseline", [])
-            step_baseline_value = step_baseline_separability[0].get("DrafterBench") if step_baseline_separability else None
+            step_baseline_value = list(step_baseline_separability[0].values())[0] if step_baseline_separability and step_baseline_separability[0] else None
 
             baseline_val = format_value(step_baseline_value)
             current_val = format_value(current_sep_value)
@@ -1744,13 +1747,13 @@ class BenchmarkFilteringPipeline:
         # Diversity (extract value from dict)
         diversity_row = ["Diversity"]
         baseline_diversity = baseline_data.get("diversity", {})
-        baseline_div_value = baseline_diversity.get("DrafterBench") if isinstance(baseline_diversity, dict) else baseline_diversity
+        baseline_div_value = list(baseline_diversity.values())[0] if isinstance(baseline_diversity, dict) and baseline_diversity else baseline_diversity
         diversity_row.append(format_value(baseline_div_value))
 
         for step in steps:
             step_data = self.metrics_summary.get(step, {})
             current_diversity = step_data.get("diversity", {})
-            current_div_value = current_diversity.get("DrafterBench") if isinstance(current_diversity, dict) else current_diversity
+            current_div_value = list(current_diversity.values())[0] if isinstance(current_diversity, dict) and current_diversity else current_diversity
             diversity_row.append(format_value(current_div_value))
         rows.append(diversity_row)
 
@@ -1784,7 +1787,7 @@ class BenchmarkFilteringPipeline:
 
         # Question Num (TP + FP + TN + FN from human alignment)
         question_num_row = ["Question Num"]
-        question_num_row.append("-")  # No baseline question num
+        question_num_row.append(self.metrics_summary["original"]["question_num"])
         for step in steps:
             step_data = self.metrics_summary.get(step, {})
             human_alignment = step_data.get("human_alignment", {})
@@ -2066,7 +2069,6 @@ class BenchmarkFilteringPipeline:
                     logger.info(f"    Average agreement: {stats['avg']:.3f}")
                     logger.info(f"    Min agreement: {stats['min']:.3f}")
                     logger.info(f"    Max agreement: {stats['max']:.3f}")
-                    logger.info(f"    Models: {stats['num_models']}")
             elif "agreement" in available_keys:
                 logger.info(f"Model agreement: Not computed")
 
