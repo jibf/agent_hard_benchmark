@@ -15,6 +15,10 @@ class DrafterBenchFilter(BaseBenchmarkFilter):
     
     def __init__(self):
         super().__init__("DrafterBench")
+        self._structure_filter_summary = {
+            "invalid_structure": 0,
+            "disallowed_system_prompt": 0,
+        }
     
     def get_filter_name(self) -> str:
         return "DrafterBench-Specific Filter"
@@ -60,7 +64,6 @@ class DrafterBenchFilter(BaseBenchmarkFilter):
         4. Task must show meaningful performance variation
         """
         logger.info(f"Applying DrafterBench-specific filtering to {len(samples)} samples")
-
         filtered_samples = self._filter_by_structure(samples)
         filtered_samples = self._filter_duplicate_id(filtered_samples)
 
@@ -81,16 +84,44 @@ class DrafterBenchFilter(BaseBenchmarkFilter):
     def _filter_by_structure(self, samples: List[Dict]) -> List[Dict]:
         """Filter by DrafterBench-specific structure requirements."""
         valid_samples = []
-        
+        summary = {
+            "invalid_structure": 0,
+            "disallowed_system_prompt": 0,
+        }
+
         for sample in samples:
-            if not self.is_structure_applicable(sample):
+            is_valid_structure, _ = self.is_structure_applicable(sample)
+            if not is_valid_structure:
+                summary["invalid_structure"] += 1
                 continue
-                
+            if self._uses_misspelled_system_prompt(sample):
+                summary["disallowed_system_prompt"] += 1
+                continue
             valid_samples.append(sample)
-        
-        logger.info(f"Filter invalid structures: {len(samples) - len(valid_samples)}/{len(samples)} filtered")
+
+        self._structure_filter_summary = summary
+        logger.info(
+            "Filter invalid structures: %s/%s filtered (summary=%s)",
+            len(samples) - len(valid_samples),
+            len(samples),
+            json.dumps(summary),
+        )
 
         return valid_samples
+
+    def _uses_misspelled_system_prompt(self, sample: Dict) -> bool:
+        messages = sample.get("messages", [])
+        for message in messages:
+            if not isinstance(message, dict):
+                continue
+            if message.get("role") != "system":
+                continue
+            content = message.get("content")
+            if not isinstance(content, str):
+                continue
+            if '.recording\n' in content:
+                return True
+        return False
 
     def _filter_duplicate_id(self, samples: List[Dict]) -> List[Dict]:
         known_question_ids = set()
@@ -166,30 +197,18 @@ class DrafterBenchFilter(BaseBenchmarkFilter):
     def _filter_by_prompt(self, question_dict: Dict[str, Dict]) -> Dict[str, Dict]:
         valid_questions = {}
         reason_count = {
-            "vague_question": 0,
-            "low_discriminativeness": 0
+            "disallowed_system_prompt": self._structure_filter_summary.get(
+                "disallowed_system_prompt", 0
+            ),
         }
         for question, question_list in question_dict.items():
-            is_valid = True
+            valid_questions[question] = question_list
 
-            # filter all vague questions
-            # if question_list[0]["meta"]["precise_vague"] == "Vague":
-            #     is_valid = False
-            #     reason_count["vague_question"] += 1
-            #     continue
-
-            scores = [sample["eval_result"]["score"] for sample in question_list]
-            if len(scores) > 2:
-                variance = sum((x - sum(scores)/len(scores))**2 for x in scores) / len(scores)
-                if variance < 0.01:
-                    is_valid = False
-                    reason_count["low_discriminativeness"] += 1
-                    continue
-
-            if is_valid:
-                valid_questions[question] = question_list
-
-        logger.info(f"Filter questions by rules: \n{json.dumps(reason_count, indent=2)}\n Total: {sum(reason_count.values())}/{len(question_dict)}")
+        prompt_filtered_total = 0
+        logger.info(
+            "Filter questions by rules: \n%s\n Total: %s/%s",
+            json.dumps(reason_count, indent=2),
+            prompt_filtered_total,
+            len(question_dict),
+        )
         return valid_questions
-
-
