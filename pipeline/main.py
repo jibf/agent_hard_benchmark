@@ -1865,17 +1865,24 @@ class BenchmarkFilteringPipeline:
             # Get benchmark data (using benchmark_name)
             benchmark_data = baseline_model_performance.get(benchmark_name, {}) if benchmark_name else {}
 
-            # Model data rows
+            # Model data rows (sorted by overall score descending)
+            model_rows = []
             for model_name in all_models:
                 if model_name in benchmark_data:
                     model_data = benchmark_data[model_name]
-                    overall_score = format_value(model_data.get("overall_score"))
+                    overall_score_raw = model_data.get("overall_score")
+                    overall_score = format_value(overall_score_raw)
                     subtask_scores = model_data.get("subtask_scores", {})
 
                     row = [model_name, overall_score]
                     for subtask in all_subtasks:
                         row.append(format_value(subtask_scores.get(subtask)))
-                    rows.append(row)
+                    model_rows.append((overall_score_raw or 0, row))
+
+            # Sort by overall score (descending) and add to rows
+            model_rows.sort(key=lambda x: x[0], reverse=True)
+            for _, row in model_rows:
+                rows.append(row)
 
             rows.append([])  # Empty row after baseline
 
@@ -1895,19 +1902,26 @@ class BenchmarkFilteringPipeline:
             rows.append(header)
 
             # Get benchmark data (using benchmark_name)
-            benchmark_data = model_performance[benchmark_name]
+            benchmark_data = model_performance.get(benchmark_name, {}) if benchmark_name else {}
 
-            # Model data rows
+            # Model data rows (sorted by overall score descending)
+            model_rows = []
             for model_name in all_models:
                 if model_name in benchmark_data:
                     model_data = benchmark_data[model_name]
-                    overall_score = format_value(model_data.get("overall_score"))
+                    overall_score_raw = model_data.get("overall_score")
+                    overall_score = format_value(overall_score_raw)
                     subtask_scores = model_data.get("subtask_scores", {})
 
                     row = [model_name, overall_score]
                     for subtask in all_subtasks:
                         row.append(format_value(subtask_scores.get(subtask)))
-                    rows.append(row)
+                    model_rows.append((overall_score_raw or 0, row))
+
+            # Sort by overall score (descending) and add to rows
+            model_rows.sort(key=lambda x: x[0], reverse=True)
+            for _, row in model_rows:
+                rows.append(row)
 
             # Add subtask statistics table after model performance
             rows.append([])  # Empty row before subtask stats
