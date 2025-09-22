@@ -43,7 +43,7 @@ This category addresses errors in the provided ground-truth trajectory, where th
 
 * Redundant/ungrounded function calls: The ground truth function call trajectory consists of function calls that are redundant in solving the task, ungrounded by the context, or irrelevant in solving the task.
   * Irrelevant tool call: A function call in the ground truth trajectory is totally irrelevant to the task or belongs to a completely different domain. Example: agent calls a function to reserve a flight, though it was asked to process product exchange.
-  * Redundant tool call: A function call that is not necessary in solving the task. Example: the agent is asked to search for attractions until it finds one that meets a certain condition; However, the agent performs the search in an arbitrary order, resulting in an excessive number of function calls.
+  * Redundant tool call: A function call that is not necessary in solving the task. However, note that function calls that does not change the database status are tolerable even if they are redundant. EXAMPLE: a sample is not flawed even if calls `get_order_details` for irrelevant items. 
 
 
 ## Crucial Rule: Actively Reconstruct the Conversation
