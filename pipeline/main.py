@@ -11,6 +11,7 @@ import logging
 import argparse
 import csv
 import numpy as np
+import pickle
 import random
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -608,6 +609,7 @@ class BenchmarkFilteringPipeline:
             human_labelled_questions: Set of all human labelled questions for current filtering stage
             baseline_source: Source data for creating baseline (original responses_by_question)
         """
+        benchmark_name = self.config.get("target_benchmark", None)[0]
         skip_measurement = self.config.get("skip_measurement", False)
         if skip_measurement:
             return
@@ -637,7 +639,14 @@ class BenchmarkFilteringPipeline:
 
         # ============================== compute embeddings (initial phase only) ==============================
         if phase == "initial":
-            self._compute_embeddings_dict(passed_responses)
+            embed_file = f"./{benchmark_name}_embed_dict.pkl"
+            if os.path.exists(embed_file):
+                with open(embed_file, "rb") as f:
+                    self.embeddings_dict = pickle.load(f)
+            else:
+                self._compute_embeddings_dict(passed_responses)
+                with open(embed_file, "wb") as f:
+                    pickle.dump(self.embeddings_dict, f)
 
         # ============================== compute Separability ==============================
         sep_list = []
@@ -651,7 +660,15 @@ class BenchmarkFilteringPipeline:
         # ============================== compute IRT metric ==============================
         if phase == "initial":
             # Initial calculation: compute IRT discrimination for all questions
-            self.irt_discrimination_dict = compute_irt_metric(passed_responses, threshold=0.5)
+            irt_file = f"./{benchmark_name}_irt_dict.pkl"
+            if os.path.exists(irt_file):
+                with open(irt_file, "rb") as f:
+                    self.irt_discrimination_dict = pickle.load(f)
+            else:
+                self.irt_discrimination_dict = compute_irt_metric(passed_responses, threshold=0.5)
+                with open(irt_file, "wb") as f:
+                    pickle.dump(self.irt_discrimination_dict, f)
+
             irt_discrimination = np.mean(list(self.irt_discrimination_dict.values()))
             logger.info(f"Benchmark IRT discrimination before filtering: {irt_discrimination:.4f}")
         else:
