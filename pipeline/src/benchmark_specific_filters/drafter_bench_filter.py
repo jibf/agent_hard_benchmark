@@ -119,7 +119,7 @@ class DrafterBenchFilter(BaseBenchmarkFilter):
             content = message.get("content")
             if not isinstance(content, str):
                 continue
-            if '.recording\n' in content:
+            if '.recording\n' in content and (".recording" in sample["meta"]["groundtruth"]):
                 return True
         return False
 
