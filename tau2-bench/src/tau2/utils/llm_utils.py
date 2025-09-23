@@ -285,18 +285,12 @@ def _generate_single_attempt(
     kwargs["custom_llm_provider"] = "openai"
     if is_user:
         kwargs["api_key"] = os.getenv("USER_API_KEY")
-        # Use provided base_url if available, otherwise fall back to user environment variable
-        if base_url is not None:
-            kwargs["api_base"] = base_url
-        else:
-            kwargs["api_base"] = os.getenv("USER_BASE_URL")
+        kwargs["api_base"] = os.getenv("USER_BASE_URL")
+        if "openai" in model:
+            model = "openai/" + model
     else:
         kwargs["api_key"] = os.getenv("API_KEY")
-        # Use provided base_url if available, otherwise fall back to agent environment variable
-        if base_url is not None:
-            kwargs["api_base"] = base_url
-        else:
-            kwargs["api_base"] = os.getenv("BASE_URL")
+        kwargs["api_base"] = os.getenv("BASE_URL")
 
         if "anthropic" in model:
             if "thinking-on" in model:
