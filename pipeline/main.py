@@ -167,6 +167,37 @@ class BenchmarkFilteringPipeline:
         else:
             return obj
 
+    def _load_precomputed_results(self, csv_path: str) -> Dict[UniqueQuestionID, Dict]:
+        """Load precomputed filtering results from CSV and convert to dict keyed by UniqueQuestionID."""
+        precomputed_results = {}
+
+        with open(csv_path, "r", encoding="utf-8") as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                # Create UniqueQuestionID from CSV columns
+                unique_question_id = UniqueQuestionID(
+                    benchmark=row["Benchmark"],
+                    task_name=row["task_type"] if row["task_type"] else None,
+                    question_id=row["task_id"],
+                )
+
+                # Convert string values to appropriate types, empty strings to None
+                results = {}
+                for key, value in row.items():
+                    if key in ["Benchmark", "task_type", "task_id"]:
+                        continue  # Skip keys used for UniqueQuestionID
+
+                    if value == "" or value is None:
+                        results[key] = None
+                    elif value.lower() in ["true", "false"]:
+                        results[key] = value.lower() == "true"
+                    else:
+                        results[key] = value
+
+                precomputed_results[unique_question_id] = results
+
+        return precomputed_results
+
     def _convert_response_list_to_qid_list(
         self, response_list: List[Dict]
     ) -> List[UniqueQuestionID]:
@@ -323,6 +354,14 @@ class BenchmarkFilteringPipeline:
         """Run the complete filtering pipeline."""
         logger.info("Starting benchmark filtering pipeline")
 
+        # Load precomputed results if provided
+        precomputed_results = None
+        if self.config.get("precomputed_results"):
+            precomputed_results = self._load_precomputed_results(
+                self.config["precomputed_results"]
+            )
+            logger.info(f"Loaded {len(precomputed_results)} precomputed results")
+
         all_responses = self._load_benchmark_data()
         self.all_questions = self._get_all_questions_from_loader()
         self.human_labelled_details = self.data_loader.load_human_labelled_ground_truth(self.config.get("target_benchmark"))
@@ -348,9 +387,16 @@ class BenchmarkFilteringPipeline:
         if not skip_rule_based:
             # Step 1: Apply benchmark-specific filtering for benchmarks that have specific filters
             logger.info("Step 1: Benchmark-specific filtering")
-            step1_passed, step1_dropped = self._run_benchmark_specific_filtering(
-                responses_by_question
-            )
+            if precomputed_results:
+                # Use precomputed results instead of running actual filtering
+                step1_passed = {}
+                for question_id, responses in responses_by_question.items():
+                    if question_id in precomputed_results and precomputed_results[question_id].get('specific_rule_passed') is True:
+                        step1_passed[question_id] = responses
+            else:
+                step1_passed, step1_dropped = self._run_benchmark_specific_filtering(
+                    responses_by_question
+                )
             # Compute and log all metrics for step1 (including baseline)
             self.compute_and_log_metrics(
                 passed_responses=step1_passed,
@@ -386,26 +432,40 @@ class BenchmarkFilteringPipeline:
         if not skip_llm_judge:
             logger.info("Step 2: LLM-as-Judge filtering")
 
-            step2_result = self._run_llm_judge(current_responses)
-            # Update pipeline_outputs with step2 results
-            for question_id, llm_output in step2_result.items():
-                pipeline_outputs[question_id].llm_judge_output = llm_output
+            step1_passed_qids = [qid for qid in current_responses]
+            if precomputed_results:
+                step2_passed = {}
+                for qid in step1_passed_qids:
+                    if (
+                        qid in precomputed_results
+                        and precomputed_results[qid].get("specific_llm_passed") is True
+                    ):
+                        step2_passed[qid] = responses_by_question[qid]
 
-            # Create step2_passed using the same logic as final summary
-            # This ensures consistency between run_pipeline and _print_final_summary
+                # Create dummy LLM outputs for pipeline_outputs consistency
+                for qid in step1_passed_qids:
+                    if qid in precomputed_results:
+                        passed = qid in step2_passed
+                        from src.utils.types import LLMJudgeOutput
 
-            # Get step1_passed question IDs for consistent calculation
-            step1_passed_qids = [
-                qid
-                for qid, output in pipeline_outputs.items()
-                if not output.rule_based_output or output.rule_based_output.passed
-            ]
+                        pipeline_outputs[qid].llm_judge_output = LLMJudgeOutput(
+                            passed=passed,
+                            reason="Precomputed result",
+                            model_response={},
+                        )
+            else:
+                step2_result = self._run_llm_judge(current_responses)
+                # Update pipeline_outputs with step2 results
+                for question_id, llm_output in step2_result.items():
+                    pipeline_outputs[question_id].llm_judge_output = llm_output
 
-            step2_passed = {
-                qid: responses_by_question[qid]
-                for qid in step1_passed_qids
-                if not self._is_question_flawed(pipeline_outputs[qid].llm_judge_output)
-            }
+                step2_passed = {
+                    qid: responses_by_question[qid]
+                    for qid in step1_passed_qids
+                    if not self._is_question_flawed(
+                        pipeline_outputs[qid].llm_judge_output
+                    )
+                }
             # Compute and log all metrics for step2 (including baseline)
             self.compute_and_log_metrics(
                 passed_responses=step2_passed,
@@ -2289,6 +2349,11 @@ def main():
         action="store_true",
         help="Skip diversity and IRT measurement calculations to speed up processing",
     )
+    parser.add_argument(
+        "--precomputed-results",
+        type=str,
+        help="Path to CSV file with precomputed filtering results to skip actual filtering steps",
+    )
 
     args = parser.parse_args()
 
@@ -2320,6 +2385,7 @@ def main():
         "skip_measurement": args.skip_measurement,
         "csv_filename": csv_filename,
         "report_filename": report_filename,
+        "precomputed_results": args.precomputed_results,
     }
 
     # Set up logging with dynamic filename
