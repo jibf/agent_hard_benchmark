@@ -95,12 +95,15 @@ class LLMJudge:
                     "model": model,
                     "messages": [{"role": "user", "content": evaluation_prompt}],
                     "temperature": 0.0,
+                    "max_tokens": 16384,
                 }
 
                 # For gemini models, don't use extra_body or response_format as they cause 500 errors
-                if not is_gemini:
+                if not is_gemini and "claude-4-opus-thinking-on-10k" not in model:
                     params["response_format"] = {"type": "json_object"}
 
+                if "claude-4-opus-thinking-on-10k" in model:
+                    params["temperature"] = 1.0
                 response = client.chat.completions.create(timeout=request_timeout, **params)
 
                 response_content = response.choices[0].message.content
@@ -108,7 +111,7 @@ class LLMJudge:
                     raise ValueError("Empty response from API")
 
                 # Use the JSON extraction method for gemini models that may wrap JSON in code blocks
-                if is_gemini:
+                if is_gemini or "claude-4-opus-thinking-on-10k" in model:
                     result = LLMJudge._extract_json_from_response(response_content)
                 else:
                     result = json.loads(response_content)
