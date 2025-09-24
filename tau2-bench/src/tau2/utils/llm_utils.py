@@ -104,15 +104,15 @@ def _get_custom_api_client():
     Get OpenAI client for custom API using environment variables.
     """
     from openai import OpenAI
-
-    base_url = os.getenv("BASE_URL")
-    api_key = os.getenv("API_KEY")
-
+    
+    base_url = os.getenv("OPENAI_API_BASE")
+    api_key = os.getenv("OPENAI_API_KEY")
+    
     if not base_url:
-        raise ValueError("BASE_URL environment variable is required for custom API models")
+        raise ValueError("OPENAI_API_BASE environment variable is required for custom API models")
     if not api_key:
-        raise ValueError("API_KEY environment variable is required for custom API models")
-
+        raise ValueError("OPENAI_API_KEY environment variable is required for custom API models")
+    
     return OpenAI(base_url=base_url, api_key=api_key)
 
 
@@ -223,7 +223,6 @@ def generate(
     tools: Optional[list[Tool]] = None,
     tool_choice: Optional[str] = None,
     base_url: Optional[str] = None,
-    is_user: bool = False,
     **kwargs: Any,
 ) -> UserMessage | AssistantMessage:
     """
@@ -246,7 +245,7 @@ def generate(
     while True:
         try:
             return _generate_single_attempt(
-                model, messages, tools, tool_choice, base_url, is_user, **kwargs
+                model, messages, tools, tool_choice, base_url, **kwargs
             )
         except ValueError as e:
             # Check if this is a Grok empty content error
@@ -269,7 +268,6 @@ def _generate_single_attempt(
     tools: Optional[list[Tool]] = None,
     tool_choice: Optional[str] = None,
     base_url: Optional[str] = None,
-    is_user: bool = False,
     **kwargs: Any,
 ) -> UserMessage | AssistantMessage:
     """
@@ -281,16 +279,22 @@ def _generate_single_attempt(
 
     if model.startswith("claude") and not ALLOW_SONNET_THINKING:
         kwargs["thinking"] = {"type": "disabled"}
-    # Use appropriate API configuration based on whether this is for user or agent
-    kwargs["custom_llm_provider"] = "openai"
-    if is_user:
-        kwargs["api_key"] = os.getenv("USER_API_KEY")
-        kwargs["api_base"] = os.getenv("USER_BASE_URL")
-        if "openai" in model:
-            model = "openai/" + model
-    else:
-        kwargs["api_key"] = os.getenv("API_KEY")
-        kwargs["api_base"] = os.getenv("BASE_URL")
+    if _is_custom_api_model(model):
+        kwargs["custom_llm_provider"] = "openai"
+        if "huggingface" in model:
+            kwargs["api_key"] = "dummy-key"
+            # Use provided base_url if available, otherwise fall back to environment variable
+            if base_url is not None:
+                kwargs["api_base"] = base_url
+            else:
+                kwargs["api_base"] = os.getenv("HUGGINGFACE_API_BASE")
+        else:
+            kwargs["api_key"] = os.getenv("OPENAI_API_KEY")
+            # Use provided base_url if available, otherwise fall back to environment variable
+            if base_url is not None:
+                kwargs["api_base"] = base_url
+            else:
+                kwargs["api_base"] = os.getenv("OPENAI_API_BASE")
 
         if "anthropic" in model:
             if "thinking-on" in model:

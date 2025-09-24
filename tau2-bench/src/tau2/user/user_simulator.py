@@ -158,13 +158,12 @@ class UserSimulator(BaseUser):
         llm_args = self.llm_args.copy()
         base_url = llm_args.pop("base_url", None)
 
-        # Generate response using user model configuration
+        # Generate response
         assistant_message = generate(
             model=self.llm,
             messages=messages,
             tools=self.tools,
             base_url=base_url,
-            is_user=True,
             **llm_args,
         )
 
