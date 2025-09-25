@@ -22,7 +22,6 @@ from bfcl_eval.eval_checker.multi_turn_eval.multi_turn_checker import (
     multi_turn_irrelevance_checker,
 )
 from bfcl_eval.eval_checker.multi_turn_eval.multi_turn_utils import is_empty_execute_response
-from bfcl_eval.constants.model_config import MODEL_CONFIG_MAPPING
 from bfcl_eval.model_handler.api_inference.dynamic_openai import create_dynamic_model_config
 from bfcl_eval.utils import *
 from dotenv import load_dotenv
@@ -31,6 +30,7 @@ from tqdm import tqdm
 
 def get_handler(model_name, config_mapping=None):
     # Use provided config mapping or fallback to global one
+    from bfcl_eval.constants.model_config import MODEL_CONFIG_MAPPING
     mapping = config_mapping if config_mapping is not None else MODEL_CONFIG_MAPPING
     config = mapping[model_name]
     handler = config.model_handler(
@@ -477,6 +477,7 @@ def evaluate_task(
 
 
 def main(model, test_categories, result_dir, score_dir):
+    from bfcl_eval.constants.model_config import MODEL_CONFIG_MAPPING
     if result_dir is None:
         result_dir = RESULT_PATH
     else:

@@ -8,7 +8,6 @@ import pandas as pd
 from bfcl_eval.constants.category_mapping import TEST_FILE_MAPPING
 from bfcl_eval.constants.column_headers import *
 from bfcl_eval.constants.eval_config import *
-from bfcl_eval.constants.model_config import MODEL_CONFIG_MAPPING
 from bfcl_eval.utils import extract_test_category, load_file
 
 
@@ -110,6 +109,7 @@ def record_cost_latency(leaderboard_table, model_name, model_output_data):
 
 def get_cost_latency_info(model_name, cost_data, latency_data):
     cost, mean_latency, std_latency, percentile_95_latency = "N/A", "N/A", "N/A", "N/A"
+    from bfcl_eval.constants.model_config import MODEL_CONFIG_MAPPING
     model_config = MODEL_CONFIG_MAPPING[model_name]
 
     # For API models, we use the input and output token counts to calculate the cost
@@ -193,6 +193,7 @@ def write_score_csv_file(
 def generate_leaderboard_csv(
     leaderboard_table, output_path, eval_models=None, eval_categories=None
 ):
+    from bfcl_eval.constants.model_config import MODEL_CONFIG_MAPPING
     print("📈 Aggregating data to generate leaderboard score table...")
     data_non_live = []
     data_live = []

@@ -29,7 +29,11 @@ model_path_to_name = {
     "deepseek-ai/DeepSeek-V3-0324": "DeepSeek-V3-0324",
     "deepseek-ai/DeepSeek-R1-0528": "DeepSeek-R1-0528",
     "anthropic/claude-4-sonnet-thinking-on-10k": "claude-4-sonnet-thinking-on-10k",
-    "anthropic/claude-4-sonnet-thinking-off": "claude-4-sonnet-thinking-off"
+    "anthropic/claude-4-sonnet-thinking-off": "claude-4-sonnet-thinking-off",
+    "openai/gpt-4.1-nano": "gpt-4.1-nano",
+    "openai/gpt-4.1-mini": "gpt-4.1-mini",
+    "deepseek-ai/DeepSeek-V3.1-thinking-off": "DeepSeek-V3.1-thinking-off",
+    "anthropic/claude-4-opus-thinking-off": "claude-4-opus-thinking-off"
 }
 
 
