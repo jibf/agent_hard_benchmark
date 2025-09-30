@@ -274,8 +274,6 @@ class BenchmarkRunner:
         # NexusBench now saves results locally via --output-dir parameter
         return success
 
-    # TODO: check how to run cfbench
-    # TODO: add api_key, base_url and rapid_api_key to .env file
     def run_cfbench(self) -> bool:
         """Run CFBench"""
         benchmark_name = "CFBench"
@@ -296,7 +294,7 @@ class BenchmarkRunner:
         benchmark_output_dir = self.output_dir / benchmark_name
         benchmark_output_dir.mkdir(parents=True, exist_ok=True)
 
-        command = f"python evaluation.py --model_name={self.model_name} --proc_num {self.proc_num} --log_dir {benchmark_output_dir}"
+        command = f"python evaluation.py --model_name={self.model_name} --proc_num {self.proc_num} --log_dir {benchmark_output_dir} --eval_model {self.user_model}"
 
         success, output = self.run_command(command, benchmark_dir)
 

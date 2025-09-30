@@ -43,7 +43,7 @@ nano .env  # or use your preferred editor
 API_KEY=your_api_key_here
 BASE_URL=your_openai_compatible_endpoint_url
 
-# User Model Configuration (Optional - for multi-agent benchmarks)
+# User Model Configuration (Optional - for benchmarks with a llm user)
 USER_API_KEY=your_user_model_key_here
 USER_BASE_URL=your_user_model_endpoint_url
 
@@ -83,11 +83,10 @@ Available models for agents:
    3. gpt-4-turbo-2024-04-09
    ...
 
-USER MODELS (for multi-agent benchmarks):
+USER MODELS (for benchmarks with a llm user):
 ---------------------------------------------
 USER_API_KEY and USER_BASE_URL not configured
-This is optional and only needed for multi-agent benchmarks like ToolSandbox
-Note: CFBench uses a fixed judge model (gpt-4o-2024-08-06) via USER_API_KEY for response evaluation
+This is optional and only needed for benchmarks with a llm user like ToolSandbox
 ```
 
 ### 4. Running Benchmarks

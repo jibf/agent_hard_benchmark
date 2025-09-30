@@ -32,6 +32,7 @@ def get_args():
     parser.add_argument('--exp_name', type=str, default='full-1000')
     parser.add_argument("--vllm_url", type=str, default=os.environ['BASE_URL'])
     parser.add_argument("--proc_num", type=int, default=1)
+    parser.add_argument("--eval_model", type=str, default="gpt-4o-2024-08-06", help="The evaluation model for response evaluation (default: gpt-4o-2024-08-06)")
     parser.add_argument("--debug", action="store_true")
 
     args = parser.parse_args()
@@ -110,10 +111,27 @@ def process_example(data, args):
 
 def main():
     args = get_args()
+
+    # Check and warn about eval_model
+    eval_model = args.eval_model
+    normalized_model = eval_model.split('/')[-1].replace('-', '').lower()
+    expected_normalized = "gpt4o20240806"
+
+    if normalized_model != expected_normalized:
+        warning_msg = [
+            "=" * 80,
+            "WARNING: UNSUPPORTED EVALUATION MODEL DETECTED!",
+            f"Current eval_model: '{eval_model}'",
+            f"Official supported model: 'gpt-4o-2024-08-06'",
+            "Using a different model may lead to UNRELIABLE evaluation results!",
+            "=" * 80
+        ]
+        print("\n" + "\n".join(warning_msg) + "\n", flush=True)
+
     test_data = load_json(args.input_file)
     if args.debug:
         test_data = random.sample(test_data, 10)
-    
+
     if os.path.exists(args.output_dir):
         finished_data = load_json(args.output_dir)
         finised_ids = [d["id"] for d in finished_data]
