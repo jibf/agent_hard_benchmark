@@ -71,28 +71,28 @@ class FunctionCallGPT(GPTModel):
             self.messages = copy.deepcopy(messages)
         try:
             model_name = self.model_name
+            kwargs = {
+                "model": model_name,
+                "messages": self.messages,
+                "tools": tools,
+            }
+
             if "gpt-5" in model_name:
-                completion = self.client.chat.completions.create(
-                    model=model_name,
-                    messages=self.messages,
-                    tools=tools,
-                    tool_choice="auto",
-                )
+                kwargs["tool_choice"] = "auto"
+            elif "gemini" in model_name:
+                pass    # no additional args
             else:
-                completion = self.client.chat.completions.create(
-                    model=model_name,
-                    messages=self.messages,
-                    temperature=1.0 if is_thinking else 0.0,
-                    tools=tools,
-                    tool_choice={"type": "auto"} if is_claude else "auto",
-                    max_tokens=2048,
-                    extra_body={        
+                kwargs["temperature"] = 1.0 if is_thinking else 0.0
+                kwargs["tool_choice"]={"type": "auto"} if is_claude else "auto",
+                kwargs["max_tokens"]=16384,
+                kwargs["extra_body"]={        
                         "thinking": {
                             "type": "enabled",
-                            "budget_tokens": 10000
+                            "budget_tokens": 16384
                         }
                     } if is_thinking else None
-                )
+
+            completion = self.client.chat.completions.create(**kwargs)
             return completion.choices[0].message
         except Exception as e:
             error_msg = str(e).lower()
