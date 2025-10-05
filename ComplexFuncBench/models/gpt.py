@@ -83,8 +83,8 @@ class FunctionCallGPT(GPTModel):
                 pass    # no additional args
             else:
                 kwargs["temperature"] = 1.0 if is_thinking else 0.0
-                kwargs["tool_choice"]={"type": "auto"} if is_claude else "auto",
-                kwargs["max_tokens"]=16384,
+                kwargs["tool_choice"]={"type": "auto"} if is_claude else "auto"
+                kwargs["max_tokens"]=16384
                 kwargs["extra_body"]={        
                         "thinking": {
                             "type": "enabled",
