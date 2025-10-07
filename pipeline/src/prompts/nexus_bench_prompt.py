@@ -1,80 +1,55 @@
-# Please fill in the prompts to resolve the identified issue. You can refer to the prompt in src/prompts/complex_func_bench_prompt.py
-# Make sure the output format is as follows. Beware the `reasoning` attribute needs to preceed the results (`is_flawed` or `score`) to encourage the model's chain-of-thought reasoning.
-
-
-# FILTERING: 
-# {{
-#   "reasoning": "Provide a clear, step-by-step explanation for your decision. If the ground-truth is flawed, specify which argument is incorrect and why it contradicts the prompt or schema. If it is not flawed, briefly explain why the ground-truth is a correct interpretation of the user's request."
-#   "reasoning_summary": "A shorter rationale for your decision. If the ground-truth is not flawed, just mention that it is not flawed. If the ground-truth is flawed, specify the issue concisely. e.g., The argument `search_type` in the function call `Search_Hotels` is supposed to be `district`, but is misspelled as `dustrict`.",
-#   "error_category": "<Argument Value Mismatch | Argument Type Mismatch | Unjustified Assumption | Misspelling | Not Flawed>",
-#   "is_flawed": <true_or_false>,
-# }}
-
-# SCORING: 
-# [
-#     {{
-#     "dimension": "tool necessity",
-#     "reasoning": "The user's goal of booking a flight and a taxi involves interacting with external reservation systems. This is fundamentally impossible to achieve with only the model's internal knowledge. However, small sub-tasks such as identifying the closest airport from the user's location could be handled without external APIs.",
-#     "score": 3
-#     }},
-#     {{
-#     "dimension": "planning and context depth",
-#     "reasoning": "The task requires a sequence: 1. Search for a flight, 2. Use the flight's arrival airport to book a taxi. This is a **standard multi-step plan with a clear, linear dependency**. However, it does not require **complex, non-linear planning or adaptation to unexpected results**, which would be necessary for a score of 5.",
-#     "score": 4
-#     }},
-#     {{
-#     "dimension": "parameter generation",
-#     "reasoning": "Assuming the user prompt mentioned 'tomorrow', the agent needs to calculate the exact date. This is a **form of basic reasoning**, fitting the 3-point criteria. It does not require **deep semantic inference or the generation of a long, complex value** (like a full JSON object for filtering).",
-#     "score": 3
-#     }},
-#     {{
-#     "dimension": "tool selection difficulty",
-#     "reasoning": "The user's intent to 'search for a flight' and 'book a taxi' maps directly to tools like `search_flights` and `book_taxi`. There are **no plausible or confusing distractor tools** mentioned. The choice is obvious and straightforward.",
-#     "score": 2
-#     }},
-#     {{
-#     "dimension": "real-world applicability",
-#     "reasoning": "Booking a flight and then arranging for transportation from the airport is a very common and practical real-world scenario for travelers. However, some of the conditions that the user demands are a bit unrealistic.",
-#     "score": 3
-#     }}
-# ]
-#
-
-
-
 FILTERING_PROMPT = """
 You are an expert evaluator for **NexusBench**, a benchmark designed to assess precise tool-use across diverse tool-use tasks.
-Your task is to decide whether the *ground-truth* answer of a benchmark task is **flawed** such that a correct agent would be unfairly penalized.
+Your task is to determine if a given benchmark sample has a fundamental flaw in its user prompt, environment, or ground-truths, which would make it unable to be incorporated in the evaluation.
 
 You will be provided with the following context for each sample:
-* **System Prompts** – the system-level instructions supplied to the model.
-* **Query** – the user’s original instruction.
-* **Expected Output** – the benchmark’s reference answer.
-* **Benchmark Name** – the specific NexusBench sub-benchmark the sample belongs to.
+* **System Prompt**: The system-level instructions supplied to the agent model.
+* **User Prompt**: The user's task description and instructions.
+* **Ground Truth Output**: The benchmark’s reference answer. This can be either single or a chain of function calls, or final output expected.
+* **Sub-benchmark Name**: The specific NexusBench sub-benchmark the sample belongs to.
+* **Sub-benchmark Description**: The detailed description of the sub-benchmark the sample belongs.
 * **Tool Schemas** – complete JSON definitions for every callable tool.
 
-A sample is flawed if at least one ground-truth function call violates one of the criteria below.
+A sample is **flawed** if it exhibits one or more of the issues described below.
 
-1. **Invalid Ground Truth**
-   - For example, if the query is 'Cape Town, how's the time and weather? Any weather stations 'round?' and the ground truth is 'get_latitude_longitude('Cape Town'); find_nearby_stations(get_latitude_longitude('Cape Town')); get_current_time_at_location(get_latitude_longitude('Cape Town')); get_timezone(get_latitude_longitude('Cape Town'))', then the ground truth is invalid because the query is asking for the time and weather of Cape Town, but the ground truth is asking for the latitude, longitude, and timezone of Cape Town and does not make a weather query, even though the get_hourly_observation tool is available which will indicate the weather.
-   - In your reasoning, you should mention the query and the ground truth, and explain exactly why the ground truth is invalid and why it does not answer all parts of the user query.
-   - In these cases, ONLY flag this if the ground truth does not sufficiently answer the user query. If the ground truth does sufficiently answer the user query, then it is not invalid. If you are unsure, flag it as valid.
+## Flaw Categories
 
-2. **Argument / Parameter Type Mismatch Due to Problematic Function Schemas**
-   – A ground-truth function call uses a parameter value whose type clearly contradicts the schema or function name.  
-   – Example: Function `vt_get_votes_on_ip_address` called with `ip="example.com"` (example.com is a domain, not an IP address).  
-   – Such mismatches reflect mis-specified tools, not model reasoning, so they must be flagged.
-   - NOTE: All functions are Python functions, which do not need the parameter names to be passed in the queries. If the ground truth function call passes by argument without the parameter name, then it is not a mismatch. If you are unsure, flag it as valid.
+Below is the categorization of benchmark issues, outlined according to its **relevant benchmark component**. A sample is considered flawed if it has one or more of the issues below.
 
-3. **Ambiguous or Poorly Written User Query**
-   - Example: User query 'E. coli doubles every 20m, 120m from 5 cells' or 'what's the clock? in London, Paris and Kiev, dude?' or 'Any big weather changes in last hour in NY, NY, dude?'. It is unclear exactly what the user is asking for.
-   - Such mismatches reflect ambiguous user queries, not model reasoning, so they must be flagged.
-   - However, ONLY flag this if the user query cannot be reasonably inferred from the available tools and system instructions. If you are unsure, flag it as valid.
+### User
 
-NOTE: For TypeWriter tasks (LangChainTypeWriterHard, LangChainMultitoolTypeWriterHard), the ground truth is often the final output of the agent, not the result of a single function call. So it is not a mismatch if the ground truth is the query repeated IF the query can be typed with the available tools.
-For TMIHallucination, the task involves a remapping of words to other words, so for example, if the instruction specifies that "Wet" maps to "Hot" and "Hot" maps to "Wet", and the user query is "Raindrops are wet" and the ground truth is match_values(["Hot")]. This is valid because the ground truth correctly remaps the user query to the correct value.
-Also, the defined functions can exist in an alternate universe and the query could be valid. For example, if the question asks to add 5 and 7 and the ground truth is -2, and defines the add() function to return the difference of two numbers, then the ground-truth is valid because the provided function call (add(5, 7)) is valid and would return -2.
------
+* Vague instruction: The user's prompt is too ambiguous or underspecified for a single, correct function call, yet the benchmark expects one.
+  * Example: The user asks "Where's the Golden Gate Bridge?", but the ground truth arbitrarily expects a distance calculation from a specific, unmentioned point.
+  * However, ONLY flag this if the user query cannot be reasonably inferred from the available tools and system instructions. If you are unsure, flag it as valid. 
+
+
+### Environment
+
+This category covers flaws within the agent's operating environment—the tools and API results—which can make a task unsolvable regardless of the agent's logic.
+
+* Insufficient toolsets: the environment does not provide the necessary tools (functions), making the agent impossible to solve the task even with a combination of multiple tools and reasoning.
+  * Example: A user asks for an advanced file manipulation, while the environment only provides basic tools like `mk` or `ls`.
+
+* Flawed function design: the naming or the description of an available function is misleading or contradicts its actual functionality.
+  * Example: A function named `vt_get_votes_on_ip_address` provides "example.com" as an example for its argument value in its schema. 
+
+
+### Ground-Truth
+
+This category covers flaws in the pre-defined ground truth of the sample. As described previously, the ground truth can be a single function call, a chain of function calls, or a numerical value that is the outcome of the ground truth function calls. If the ground truth is a single number, ignore this error type.
+
+* Malformed function calls: A technical error where a ground-truth function call violates the provided API schema.
+  * Example: A parameter requires a string but is given a number (e.g., dest_id: 123 instead of dest_id: "123"), a required parameter is missing, the function name is wrong, or an enum-typed parameter has the value not in the pre-defined set.
+
+* Incorrect function calls: A function call is syntactically valid but logically flawed. The function choice or a parameter value contradicts the user's request or the context from previous steps.
+  * Unjustified/Hallucinated Parameters: A value (e.g., a date, a coordinate) that appears without any grounding context. For example, searching for a hotel on a date that was not returned by a preceding flight search.
+  * Contradictory Parameter Values: A value that directly contradicts a constraint in the user's prompt. For example, using the latitude of a hotel and the longitude of an airport to define a search coordinate, which is logically inconsistent.
+  * Misspelled or Incorrectly Identified Parameter Values: A misspelled name or an ID/slug that points to the wrong entity (e.g., selecting the wrong airport ID).
+
+
+* Redundant/ungrounded function calls: The ground truth function call trajectory consists of function calls that are redundant in solving the task, ungrounded by the context, or irrelevant in solving the task.
+  * Irrelevant tool call: A function call in the ground truth trajectory is totally irrelevant to the task or belongs to a completely different domain. Example: agent calls a function to reserve a flight, though it was asked to process product exchange.
+  * Redundant tool call: A function call that is not necessary in solving the task. Example: the agent is asked to search for attractions until it finds one that meets a certain condition; However, the agent performs the search in an arbitrary order, resulting in an excessive number of function calls.
 
 ## Evaluation and Output Format
 Think step-by-step.  Output **exactly** the JSON object below—no extra keys or commentary:
@@ -88,32 +63,34 @@ Think step-by-step.  Output **exactly** the JSON object below—no extra keys or
 }}
 ```
 
-### System Prompts & Initial Instructions Sent to the Model:
+
+## Target Sample
+
+### Sub-benchmark Description
+
+{subbench_description}
+
+### System Prompt
 ```
 {system_prompts}
 ```
 
-## Target Sample
-
-### Query:
+### User Prompt
 ```
 {instruction}
 ```
 
-### Expected Output:
+### Ground Truth Output
 ```
 {reference}
-```
-
-### Benchmark Name:
-```
-{benchmark_name}
 ```
 
 ### Available Tools (JSON Schemas):
 ```
 {tool_definitions}
 ```
+
+{tool_implementations}
 """
 
 
@@ -122,3 +99,110 @@ Think step-by-step.  Output **exactly** the JSON object below—no extra keys or
 # ---------------------------------------------------------------------------
 
 SCORING_PROMPT = ""
+
+
+if __name__ == "__main__":
+    import argparse
+    import json
+    import os
+    import sys
+    from src.utils.types import Benchmark
+    from src.bench_loaders import get_bench_loader
+
+    parser = argparse.ArgumentParser(
+        description="Generate formatted prompt for a NexusBench sample."
+    )
+    parser.add_argument(
+        "-q",
+        "--question_id",
+        type=str,
+        help="Question ID to format (e.g., VirusTotal_0001_0)",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        help="Optional path to save the formatted prompt (or directory when --save-all is used).",
+    )
+    parser.add_argument(
+        "--save-all",
+        action="store_true",
+        help="Save prompts for all NexusBench samples to a dedicated folder.",
+    )
+    args = parser.parse_args()
+
+    nexus_loader_cls = get_bench_loader(Benchmark.NEXUS_BENCH)
+    nexus_loader = nexus_loader_cls()
+    questions = nexus_loader.load_questions()
+    print(f"Loaded {len(questions)} questions")
+
+    def build_prompt(question):
+        system_prompts = question.system_prompts or []
+        if isinstance(system_prompts, list):
+            system_prompt_str = "\n\n".join(system_prompts)
+        else:
+            system_prompt_str = str(system_prompts)
+
+        tool_definitions = question.tool_definitions
+        if not tool_definitions:
+            tool_definitions = json.dumps(
+                question.available_function_list,
+                indent=2,
+                ensure_ascii=False,
+            )
+
+        return FILTERING_PROMPT.format(
+            system_prompts=system_prompt_str,
+            instruction=question.instruction,
+            reference=question.reference,
+            subbench_description=question.subbench_description,
+            tool_definitions=tool_definitions,
+            tool_implementations=question.tool_implementations
+        )
+
+    if args.save_all:
+        output_dir = args.output or "nexus_bench_prompts"
+        os.makedirs(output_dir, exist_ok=True)
+
+        saved = 0
+        for question in questions:
+            prompt_text = build_prompt(question)
+            filename = f"{question.task_name}-{question.question_id}.txt"
+            output_path = os.path.join(output_dir, filename)
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(prompt_text)
+            saved += 1
+
+        print(f"Saved {saved} prompts to {output_dir}/")
+        sys.exit(0)
+
+    if not args.question_id:
+        print("Error: --question_id is required unless --save-all is specified.")
+        sys.exit(1)
+
+    selected_question = next(
+        (question for question in questions if question.question_id == args.question_id),
+        None,
+    )
+
+    if not selected_question:
+        print(f"No NexusBench sample found with ID '{args.question_id}'")
+        sys.exit(1)
+
+    print(
+        f"NexusBench sample found - Benchmark: {selected_question.benchmark_name}, "
+        f"Task: {selected_question.task_name}, ID: {selected_question.question_id}"
+    )
+
+    nexus_filtering_prompt = build_prompt(selected_question)
+
+    output_path = (
+        args.output
+        if args.output
+        else f"nexus_bench_{selected_question.question_id}_prompt.txt"
+    )
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(nexus_filtering_prompt)
+
+    print(f"NexusBench formatted prompt saved to {output_path}")

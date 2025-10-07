@@ -81,10 +81,12 @@ class AceBenchQuestion(FormattedQuestion):
     previous_conversation_history: str = None        # Conversation history between the user and the agent in natural language
     
 class NexusBenchQuestion(FormattedQuestion):
-    benchmark_name: str
+    subbench_name: str
+    subbench_description: Optional[str] = None
     reference: str
     system_prompts: Optional[Any] = None  # Captured system prompts/instructions sent to model
     tool_definitions: Optional[str] = None  # JSON of tool schemas for prompt rendering
+    tool_implementations: Optional[str] = None  # actual implementation of tools (only used in LangChainMath)
 
 
 class ToolSandboxQuestion(FormattedQuestion):

@@ -2,10 +2,12 @@ import os
 import sys
 import inspect
 import ast
+import re
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from pathlib import Path
 import json
+from collections import defaultdict
 from functools import lru_cache
 # -----------------------------------------------------------------------------
 # Standard library imports
@@ -21,6 +23,10 @@ from typing import Dict, Any, List, Optional
 # Directory containing evaluation JSONL files (relative to repo root)
 _EVAL_DIR = (
     Path(__file__).resolve().parents[2] / "benchmark" / "NexusBench-evaluation"
+)
+
+_DESCRIPTIONS_PATH = (
+    Path(__file__).resolve().parents[2] / "data" / "nexusbench" / "descriptions.md"
 )
 
 
@@ -96,6 +102,8 @@ def _get_canonical_id(task_name: str, query: str, ground_truth: str) -> Optional
     if _LOOKUP_QUERY and query_key in _LOOKUP_QUERY:
         return _LOOKUP_QUERY[query_key]
     return None
+
+
 
 
 # Import the generic FC API prompter to generate the exact prompt that will be
@@ -255,6 +263,73 @@ class NexusBenchLoader(BaseLoader):
             return raw_query
         return str(raw_query)
 
+    @lru_cache(maxsize=1)
+    def _get_subbench_description(self, subbench_name: str) -> str:
+        if subbench_name not in NexusBenchLoader.TASK_SIZE_DICT and subbench_name != "ABC":
+            raise ValueError(f"Invalid sub-benchmark name {subbench_name}")
+
+        subbench_name = "VirusTotal" if subbench_name == "ABC" else subbench_name
+
+        subbench_name_remapping = {
+            "VirusTotal": "VirusTotalBenchmark",
+        }
+
+        if subbench_name in subbench_name_remapping:
+            subbench_name = subbench_name_remapping[subbench_name]
+
+        first_level_descriptions = defaultdict(list)
+        second_level_descriptions = defaultdict(list)
+        subbench_descriptions = defaultdict(list)
+        hierarchical_titles_by_subbench = {}
+
+        hierarchical_titles = [None, None, None]
+
+        def set_hierarchical_title(level: int, title: str):
+            hierarchical_titles[level] = title
+            for i in range(level+1, 3):
+                hierarchical_titles[i] = None
+
+        title_pattern = re.compile(r"(#{3,5}) ([^\n]+)\n")
+
+        level: int = -1 
+        title: Optional[str] = None
+        with open(_DESCRIPTIONS_PATH, "r") as f:
+            for line in f:
+                match = title_pattern.match(line)
+                if match:
+                    level = len(match.group(1)) - 3
+                    title = match.group(2)
+                    set_hierarchical_title(level, title)
+                else: # line is a description
+                    if level == 0:
+                        first_level_descriptions[title].append(line.strip())
+                    elif level == 1:
+                        second_level_descriptions[title].append(line.strip())
+                    elif level == 2:
+                        subbench_descriptions[title].append(line.strip())
+                        hierarchical_titles_by_subbench[title] = hierarchical_titles
+        
+        assert subbench_name in subbench_descriptions, f"{subbench_name} is an invalid subbenchmark name; expected one of: {list(subbench_descriptions.keys())}"
+
+        result = []
+        first_level_category, second_level_category = hierarchical_titles_by_subbench[subbench_name][:2]
+
+        first_level_description = '\n'.join(first_level_descriptions[first_level_category])
+        second_level_description = '\n'.join(second_level_descriptions[second_level_category])
+        subbench_description = '\n'.join(subbench_descriptions[subbench_name]).replace("Expected Output", "Ground Truth")
+
+        result.append(f"The sub-benchmark {subbench_name} belongs to the sub-category **{second_level_category}**, which falls under the top-level category **{first_level_category}**.\n")
+        result.append("#### Description of the categories")
+        result.append(f"* **{first_level_category}**: {first_level_description}")
+        result.append(f"* **{second_level_category}**: {second_level_description}")
+        result.append(f"#### Description of the sub-benchmark {subbench_name}")
+        result.append(subbench_description)
+
+        result = "\n".join(result)
+        return result
+
+
+
     def load_task(self, task_name: str) -> List[NexusBenchQuestion]:
         # TODO: Implement specific task loading
         return self.load_specific_benchmark(task_name)
@@ -270,31 +345,7 @@ class NexusBenchLoader(BaseLoader):
             # Load dataset directly from HuggingFace
             dataset_name = self._get_dataset_name(benchmark_name)
             dataset = None  # type: ignore
-            try:
-                dataset = load_dataset(dataset_name, split="train", trust_remote_code=True)
-            except Exception as e:
-                print(f"Failed to load {dataset_name} with error: {e}")
-                print(f"Trying alternative approach for {benchmark_name}")
-                # Try without trust_remote_code
-                try:
-                    dataset = load_dataset(dataset_name, split="train")
-                except Exception as e2:
-                    print(f"Alternative approach also failed: {e2}")
-                    # -----------------------------------------------------
-                    # Final fallback: attempt to load via the NexusBench
-                    # python package directly (if available).  This path
-                    # ensures that benchmarks which are *not* published on
-                    # HuggingFace but *are* shipped inside the nexusbench
-                    # package – such as VirusTotalAgentic – are still
-                    # included when running the generic `load_questions()`
-                    # method used by the main pipeline.
-                    # -----------------------------------------------------
-                    formatted_questions = self.load_specific_benchmark(benchmark_name)
-                    if formatted_questions:
-                        all_questions.extend(formatted_questions)
-                    # Proceed to next benchmark (skip the remainder of the
-                    # current loop since we've already handled it).
-                    continue
+            dataset = load_dataset(dataset_name, split="train", trust_remote_code=True)
             samples = []
 
             # Get field mappings for this benchmark
@@ -401,14 +452,14 @@ class NexusBenchLoader(BaseLoader):
 
                 # Convert the list-of-schemas into the dictionary format that
                 # `create_prompt` expects (name -> schema).
-                tool_descriptions: Dict[str, Dict[str, Any]] = {
+                tool_implementations: Dict[str, Dict[str, Any]] = {
                     schema["function"]["name"]: schema["function"] for schema in tool_schemas
                 }
                 import json as _json
                 tool_definitions_json = _json.dumps(tool_schemas, indent=2, ensure_ascii=False)
 
                 prompt_dict = prompter.create_prompt(
-                    tool_descriptions=tool_descriptions,
+                    tool_descriptions=tool_implementations,
                     query=user_prompt,
                     additional_instructions=None,
                     contextual_history=None,
@@ -433,6 +484,9 @@ class NexusBenchLoader(BaseLoader):
                 print(f"Warning: Failed to build prompt for sample {sample_id}: {e}")
                 meta = None
 
+            subbench_description = self._get_subbench_description(config["name"])
+            tool_implementations = self._get_tool_implementations(config["name"])
+
             return NexusBenchQuestion(
                 question_id=sample_id,
                 task_name='_'.join(sample_id.split('_')[:-1]),
@@ -440,8 +494,10 @@ class NexusBenchLoader(BaseLoader):
                 gt_conv_traj=[],  # simplified – NexusBench is single-turn here
                 available_function_list=tool_schemas,
                 tool_definitions=tool_definitions_json,
+                tool_implementations=tool_implementations,
                 benchmark=Benchmark.NEXUS_BENCH,
-                benchmark_name=config["name"],
+                subbench_name=config["name"],
+                subbench_description=subbench_description,
                 reference=str(reference),
                 meta=meta,
                 system_prompts=system_prompts if meta else None,
@@ -547,6 +603,46 @@ class NexusBenchLoader(BaseLoader):
                 }
             })
         return tool_schemas
+
+    def _get_tool_implementations(self, subbench_name):
+        if subbench_name != "LangChainMath":
+            return ""
+        return r"""## Actual Tool Implementations
+```python
+def multiply(a: float, b: float) -> float:
+    return 1.1 * a * b
+
+def divide(a: float, b: float) -> float:
+    # Division is neither commutative nor associative
+    return 0.5 * a / b
+
+def add(a: float, b: float) -> float:
+    return a + b + 1.2
+
+def return_constant(a: float) -> float:
+    return a
+
+def sin(radians: float) -> float:
+    return math.cos(radians)
+
+def cos(radians: float) -> float:
+    return math.sin(radians)
+
+def subtract(a: float, b: float) -> float:
+    return a - b - 3
+
+def power(a: float, b: float) -> float:
+    return a ** (b + 2)
+
+def log(a: float, base: float) -> float:
+    return math.log(a, abs(base + 1.5))
+
+def pi() -> float:
+    return math.e
+
+def negate(a: float) -> float:
+    return a  # negation does not negate the number
+```"""
 
     def _create_schemas_from_tools(self, tools) -> List[Dict[str, Any]]:
         """Return tool schemas by reading <function_name>_json variables from tool modules.
