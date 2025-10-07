@@ -37,6 +37,14 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("openai._base_client").setLevel(logging.WARNING)
 
 
+
+DUMMY_ASSESSMENT = {
+    "reasoning": "LLM Judge disabled for this task",
+    "reasoning_summary": "LLM Judge skipped",
+    "error_category": "LLM Judge disabled",
+    "is_flawed": False
+}
+
 @dataclass
 class LLMJudgeConfig:
     model: str = "openai/gpt-4.1"       # Default model
@@ -276,7 +284,10 @@ class LLMJudge:
         if self.config.num_proc == 1:   # Single process
             results = []
             for question in tqdm(questions, desc="Processing questions"):
-                assessment = self._assess_question(question, step)
+                if question.skip_llm_judge:
+                    assessment = DUMMY_ASSESSMENT
+                else:
+                    assessment = self._assess_question(question, step)
                 entry = {
                     "benchmark": question.benchmark.value,
                     "question_id": question.question_id,
@@ -313,7 +324,10 @@ def _assess_question_worker(args):
     client = OpenAI(api_key=api_key, base_url=base_url)
     evaluation_prompt = format_judge_prompt(question, step)
 
-    assessment = LLMJudge._make_api_call(client, model, evaluation_prompt, max_retries, retry_delay, request_timeout)
+    if question.skip_llm_judge:
+        assessment = DUMMY_ASSESSMENT
+    else:
+        assessment = LLMJudge._make_api_call(client, model, evaluation_prompt, max_retries, retry_delay, request_timeout)
     entry = {
         "benchmark": question.benchmark.value,
         "question_id": question.question_id,

@@ -50,6 +50,7 @@ class FormattedQuestion(UniqueQuestionID):
     gt_conv_traj: list                      # Ground-truth conversation trajectory (if provided). If the benchmark does not provide one, leave this as an empty list.
     meta: Optional[dict] = None             # Other information of the question in dictionary type.
     model_responses: Optional[list] = None
+    skip_llm_judge: bool = False            # When True, bypass LLM-as-judge evaluation and auto-pass filters.
 
 
 
@@ -151,4 +152,3 @@ class LLMJudgeStep(Enum):
     UNIVERSAL_FILTER = "universal_filter"
     SPECIFIC_FILTER = "specific_filter"
     SCORE = "score"
-

@@ -9,15 +9,8 @@ from pathlib import Path
 import json
 from collections import defaultdict
 from functools import lru_cache
-# -----------------------------------------------------------------------------
-# Standard library imports
-# -----------------------------------------------------------------------------
 from datasets import load_dataset
 from . import BaseLoader
-
-# -----------------------------------------------------------------------------
-# Additional imports
-# -----------------------------------------------------------------------------
 from typing import Dict, Any, List, Optional
 
 # Directory containing evaluation JSONL files (relative to repo root)
@@ -426,12 +419,7 @@ class NexusBenchLoader(BaseLoader):
             # Get tool schemas for this benchmark
             tool_schemas = self._get_tool_schemas_from_config(config, sample)
 
-            # Handle different query types
-            if isinstance(query, list):
-                # For agent benchmarks with multiple turns
-                user_prompt = "\n".join([f"Turn {i+1}: {q}" for i, q in enumerate(query)])
-            else:
-                user_prompt = str(query)
+            user_prompt = str(query)
 
             # -----------------------------------------------------------------
             # Build the *exact* prompt that is ultimately fed to the model using
@@ -442,37 +430,27 @@ class NexusBenchLoader(BaseLoader):
             # -----------------------------------------------------------------
 
             try:
-                # Prefer AtheneV2Prompter which automatically injects a robust system prompt
-                try:
-                    from data.nexusbench.prompters import AtheneV2Prompter  # type: ignore
-                    prompter = AtheneV2Prompter()
-                except Exception:
-                    # Fallback to generic FC prompter to avoid hard dependency
-                    prompter = FCAPIPrompter()
+                from data.nexusbench.prompters import AtheneV2Prompter
+                prompter = AtheneV2Prompter()
 
                 # Convert the list-of-schemas into the dictionary format that
                 # `create_prompt` expects (name -> schema).
-                tool_implementations: Dict[str, Dict[str, Any]] = {
+                tool_descriptions: Dict[str, Dict[str, Any]] = {
                     schema["function"]["name"]: schema["function"] for schema in tool_schemas
                 }
-                import json as _json
-                tool_definitions_json = _json.dumps(tool_schemas, indent=2, ensure_ascii=False)
 
                 prompt_dict = prompter.create_prompt(
-                    tool_descriptions=tool_implementations,
+                    tool_descriptions=tool_descriptions,
                     query=user_prompt,
                     additional_instructions=None,
                     contextual_history=None,
                 )
 
-                # Extract all system messages so that downstream evaluation has
-                # full visibility into the *exact* instructions the model
-                # receives.
                 system_prompts = [
                     msg["content"] for msg in prompt_dict["messages"] if msg["role"] == "system"
                 ]
 
-                meta: Dict[str, Any] = {
+                meta = {
                     "system_prompts": system_prompts,
                     "full_prompt_messages": prompt_dict["messages"],
                 }
@@ -484,8 +462,12 @@ class NexusBenchLoader(BaseLoader):
                 print(f"Warning: Failed to build prompt for sample {sample_id}: {e}")
                 meta = None
 
-            subbench_description = self._get_subbench_description(config["name"])
-            tool_implementations = self._get_tool_implementations(config["name"])
+            subbench_name = config["name"]
+
+            subbench_description = self._get_subbench_description(subbench_name)
+            tool_implementations = self._get_tool_implementations(subbench_name)
+
+            skip_llm_judge = (subbench_name == "LangChainTypeWriterHard")
 
             return NexusBenchQuestion(
                 question_id=sample_id,
@@ -493,14 +475,15 @@ class NexusBenchLoader(BaseLoader):
                 instruction=user_prompt,
                 gt_conv_traj=[],  # simplified – NexusBench is single-turn here
                 available_function_list=tool_schemas,
-                tool_definitions=tool_definitions_json,
+                tool_definitions=json.dumps(tool_schemas, indent=2, ensure_ascii=False),
                 tool_implementations=tool_implementations,
                 benchmark=Benchmark.NEXUS_BENCH,
-                subbench_name=config["name"],
+                subbench_name=subbench_name,
                 subbench_description=subbench_description,
                 reference=str(reference),
                 meta=meta,
                 system_prompts=system_prompts if meta else None,
+                skip_llm_judge=skip_llm_judge,
             )
 
         except Exception as e:
@@ -510,98 +493,30 @@ class NexusBenchLoader(BaseLoader):
     def _get_tool_schemas_from_config(self, config, sample=None) -> List[Dict[str, Any]]:
         """Create tool schemas from configuration using benchmark's get_json_representation"""
 
-        # Special handling for TMIHallucination - use sample's json_tools
-        if config['name'] == 'TMIHallucination' and sample:
-            try:
-                import json
-                # Try to get json_tools from original data
-                original_data = getattr(sample, '_original_data', None)
-                json_tools_raw = None
-
-                if original_data and 'json_tools' in original_data:
-                    json_tools_raw = original_data['json_tools']
-                elif hasattr(sample, 'json_tools'):
-                    json_tools_raw = sample.json_tools
-
-                if json_tools_raw:
-                    # Parse JSON if it's a string
-                    if isinstance(json_tools_raw, str):
-                        json_tools = json.loads(json_tools_raw)
-                    else:
-                        json_tools = json_tools_raw
-
-                    if isinstance(json_tools, list) and len(json_tools) > 0:
-                        tool_schemas = []
-                        for func_spec in json_tools:
-                            if isinstance(func_spec, dict) and 'name' in func_spec:
-                                tool_schemas.append({
-                                    "type": "function",
-                                    "function": func_spec
-                                })
-                        return tool_schemas
-            except Exception as e:
-                print(f"Error getting json_tools from TMIHallucination sample: {e}")
-                import traceback
-                traceback.print_exc()
-
-        # Special handling for VirusTotal - use get_all_json_specs
-        if config['name'] == 'VirusTotal':
-            try:
-                from data.nexusbench.tools.virustotal import get_all_json_specs
-                json_schemas = get_all_json_specs()
-                tool_schemas = []
-
-                if json_schemas:
-                    for _, func_schema in json_schemas.items():
-                        tool_schemas.append({
-                            "type": "function",
-                            "function": func_schema
-                        })
-                return tool_schemas
-            except Exception as e:
-                print(f"Error getting VirusTotal json specs: {e}")
+        if config['name'] == 'TMIHallucination': # use sample's json_tools for TMIHallucination
+            return [{
+                "type": "function",
+                "function": func_schema 
+            } for func_schema in json.loads(sample._original_data["json_tools"])]
+        elif config['name'] == 'VirusTotal': # use get_all_json_specs for VirusTotal
+            from data.nexusbench.tools.virustotal import get_all_json_specs
+            return [{
+                "type": "function",
+                "function": func_schema 
+            } for _, func_schema in get_all_json_specs().items()]
 
         # Standard handling using benchmark instance
         benchmark_instance = self._get_benchmark_instance(config['name'])
-        if benchmark_instance:
-            try:
-                # Use get_json_representation to get proper function schemas
-                json_schemas = benchmark_instance.get_json_representation
-                tool_schemas = []
-
-                if json_schemas:  # Check if json_schemas is not empty
-                    for _, func_schema in json_schemas.items():
-                        tool_schemas.append({
-                            "type": "function",
-                            "function": func_schema
-                        })
-                else:
-                    print(f"Warning: {config['name']} has empty get_json_representation")
-
-                return tool_schemas
-            except Exception as e:
-                print(f"Error getting json representation from benchmark instance: {e}")
-
-        # Fallback to basic schema creation if benchmark instance not available
-        # Try dynamic import from data.nexusbench.tools first
-        dynamic_schemas = self._load_tool_schemas_by_module_name(config['name'])
-        if dynamic_schemas:
-            return dynamic_schemas
-
+        # Use get_json_representation to get proper function schemas
+        json_schemas = benchmark_instance.get_json_representation
         tool_schemas = []
-        for tool_name in config['tools']:
-            tool_schemas.append({
-                "type": "function",
-                "function": {
-                    "name": tool_name,
-                    "description": f"Function {tool_name} for {config['name']}",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            })
+
+        if json_schemas:  # Check if json_schemas is not empty
+            for _, func_schema in json_schemas.items():
+                tool_schemas.append({
+                    "type": "function",
+                    "function": func_schema
+                })
         return tool_schemas
 
     def _get_tool_implementations(self, subbench_name):

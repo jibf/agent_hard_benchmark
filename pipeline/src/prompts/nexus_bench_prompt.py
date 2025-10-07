@@ -10,6 +10,7 @@ You will be provided with the following context for each sample:
 * **Sub-benchmark Description**: The detailed description of the sub-benchmark the sample belongs.
 * **Tool Schemas** – complete JSON definitions for every callable tool.
 
+
 A sample is **flawed** if it exhibits one or more of the issues described below.
 
 ## Flaw Categories
@@ -51,14 +52,21 @@ This category covers flaws in the pre-defined ground truth of the sample. As des
   * Irrelevant tool call: A function call in the ground truth trajectory is totally irrelevant to the task or belongs to a completely different domain. Example: agent calls a function to reserve a flight, though it was asked to process product exchange.
   * Redundant tool call: A function call that is not necessary in solving the task. Example: the agent is asked to search for attractions until it finds one that meets a certain condition; However, the agent performs the search in an arbitrary order, resulting in an excessive number of function calls.
 
+## Crucial Note: Sub-benchmark-specific note for TMIHallucination
+  
+Some samples in TMIHallucination deliberately ship tool schemas where almost every parameter is flagged as `required`. That alone is not a flaw—those schemas are meant to pressure-test whether the ground truth omits the explicitly banned argument. Treat the usual NexusBench rules as primary; do **not** mark a sample flawed solely because a schema lists an excessive number of required fields, or because the ground-truth call omits required fields. Ignore this note if the sample belongs to other sub-benchmarks.
+
+
 ## Evaluation and Output Format
-Think step-by-step.  Output **exactly** the JSON object below—no extra keys or commentary:
+Carefully analyze the provided sample. Think step-by-step to determine if the ground-truth trajectory is a correct and logical solution to the user's prompt.
+
+Your final output must be a JSON object with the following structure, with no additional commentary:
 
 ```json
 {{
-  "reasoning": "Provide a clear, step-by-step justification.  If flawed, specify the first flaw and why it violates the prompt, schema, or context.",
-  "reasoning_summary": "One-sentence summary of the verdict.",
-  "error_category": "<Invalid Ground Truth | Argument / Parameter Type Mismatch Due to Problematic Function Schemas | Ambiguous or Poorly Written User Query | Not Flawed>",
+  "reasoning": "Provide a clear, step-by-step explanation for your decision. If the ground-truth is flawed, specify which argument is incorrect and why it contradicts the prompt or schema. If it is not flawed, briefly explain why the ground-truth is a correct interpretation of the user's request.",
+  "reasoning_summary": "A shorter rationale for your decision. If the ground-truth is not flawed, just mention that it is not flawed. If the ground-truth is flawed, specify the issue concisely. e.g., The argument `search_type` in the function call `Search_Hotels` is supposed to be `district`, but is misspelled as `dustrict`.",
+  "error_category": "The category that corresponds to the issue. e.g., \"Flawed function response\". If the sample is not flawed, use \"Not Flawed\".",
   "is_flawed": <true_or_false>
 }}
 ```

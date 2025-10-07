@@ -219,14 +219,17 @@ class AceBenchLoader(BaseLoader):
             functions = raw_question.get('function', [])
             time_info = raw_question.get('time', '')
             profile = raw_question.get('profile', '')  # Extract profile for preference data
-            
+
             # Multi-turn specific fields
             initial_config = raw_question.get('initial_config')
             path = raw_question.get('path')
             involved_classes = raw_question.get('involved_classes')
-            
+
             ground_truth = self._get_ground_truth(question_id, task_file_name)
-            
+
+            category = question_id.rsplit("_", 1)[0] if question_id else ""
+            skip_llm_judge = "special" in category.lower()
+
             # Get prompts for this specific question
             agent_prompt, previous_conversation_history, user_system_prompt = self._get_system_prompts(
                 question_id,
@@ -253,6 +256,7 @@ class AceBenchLoader(BaseLoader):
                 agent_system_prompt=agent_prompt,
                 user_system_prompt=user_system_prompt,
                 previous_conversation_history=previous_conversation_history,
+                skip_llm_judge=skip_llm_judge,
                 meta={
                     'data_type': task_file_name,
                     'file_path': question_file_path
