@@ -1,6 +1,7 @@
 import os
 import sys
 import inspect
+import ast
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,8 +10,6 @@ from functools import lru_cache
 # -----------------------------------------------------------------------------
 # Standard library imports
 # -----------------------------------------------------------------------------
-from collections import Counter
-
 from datasets import load_dataset
 from . import BaseLoader
 
@@ -25,43 +24,38 @@ _EVAL_DIR = (
 )
 
 
-def _build_id_lookup() -> tuple[Dict[tuple, str], Dict[str, str]]:
-    """Return two mappings:
-    1. (query, ground_truth) -> canonical id  (exact match)
-    2. query -> canonical id  (first occurrence wins)
-
-    Scans all evaluation JSONL files so every NexusBench question is covered.
-    """
+def _build_id_lookup() -> tuple[Dict[tuple, str], Dict[tuple, str]]:
+    """Map (task, query, ground_truth) to canonical IDs using Anthropic logs."""
 
     exact_lookup: Dict[tuple, str] = {}
-    query_lookup: Dict[str, str] = {}
+    query_lookup: Dict[tuple, str] = {}
+
     if not _EVAL_DIR.exists():
         return exact_lookup, query_lookup
 
-    for jsonl_path in _EVAL_DIR.glob("*.jsonl"):
-        # ---------------------------------------------------------------------
-        # First pass: collect all (query, ground_truth, qid) tuples and count
-        # how many times each *query* appears *within the current file*.
-        # ---------------------------------------------------------------------
-        entries: list[tuple[str, str, str]] = []  # (query, ground_truth, qid)
-        query_counts: Counter[str] = Counter()
+    prefix = "anthropic-claude-4-sonnet-thinking-off_"  # match IDs with claude-4-sonnet results; could be any model.
+    task_overrides = {
+        "ABC": "VirusTotal",
+    }
+    canonical_files: Dict[str, Path] = {}
+    for path in _EVAL_DIR.glob(f"{prefix}*.jsonl"):
+        raw_task = path.name[len(prefix):-6]  # remove prefix and '.jsonl'
+        task_name = task_overrides.get(raw_task, raw_task)
+        canonical_files[task_name] = path
 
+    for task_name, jsonl_path in canonical_files.items():
         with jsonl_path.open() as f:
             for line in f:
                 if not line.strip():
                     continue
-
                 try:
                     obj = json.loads(line)
                 except json.JSONDecodeError:
-                    # Skip malformed JSON lines but keep parsing the rest.
                     continue
 
                 meta = obj.get("meta", {})
                 qid = meta.get("id")
-                ground_truth = str(meta.get("ground_truth", "")).strip()
-
-                # Extract first user message content (the "query").
+                gt = str(meta.get("ground_truth", "")).strip()
                 query = next(
                     (
                         str(m.get("content", "")).strip()
@@ -71,33 +65,17 @@ def _build_id_lookup() -> tuple[Dict[tuple, str], Dict[str, str]]:
                     "",
                 )
 
-                if qid and query:
-                    query_norm = query  # already stripped above
-                    entries.append((query_norm, ground_truth, qid))
-                    query_counts[query_norm] += 1
+                if not (qid and query):
+                    continue
 
-        # ------------------------------------------------------------------
-        # Second pass: populate global lookups **only** for queries that are
-        # unique within this JSONL file (i.e., the count is exactly 1).
-        # Any query that appears more than once in *this* file is completely
-        # excluded from both the exact- and query-only lookup tables.
-        # ------------------------------------------------------------------
-        for query_norm, ground_truth, qid in entries:
-            if query_counts[query_norm] > 1:
-                # Duplicate query within the same file – skip entirely.
-                continue
-
-            exact_lookup[(query_norm, ground_truth)] = qid
-
-            # Store first occurrence for query-only mapping if not already present.
-            if query_norm not in query_lookup:
-                query_lookup[query_norm] = qid
+                exact_lookup[(task_name, query, gt)] = qid
+                query_lookup.setdefault((task_name, query), qid)
 
     return exact_lookup, query_lookup
 
 # Cache lookups
 _LOOKUP_EXACT: Optional[Dict[tuple, str]] = None
-_LOOKUP_QUERY: Optional[Dict[str, str]] = None
+_LOOKUP_QUERY: Optional[Dict[tuple, str]] = None
 
 
 def _ensure_lookups():
@@ -106,14 +84,18 @@ def _ensure_lookups():
         _LOOKUP_EXACT, _LOOKUP_QUERY = _build_id_lookup()
 
 
-def _get_canonical_id(query: str, ground_truth: str) -> Optional[str]:
+def _get_canonical_id(task_name: str, query: str, ground_truth: str) -> Optional[str]:
     _ensure_lookups()
     query_norm = query.strip()
     gt_norm = ground_truth.strip()
-    cid = _LOOKUP_EXACT.get((query_norm, gt_norm))  # type: ignore[arg-type]
-    if cid:
-        return cid
-    return _LOOKUP_QUERY.get(query_norm)  # type: ignore[arg-type]
+    exact_key = (task_name, query_norm, gt_norm)
+    if _LOOKUP_EXACT and exact_key in _LOOKUP_EXACT:
+        return _LOOKUP_EXACT[exact_key]
+
+    query_key = (task_name, query_norm)
+    if _LOOKUP_QUERY and query_key in _LOOKUP_QUERY:
+        return _LOOKUP_QUERY[query_key]
+    return None
 
 
 # Import the generic FC API prompter to generate the exact prompt that will be
@@ -239,6 +221,40 @@ class NexusBenchLoader(BaseLoader):
         # Simple field access
         return str(data.get(field_spec, ''))
 
+    def _normalize_query(self, benchmark_name: str, raw_query: Any) -> str:
+        """Normalize benchmark-specific query formats to plain user text."""
+        if benchmark_name == "ITType1Benchmark":
+            query_obj: Any = None
+            if isinstance(raw_query, (dict, list)):
+                query_obj = raw_query
+            elif isinstance(raw_query, str):
+                serialized = raw_query.strip()
+                if serialized.startswith("{") and "messages" in serialized:
+                    try:
+                        query_obj = json.loads(serialized)
+                    except json.JSONDecodeError:
+                        try:
+                            query_obj = ast.literal_eval(serialized)
+                        except (ValueError, SyntaxError):
+                            query_obj = None
+            if isinstance(query_obj, dict):
+                messages = query_obj.get("messages")
+                if isinstance(messages, list):
+                    for message in reversed(messages):
+                        if not isinstance(message, dict):
+                            continue
+                        if message.get("role") == "user":
+                            content = message.get("content")
+                            if isinstance(content, str):
+                                return content.strip()
+            if isinstance(raw_query, str):
+                return raw_query.strip()
+            return str(raw_query)
+
+        if isinstance(raw_query, str):
+            return raw_query
+        return str(raw_query)
+
     def load_task(self, task_name: str) -> List[NexusBenchQuestion]:
         # TODO: Implement specific task loading
         return self.load_specific_benchmark(task_name)
@@ -294,6 +310,7 @@ class NexusBenchLoader(BaseLoader):
                     break
                 # Extract query and reference using field mappings
                 query = self._extract_field_value(data, field_mapping['query'])
+                query = self._normalize_query(benchmark_name, query)
                 reference = self._extract_field_value(data, field_mapping['reference'])
 
                 # Special processing for NVDLibraryBenchmark reference
@@ -314,7 +331,11 @@ class NexusBenchLoader(BaseLoader):
 
             for i, sample in enumerate(samples):
                 # Attempt to retrieve canonical ID from reference file
-                canon_id = _get_canonical_id(str(sample.query), str(sample.reference))
+                canon_id = _get_canonical_id(
+                    benchmark_name,
+                    str(sample.query),
+                    str(sample.reference),
+                )
                 if not canon_id:
                     print(
                         f"[SKIP] {benchmark_name}: No canonical ID found for query={sample.query!r} | reference={sample.reference!r}"
