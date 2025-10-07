@@ -467,7 +467,7 @@ class NexusBenchLoader(BaseLoader):
             subbench_description = self._get_subbench_description(subbench_name)
             tool_implementations = self._get_tool_implementations(subbench_name)
 
-            skip_llm_judge = (subbench_name == "LangChainTypeWriterHard")
+            skip_llm_judge = (subbench_name in ["LangChainTypeWriterHard", "LangChainMultitoolTypeWriterHard"])
 
             return NexusBenchQuestion(
                 question_id=sample_id,
