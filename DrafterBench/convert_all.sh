@@ -1,18 +1,31 @@
-python convert_drafterbench_results.py results/openai_gpt-4o-20240806/2025-07-27-10-27_All.json converted_results --model-path openai/gpt-4o-20240806 
-python convert_drafterbench_results.py results/anthropic_claude-4-sonnet-thinking-off/2025-08-16-14-58_All.json converted_results --model-path anthropic/claude-4-sonnet-thinking-off
-python convert_drafterbench_results.py results/anthropic_claude-4-sonnet-thinking-on-10k/2025-08-16-17-00_All.json converted_results --model-path anthropic/claude-4-sonnet-thinking-on-10k
-python convert_drafterbench_results.py results/deepseek-ai_DeepSeek-V3-0324/2025-08-13-15-30_All_score.json  converted_results --model-path deepseek-ai/DeepSeek-V3-0324
-python convert_drafterbench_results.py results/deepseek-ai_DeepSeek-R1-0528/deepseek-ai_DeepSeek-R1-0528_2025-08-13-15-30_All_score.json  converted_results --model-path deepseek-ai/DeepSeek-R1-0528
-python convert_drafterbench_results.py results/openai_gpt-4o-mini/2025-07-27-14-07_All.json  converted_results --model-path openai/gpt-4o-mini
-python convert_drafterbench_results.py results/openai_gpt-4.1/2025-07-27-14-08_All.json  converted_results --model-path openai/gpt-4.1
-python convert_drafterbench_results.py results/openai_o3-high/2025-07-27-10-48_All.json  converted_results --model-path openai/o3-high
-python convert_drafterbench_results.py results/openai_o4-mini-high/2025-07-27-13-59_All.json  converted_results --model-path openai/o4-mini-high
-python convert_drafterbench_results.py results/togetherai_Qwen_Qwen3-235B-A22B-FP8/2025-08-15-15-42_All_score.json  converted_results --model-path togetherai/Qwen/Qwen3-235B-A22B-FP8
-python convert_drafterbench_results.py results/togetherai_Qwen_Qwen3-235B-A22B-Instruct-2507-FP8/2025-08-15-05-01_All_score.json  converted_results --model-path  togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8
-python convert_drafterbench_results.py results/togetherai_Qwen_Qwen3-235B-A22B-Thinking-2507-FP8/2025-08-16-17-01_All.json  converted_results --model-path  togetherai/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8
-python convert_drafterbench_results.py results/togetherai_moonshotai_Kimi-K2-Instruct/2025-08-15-15-42_01_All_score.json  converted_results --model-path  togetherai/moonshotai/Kimi-K2-Instruct
-python convert_drafterbench_results.py results/xai_grok-4/xai_grok-4_2025-08-13-15-30_All_score.json  converted_results --model-path  xai/grok-4
-python convert_drafterbench_results.py results/Qwen3-8B/2025-08-17-19-09_All_score.json  converted_results --model-path togetherai/Qwen/Qwen3-8B
-python convert_drafterbench_results.py results/Qwen3-32B/2025-08-18-02-37_All_score.json  converted_results --model-path togetherai/Qwen/Qwen3-32B
-python convert_drafterbench_results.py results/deepseek-ai_DeepSeek-V3.1-thinking-off/2025-08-27-04-11_All.json  converted_results --model-path deepseek-ai/DeepSeek-V3.1-thinking-off
-python convert_drafterbench_results.py results/deepseek-ai_DeepSeek-V3.1-thinking-on/2025-08-27-04-11_All.json  converted_results --model-path deepseek-ai/DeepSeek-V3.1-thinking-on
+# python convert_drafterbench_results.py results/openai_gpt-4o-20240806/2025-07-27-10-27_All.json converted_results --model-path openai/gpt-4o-20240806 
+# python convert_drafterbench_results.py results/anthropic_claude-4-sonnet-thinking-off/2025-08-16-14-58_All.json converted_results --model-path anthropic/claude-4-sonnet-thinking-off
+# python convert_drafterbench_results.py results/anthropic_claude-4-sonnet-thinking-on-10k/2025-08-16-17-00_All.json converted_results --model-path anthropic/claude-4-sonnet-thinking-on-10k
+# python convert_drafterbench_results.py results/deepseek-ai_DeepSeek-V3-0324/2025-08-13-15-30_All_score.json  converted_results --model-path deepseek-ai/DeepSeek-V3-0324
+# python convert_drafterbench_results.py results/deepseek-ai_DeepSeek-R1-0528/deepseek-ai_DeepSeek-R1-0528_2025-08-13-15-30_All_score.json  converted_results --model-path deepseek-ai/DeepSeek-R1-0528
+# python convert_drafterbench_results.py results/openai_gpt-4o-mini/2025-07-27-14-07_All.json  converted_results --model-path openai/gpt-4o-mini
+# python convert_drafterbench_results.py results/openai_gpt-4.1/2025-07-27-14-08_All.json  converted_results --model-path openai/gpt-4.1
+# python convert_drafterbench_results.py results/openai_o3-high/2025-07-27-10-48_All.json  converted_results --model-path openai/o3-high
+# python convert_drafterbench_results.py results/openai_o4-mini-high/2025-07-27-13-59_All.json  converted_results --model-path openai/o4-mini-high
+# python convert_drafterbench_results.py results/togetherai_Qwen_Qwen3-235B-A22B-FP8/2025-08-15-15-42_All_score.json  converted_results --model-path togetherai/Qwen/Qwen3-235B-A22B-FP8
+# python convert_drafterbench_results.py results/togetherai_Qwen_Qwen3-235B-A22B-Instruct-2507-FP8/2025-08-15-05-01_All_score.json  converted_results --model-path  togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8
+# python convert_drafterbench_results.py results/togetherai_Qwen_Qwen3-235B-A22B-Thinking-2507-FP8/2025-08-16-17-01_All.json  converted_results --model-path  togetherai/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8
+# python convert_drafterbench_results.py results/togetherai_moonshotai_Kimi-K2-Instruct/2025-08-15-15-42_01_All_score.json  converted_results --model-path  togetherai/moonshotai/Kimi-K2-Instruct
+# python convert_drafterbench_results.py results/xai_grok-4/xai_grok-4_2025-08-13-15-30_All_score.json  converted_results --model-path  xai/grok-4
+# python convert_drafterbench_results.py results/Qwen3-8B/2025-08-17-19-09_All_score.json  converted_results --model-path togetherai/Qwen/Qwen3-8B
+# python convert_drafterbench_results.py results/Qwen3-32B/2025-08-18-02-37_All_score.json  converted_results --model-path togetherai/Qwen/Qwen3-32B
+# python convert_drafterbench_results.py results/deepseek-ai_DeepSeek-V3.1-thinking-off/2025-08-27-04-11_All.json  converted_results --model-path deepseek-ai/DeepSeek-V3.1-thinking-off
+# python convert_drafterbench_results.py results/deepseek-ai_DeepSeek-V3.1-thinking-on/2025-08-27-04-11_All.json  converted_results --model-path deepseek-ai/DeepSeek-V3.1-thinking-on
+
+
+# python convert_drafterbench_results.py results/anthropic_claude-4-opus-thinking-off/2025-09-24-00-18_All_score.json  converted_results --model-path anthropic/claude-4-opus-thinking-off
+# python convert_drafterbench_results.py results/openai_gpt-4.1-mini/2025-09-24-00-20_All_score.json  converted_results --model-path openai/gpt-4.1-mini
+# python convert_drafterbench_results.py results/openai_gpt-4.1-nano/2025-09-24-00-21_All_score.json  converted_results --model-path openai/gpt-4.1-nano
+# python convert_drafterbench_results.py results/anthropic_claude-4-opus-thinking-on-10k/2025-09-24-00-40_All_score.json  converted_results --model-path anthropic/claude-4-opus-thinking-on-10k
+# python convert_drafterbench_results.py results/togetherai_Qwen_Qwen3-Coder-480B-A35B-Instruct-FP8/2025-09-30-17-42_All_score.json  converted_results --model-path togetherai/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
+# python convert_drafterbench_results.py results/google_gemini-2.5-flash-thinking-off/2025-10-02-15-42_All_score.json  converted_results --model-path google/gemini-2.5-flash-thinking-off
+# python convert_drafterbench_results.py results/google_gemini-2.5-flash-thinking-on/2025-10-02-15-43_All_score.json  converted_results --model-path google/gemini-2.5-flash-thinking-on
+# python convert_drafterbench_results.py results/google_gemini-2.5-pro-thinking-on/2025-10-02-15-45_All_score.json  converted_results --model-path google/gemini-2.5-pro-thinking-on
+
+
+python convert_drafterbench_results.py results/openai_gpt-5/2025-09-30-18-20_All_score.json  converted_results --model-path openai/gpt-5
