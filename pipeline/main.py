@@ -32,6 +32,7 @@ from src.comprehensive_rule_filtering import ComprehensiveRuleFilter
 from src.rule_filtering_orchestrator import RuleFilteringOrchestrator
 from src.llm_judge_filtering import LLMJudge, LLMJudgeConfig, LLMJudgeStep
 from src.data_loader import BenchmarkDataLoader
+from src.diversity_greedy import maximize_diversity_greedy
 from src.utils.types import (
     Benchmark,
     UniqueQuestionID,
@@ -47,17 +48,22 @@ from metric.irt_metric import compute_irt_metric
 logger = logging.getLogger(__name__)
 
 COMMON_MODEL_SET = {
-    "claude-4-sonnet-thinking-on-10k",
-    "Kimi-K2-Instruct",
-    "Qwen3-235B-A22B-Instruct-2507-FP8",
-    "o4-mini-high",
-    "Qwen3-235B-A22B-Thinking-2507-FP8",
-    "gpt-4.1",
-    "gpt-4o-mini",
-    "gpt-4o-20240806",
-    "claude-4-sonnet-thinking-off",
-    "Qwen3-235B-A22B-FP8",
-    "o3-high",
+    'Kimi-K2-Instruct',
+    'gpt-4.1-mini',
+    'Qwen3-235B-A22B-Thinking-2507-FP8',
+    'gpt-4.1-nano',
+    'DeepSeek-V3.1-thinking-off',
+    'Qwen3-235B-A22B-FP8',
+    'o4-mini-high',
+    'o3-high',
+    'gpt-4.1',
+    'gpt-4o-mini',
+    'gpt-4o-20240806',
+    'claude-4-sonnet-thinking-on-10k',
+    'claude-4-sonnet-thinking-off',
+    'Qwen3-235B-A22B-Instruct-2507-FP8',
+    'DeepSeek-V3-0324',
+    'claude-4-opus-thinking-off',
 }
 
 
@@ -486,6 +492,19 @@ class BenchmarkFilteringPipeline:
                 f"Step 2 passed: {step2_sample_count} samples from {step2_unique_tasks} unique tasks"
             )
 
+            # step3_passed = self._run_diversity_selection(current_responses)
+            # self.compute_and_log_metrics(
+            #         passed_responses=step3_passed,
+            #         input_ids=set(current_responses.keys()),
+            #         phase="step3",
+            #         human_labelled_questions=current_human_labelled,
+            #         baseline_source=responses_by_question,
+            #     )
+            # current_responses = step3_passed
+            # # Update human labelled questions to only include those that passed step3
+            # current_human_labelled = current_human_labelled & set(step3_passed.keys())
+
+
             # Step 3: Top-K selection based on scores
             if LLMJudgeStep.SCORE in self.llm_config.steps:
                 logger.info("Step 3: Selecting top 50 samples based on total scores")
@@ -521,8 +540,8 @@ class BenchmarkFilteringPipeline:
         # Step 4: Apply comprehensive rule-based filtering (moved from Step 0)
         if not skip_rule_based:
             logger.info("Step 4: Comprehensive rule-based filtering (final stage)")
-            step4_passed, step4_dropped = self._run_comprehensive_filtering(
-                current_responses
+            step4_passed = self._run_comprehensive_filtering(
+                current_responses, responses_by_question
             )
             # Compute and log all metrics for step4 (including baseline)
             self.compute_and_log_metrics(
@@ -565,29 +584,34 @@ class BenchmarkFilteringPipeline:
 
         return all_samples
 
+    def _run_diversity_selection(self, responses_by_question: Dict[str, List[Dict]]) -> Dict[str, List[Dict]]:
+        question_ids = list(responses_by_question.keys())
+        embeddings = np.array([self.embeddings_dict[qid] for qid in question_ids])
+        N_samples = len(embeddings)
+        selcted_indices = maximize_diversity_greedy(embeddings, target_size=int(N_samples*0.8))
+
+        filterd_results = {}
+        for idx in selcted_indices:
+            qid = question_ids[idx]
+            filterd_results[qid] = responses_by_question[qid]
+
+        logger.info(
+            f"Step 3 diversity selection: passed {len(filterd_results)} questions from {N_samples} questions"
+        )
+        return filterd_results
+
     def _run_comprehensive_filtering(
-        self, responses_by_question: Dict[str, List[Dict]]
+        self, responses_by_question: Dict[str, List[Dict]], all_responses_by_question: Dict[str, List[Dict]]
     ) -> Tuple[Dict[str, List[Dict]], Dict[str, List[Dict]]]:
         """Run Step 4: Comprehensive rule-based filtering."""
-        # Save unified dataset before filtering
-        all_samples = [
-            sample
-            for responses in responses_by_question.values()
-            for sample in responses
-        ]
-        self._save_unified_dataset(all_samples)
 
         logger.info("Applying comprehensive rule-based filtering...")
         rule_filter = ComprehensiveRuleFilter()
-        passed_responses_by_question, dropped_responses_by_question = (
-            rule_filter.filter_samples(responses_by_question)
+        passed_responses_by_question = (
+            rule_filter.filter_samples(responses_by_question, all_responses_by_question)
         )
-
-        passed_count = sum(
-            len(responses) for responses in passed_responses_by_question.values()
-        )
-        logger.info(f"Step 0 completed: {passed_count:,} samples passed")
-        return passed_responses_by_question, dropped_responses_by_question
+        logger.info(f"Step 4 completed: {len(passed_responses_by_question):,} samples passed")
+        return passed_responses_by_question
 
     def _run_benchmark_specific_filtering(
         self, responses_by_question: Dict[str, List[Dict]]
@@ -755,7 +779,7 @@ class BenchmarkFilteringPipeline:
         filename = f"{phase}_filtered_performance" if phase != "initial" else "original_performance"
         diversity_filename = f"{phase}_filtered_diversity" if phase != "initial" else "original_diversity"
 
-        self._visualize_diversity(passed_ids, title, diversity_filename)
+        # self._visualize_diversity(passed_ids, title, diversity_filename)
         self._visualize_model_performance(passed_responses, title, filename, model_ranking=model_ranking)
 
         # ============================== compute agreement ==============================
@@ -810,11 +834,11 @@ class BenchmarkFilteringPipeline:
                 model_ranking=stored_model_ranking
             )
             
-            self._visualize_diversity(
-                set(baseline_responses.keys()),
-                "Baseline (Random Sampling)",
-                f"{phase}_baseline_diversity"
-            )
+            # self._visualize_diversity(
+            #     set(baseline_responses.keys()),
+            #     "Baseline (Random Sampling)",
+            #     f"{phase}_baseline_diversity"
+            # )
         
         output_path = self.config.get("report_filename")
         self.write_metrics_to_csv(output_path)
@@ -1769,17 +1793,20 @@ class BenchmarkFilteringPipeline:
             return str(value)
 
         # Header row for metrics comparison
+        # rows.append(["Metrics Comparison", "Baseline", "Step1", "Step2", "Step3", "Step4"])
         rows.append(["Metrics Comparison", "Baseline", "Step1", "Step2", "Step4"])
 
         # Get baseline data and benchmark name (from "original" step)
         baseline_data = self.metrics_summary.get("original", {})
         steps = ["step1", "step2", "step4"]
+        # steps = ["step1", "step2", "step3", "step4"]
 
         # Get benchmark name from the first available data (assuming single benchmark)
         benchmark_name = list(baseline_data["diversity"].keys())[0]
 
         # Add benchmark name row
         rows.append([f"Benchmark: {benchmark_name or 'Unknown'}", "", "", "", ""])
+        # rows.append([f"Benchmark: {benchmark_name or 'Unknown'}", "", "", "", "", ""])
         rows.append([])  # Empty row for separation
 
         # Agreement in format (avg/min/max) - extract using benchmark_name
