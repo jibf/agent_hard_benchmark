@@ -195,23 +195,21 @@ def convert(data_dir: Path, out_dir: Path) -> None:
                     scenario_results = v
                     break
 
-        # Build model_path: provider/optional_org/.../model
+        # Build model_path as: provider/model
+        # - provider is derived from the last path segment starting with 'agent_'
+        # - model is taken from agent_dir (portion before '_user')
         parts = list(conv_path.parts)
-        # Find positions again
-        try:
-            data_idx = max(i for i, p in enumerate(parts) if p == "data")
-            traj_idx = parts.index("trajectories", data_idx)
-        except ValueError:
-            continue  # should not happen
+        provider: Optional[str] = None
+        for seg in parts:
+            if seg.startswith("agent_"):
+                provider = seg.replace("agent_", "")
 
-        provider_dir = parts[data_idx + 1]  # e.g. 'agent_togetherai'
-        provider = provider_dir.replace("agent_", "")
-
-        org_model_parts = list(parts[data_idx + 2 : traj_idx - 1])
-        if org_model_parts:
-            org_model_parts[-1] = org_model_parts[-1].split("_user")[0]
-
-        model_path_str = "/".join([provider] + org_model_parts) if org_model_parts else provider
+        model_name = _agent_name_from_dir(agent_dir)
+        if provider:
+            model_path_str = f"{provider}/{model_name}"
+        else:
+            # Fallback: just the model name if provider cannot be inferred
+            model_path_str = model_name
 
         user_model_path = _user_model_path(run_dir)
         run_timestamp = None
@@ -241,10 +239,8 @@ def convert(data_dir: Path, out_dir: Path) -> None:
         # ----------------------------------------------------------------
         # Flat layout: write files directly under out_dir with no sub-folders.
         # Use only the model name (last path component) as the file stem.
-        if org_model_parts:
-            model_name = org_model_parts[-1]
-        else:
-            model_name = provider  # fallback
+        # Use the same model name for output file stem
+        model_name = _agent_name_from_dir(agent_dir)
 
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"{model_name}.jsonl"
