@@ -1,7 +1,9 @@
+import sys
 import json
 import os
 import time
 from typing import Any
+from openai import OpenAI, RateLimitError
 
 from bfcl_eval.constants.type_mappings import GORILLA_TO_OPENAPI
 from bfcl_eval.model_handler.base_handler import BaseHandler
@@ -16,7 +18,9 @@ from bfcl_eval.model_handler.utils import (
     retry_with_backoff,
     system_prompt_pre_processing_chat_model,
 )
-from openai import OpenAI, RateLimitError
+# root of agenthard repo
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../../')))
+from utils.utils import convert_input_argument
 
 
 class OpenAICompletionsHandler(BaseHandler):
@@ -45,9 +49,8 @@ class OpenAICompletionsHandler(BaseHandler):
     @retry_with_backoff(error_type=RateLimitError)
     def generate_with_backoff(self, **kwargs):
         start_time = time.time()
-        if "gemini" in kwargs["model"]:
-            kwargs.pop("store")
-        api_response = self.client.chat.completions.create(**kwargs, max_tokens=16384)
+        kwargs = convert_input_argument(**kwargs)
+        api_response = self.client.chat.completions.create(**kwargs)
         end_time = time.time()
 
         return api_response, end_time - start_time
