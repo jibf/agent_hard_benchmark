@@ -1,0 +1,118 @@
+[
+  {
+    "role": "system",
+    "content": "Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous."
+  },
+  {
+    "role": "user",
+    "content": "Remove my upcoming reminder.",
+    "user_details": {
+      "minefield_matches": [
+        {
+          "minefield_index": 0,
+          "minefield": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "EXECUTION_ENVIRONMENT",
+                    "recipient": "AGENT",
+                    "tool_trace": "[{\"tool_name\": \"remove_reminder\", \"arguments\": {}}]"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_rouge_l_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "minefield_similarity": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "role": "assistant",
+    "content": "I can do that. Do you want to remove a specific upcoming reminder? If so, please provide the reminder_id.\n\nIf you don’t have the ID, I can list your upcoming reminders and you can tell me which one to delete (by content, time, or ID). Do you want me to fetch and show your upcoming reminders now? Also, should I delete just one reminder or all upcoming reminders?"
+  },
+  {
+    "role": "user",
+    "content": "I don’t have the reminder_id or its details. Can you help me figure it out?"
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_9F9avVqzs4CIx8I0xUvjnFN1",
+        "function": {
+          "arguments": "{}",
+          "name": "search_reminder"
+        },
+        "type": "function"
+      }
+    ]
+  },
+  {
+    "tool_call_id": "call_9F9avVqzs4CIx8I0xUvjnFN1",
+    "role": "tool",
+    "name": "search_reminder",
+    "content": "ValueError: No search criteria are given. At least one search criteria should be provided among ('reminder_id', 'content', 'creation_timestamp', 'creation_timestamp', 'reminder_timestamp', 'reminder_timestamp', 'latitude', 'longitude')"
+  },
+  {
+    "role": "assistant",
+    "content": "I can do that. I just need a little more to fetch your upcoming reminders.\n\nWhat I need from you:\n- Do you want me to use your current device time to pull reminders scheduled in the future, or would you like to specify a window (e.g., today, this week)?\n- After I fetch them, do you want to delete just one reminder or all upcoming reminders?\n\nIf you’re okay with using your current time, I can proceed to pull reminders scheduled after now and show you a list with IDs, content, and times. You can then tell me the ID (or confirm deleting all) to remove."
+  },
+  {
+    "role": "user",
+    "content": "Yeah, you can use the current device time and delete all upcoming reminders."
+  },
+  {
+    "role": "assistant",
+    "content": "I can do that. I just need the current POSIX timestamp to use as the lower bound for upcoming reminders.\n\nOptions:\n- I can use your device’s current time as the reference (no manual timestamp needed). If you’re okay with that, I’ll fetch reminders scheduled after now, show you how many there are and their IDs, and then delete them all.\n- Or, you can provide the exact current timestamp, and I’ll use that.\n\nPlease confirm which you prefer. Also, note that deleting all upcoming reminders is irreversible. Do you want me to proceed after showing a quick preview (IDs and times) before deleting, just to confirm?"
+  },
+  {
+    "role": "user",
+    "content": "Yeah, that's cool. I’m fine with using the current device time and seeing a quick preview before deleting them. Proceed with that."
+  },
+  {
+    "role": "assistant",
+    "content": "Great. I’ll fetch all upcoming reminders using the current device time, show a quick preview (IDs and times), then delete them all after your confirmation.\n\nI just need the current POSIX timestamp (or enough time information to convert to one). Please provide one of the following:\n- The current POSIX timestamp (a number like 1700000000)\n- The current date/time in a readable form (e.g., 2025-10-08 14:30:00) and I’ll convert it to a timestamp\n\nIf you prefer, you can also give me year, month, day, hour, minute, second (in 24h) and I’ll convert to timestamp.\n\nOnce I have the timestamp, I’ll:\n1) Retrieve upcoming reminders with reminder_timestamp_lowerbound = now\n2) Show you a preview: total count and a list of (reminder_id, content, reminder time)\n3) Upon your confirmation, delete all of them\n\nWould you like to provide the time now (in one of the forms above) or should I proceed with a different approach?"
+  },
+  {
+    "role": "user",
+    "content": "Could you just use the current device time to make it easy? Thanks!"
+  },
+  {
+    "role": "assistant",
+    "content": "I’m happy to proceed, but I don’t have automatic access to your device’s current time in this chat. Please provide the current time in one of these formats and I’ll kick off the preview immediately:\n\n- POSIX timestamp (e.g., 1700000000)\n- ISO-style date-time (YYYY-MM-DD HH:MM:SS), e.g., 2025-10-08 14:30:00\n- Or year, month, day, hour, minute, second (24h): 2025-10-08 14 30 00\n\nWhat I’ll do once you give me the time:\n1) Retrieve upcoming reminders with reminder_timestamp_lowerbound = now\n2) Show a quick preview: total count and a list of (reminder_id, content, reminder time)\n3) After your confirmation, delete all of them (this is irreversible)\n\nIf you’d prefer a quicker path, you can also tell me to consider “today” or “this week” as the window, but I’ll need a precise time to set the lower bound."
+  },
+  {
+    "role": "user",
+    "content": "I don't have the exact time info, but you can assume it’s around the current time as you proceed."
+  },
+  {
+    "role": "assistant",
+    "content": "I’m ready to proceed, but I can’t access your device’s time directly from here. To fetch the “upcoming” reminders I need a lower-bound timestamp. Since you want to delete all upcoming reminders, the cleanest approach is to use the start of today in your local time as the lower bound.\n\nCould you please tell me:\n- Your time zone (for example, UTC, America/New_York, Europe/London, etc.)?\nOr, if you’d prefer an alternative, you can provide:\n- The current POSIX timestamp, or\n- The current date-time in ISO form (YYYY-MM-DD HH:MM:SS)\n\nOnce I have the time zone (or a timestamp), I will:\n1) Retrieve reminders with reminder_timestamp_lowerbound = start of today in your local time\n2) Show a quick preview: total count and a list of (reminder_id, content, reminder time)\n3) After your confirmation, delete all of them (note: irreversible)\n\nWould you like me to use the start of today in a specific time zone? If you’re unsure, I can default to your local device time zone if you provide it."
+  }
+]
