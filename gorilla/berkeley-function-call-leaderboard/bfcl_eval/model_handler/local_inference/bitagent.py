@@ -1,13 +1,20 @@
 import json
 
 from bfcl_eval.model_handler.local_inference.base_oss_handler import OSSHandler
-from bfcl_eval.model_handler.utils import func_doc_language_specific_pre_processing
 from overrides import override
 
 
 class BitAgentHandler(OSSHandler):
-    def __init__(self, model_name, temperature) -> None:
-        super().__init__(model_name, temperature)
+    def __init__(
+        self,
+        model_name,
+        temperature,
+        registry_name,
+        is_fc_model,
+        dtype="bfloat16",
+        **kwargs,
+    ) -> None:
+        super().__init__(model_name, temperature, registry_name, is_fc_model, **kwargs)
 
     @override
     def _format_prompt(self, messages, function):
@@ -60,7 +67,7 @@ class BitAgentHandler(OSSHandler):
         return formatted_prompt
 
     @override
-    def decode_ast(self, result, language="Python"):
+    def decode_ast(self, result, language, has_tool_call_tag):
 
         # Parse the JSON array of function calls
         function_calls = json.loads(result)
@@ -76,7 +83,7 @@ class BitAgentHandler(OSSHandler):
         return decoded_output
 
     @override
-    def decode_execute(self, result):
+    def decode_execute(self, result, has_tool_call_tag):
 
         # Parse the JSON array of function calls
         function_calls = json.loads(result)
@@ -96,7 +103,6 @@ class BitAgentHandler(OSSHandler):
     @override
     def _pre_query_processing_prompting(self, test_entry: dict) -> dict:
         functions: list = test_entry["function"]
-        test_category: str = test_entry["id"].rsplit("_", 1)[0]
-        functions = func_doc_language_specific_pre_processing(functions, test_category)
+
         # override with the BitAgent system prompt
         return {"message": [], "function": functions}

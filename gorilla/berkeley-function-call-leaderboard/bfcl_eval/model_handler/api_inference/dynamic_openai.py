@@ -23,20 +23,35 @@ def create_dynamic_handler_class(api_key=None, base_url=None, is_fc_model=False)
         A handler class that can be instantiated with standard (model_name, temperature) signature
     """
     class DynamicOpenAIHandler(OpenAICompletionsHandler):
-        def __init__(self, model_name, temperature=0.001):
+        def __init__(self, model_name, temperature, registry_name, is_fc_model, **kwargs):
             # Store dynamic configuration
             self._dynamic_api_key = api_key or os.getenv("API_KEY")
             self._dynamic_base_url = base_url or os.getenv("BASE_URL")
             self._is_fc_model_dynamic = is_fc_model
 
-            # Call parent init
-            super().__init__(model_name, temperature)
+            # Temporarily set OPENAI_ environment variables for parent init
+            old_api_key = os.environ.get("OPENAI_API_KEY")
+            old_base_url = os.environ.get("OPENAI_BASE_URL")
 
-            # Override the client with custom configuration
-            self.client = OpenAI(
-                api_key=self._dynamic_api_key,
-                base_url=self._dynamic_base_url
-            )
+            if self._dynamic_api_key:
+                os.environ["OPENAI_API_KEY"] = self._dynamic_api_key
+            if self._dynamic_base_url:
+                os.environ["OPENAI_BASE_URL"] = self._dynamic_base_url
+
+            try:
+                # Call parent init
+                super().__init__(model_name, temperature, registry_name, is_fc_model, **kwargs)
+            finally:
+                # Restore original environment variables
+                if old_api_key is not None:
+                    os.environ["OPENAI_API_KEY"] = old_api_key
+                elif "OPENAI_API_KEY" in os.environ:
+                    del os.environ["OPENAI_API_KEY"]
+
+                if old_base_url is not None:
+                    os.environ["OPENAI_BASE_URL"] = old_base_url
+                elif "OPENAI_BASE_URL" in os.environ:
+                    del os.environ["OPENAI_BASE_URL"]
 
             # Set the is_fc_model property
             self.is_fc_model = self._is_fc_model_dynamic
