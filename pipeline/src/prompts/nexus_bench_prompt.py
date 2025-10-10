@@ -44,7 +44,7 @@ This category covers flaws in the pre-defined ground truth of the sample. As des
 
 * Incorrect function calls: A function call is syntactically valid but logically flawed. The function choice or a parameter value contradicts the user's request or the context from previous steps.
   * Unjustified/Hallucinated Parameters: A value (e.g., a date, a coordinate) that appears without any grounding context. For example, searching for a hotel on a date that was not returned by a preceding flight search.
-  * Contradictory Parameter Values: A value that directly contradicts a constraint in the user's prompt. For example, using the latitude of a hotel and the longitude of an airport to define a search coordinate, which is logically inconsistent.
+  * Contradictory Parameter Values: A value that directly contradicts a constraint in the user's prompt. For example, computing a date difference as 19*365 + 23 when the user requested “19 years and 23 days ago,” without accounting for leap years
   * Misspelled or Incorrectly Identified Parameter Values: A misspelled name or an ID/slug that points to the wrong entity (e.g., selecting the wrong airport ID).
 
 
