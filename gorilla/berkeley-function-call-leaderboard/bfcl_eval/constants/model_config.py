@@ -1,4 +1,7 @@
+import json
+import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from bfcl_eval.model_handler.api_inference.claude import ClaudeHandler
@@ -2246,3 +2249,239 @@ MODEL_CONFIG_MAPPING = {
     **local_inference_model_map,
     **third_party_inference_model_map,
 }
+
+
+# -----------------------------------------------------------------------------
+# Handler Registry for JSON serialization/deserialization
+# Maps handler class names to their actual class objects
+# -----------------------------------------------------------------------------
+HANDLER_REGISTRY = {
+    # API Inference Handlers
+    "ClaudeHandler": ClaudeHandler,
+    "CohereHandler": CohereHandler,
+    "DatabricksHandler": DatabricksHandler,
+    "DeepSeekAPIHandler": DeepSeekAPIHandler,
+    "DMCitoHandler": DMCitoHandler,
+    "FireworksHandler": FireworksHandler,
+    "FunctionaryHandler": FunctionaryHandler,
+    "GeminiHandler": GeminiHandler,
+    "GoGoAgentHandler": GoGoAgentHandler,
+    "GorillaHandler": GorillaHandler,
+    "GrokHandler": GrokHandler,
+    "LingAPIHandler": LingAPIHandler,
+    "MiningHandler": MiningHandler,
+    "MistralHandler": MistralHandler,
+    "NemotronHandler": NemotronHandler,
+    "NexusHandler": NexusHandler,
+    "NovaHandler": NovaHandler,
+    "NovitaHandler": NovitaHandler,
+    "NvidiaHandler": NvidiaHandler,
+    "OpenAICompletionsHandler": OpenAICompletionsHandler,
+    "OpenAIResponsesHandler": OpenAIResponsesHandler,
+    "QwenAgentNoThinkHandler": QwenAgentNoThinkHandler,
+    "QwenAgentThinkHandler": QwenAgentThinkHandler,
+    "QwenAPIHandler": QwenAPIHandler,
+    "WriterHandler": WriterHandler,
+    "YiHandler": YiHandler,
+    # Local Inference Handlers
+    "ArchHandler": ArchHandler,
+    "BielikHandler": BielikHandler,
+    "BitAgentHandler": BitAgentHandler,
+    "DeepseekHandler": DeepseekHandler,
+    "DeepseekCoderHandler": DeepseekCoderHandler,
+    "DeepseekReasoningHandler": DeepseekReasoningHandler,
+    "Falcon3FCHandler": Falcon3FCHandler,
+    "GemmaHandler": GemmaHandler,
+    "GlaiveHandler": GlaiveHandler,
+    "GLMHandler": GLMHandler,
+    "GraniteFunctionCallingHandler": GraniteFunctionCallingHandler,
+    "Granite3FCHandler": Granite3FCHandler,
+    "HammerHandler": HammerHandler,
+    "HermesHandler": HermesHandler,
+    "LlamaHandler": LlamaHandler,
+    "LlamaHandler_3_1": LlamaHandler_3_1,
+    "MiniCPMHandler": MiniCPMHandler,
+    "MiniCPMFCHandler": MiniCPMFCHandler,
+    "MistralFCHandler": MistralFCHandler,
+    "PhiHandler": PhiHandler,
+    "PhiFCHandler": PhiFCHandler,
+    "QuickTestingOSSHandler": QuickTestingOSSHandler,
+    "QwenHandler": QwenHandler,
+    "QwenFCHandler": QwenFCHandler,
+    "SalesforceLlamaHandler": SalesforceLlamaHandler,
+    "SalesforceQwenHandler": SalesforceQwenHandler,
+    "ThinkAgentHandler": ThinkAgentHandler,
+}
+
+
+# -----------------------------------------------------------------------------
+# JSON Serialization and Deserialization Functions
+# -----------------------------------------------------------------------------
+
+
+def serialize_model_config_to_json(config_mapping: dict, output_path: str) -> None:
+    """
+    Serialize MODEL_CONFIG_MAPPING to JSON format.
+
+    Args:
+        config_mapping: Dictionary of model configs to serialize
+        output_path: Path to save the JSON file
+    """
+    serialized = {}
+
+    for model_name, config in config_mapping.items():
+        # Check if this is a dynamically created handler (has special attributes)
+        handler_class = config.model_handler
+        is_dynamic_handler = hasattr(handler_class, '__name__') and 'DynamicOpenAIHandler' in handler_class.__name__
+
+        if is_dynamic_handler:
+            # For dynamic handlers, we need to extract the stored parameters
+            # Try to get handler parameters from a test instance
+            try:
+                test_instance = handler_class("test", 0.001)
+                handler_info = {
+                    "type": "dynamic",
+                    "base_handler": "OpenAICompletionsHandler",
+                    "params": {
+                        "base_url": getattr(test_instance, '_dynamic_base_url', None),
+                        "is_fc_model": getattr(test_instance, '_is_fc_model_dynamic', False),
+                    }
+                }
+            except Exception:
+                # Fallback if we can't instantiate
+                handler_info = {
+                    "type": "dynamic",
+                    "base_handler": "OpenAICompletionsHandler",
+                    "params": {}
+                }
+        else:
+            # For regular handlers, just store the class name
+            handler_info = {
+                "type": "static",
+                "class_name": handler_class.__name__
+            }
+
+        serialized[model_name] = {
+            "model_name": config.model_name,
+            "display_name": config.display_name,
+            "url": config.url,
+            "org": config.org,
+            "license": config.license,
+            "handler": handler_info,
+            "input_price": config.input_price,
+            "output_price": config.output_price,
+            "is_fc_model": config.is_fc_model,
+            "underscore_to_dot": config.underscore_to_dot,
+        }
+
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(serialized, f, indent=2, ensure_ascii=False)
+
+    print(f"Model configurations saved to {output_path}")
+
+
+def update_and_save_model_config(new_config: dict, output_path: str) -> None:
+    """
+    Update MODEL_CONFIG_MAPPING and save all configs to JSON file.
+    This function merges existing saved configs with new ones to avoid overwriting.
+
+    Args:
+        new_config: Dictionary of new model configs to add
+        output_path: Path to the JSON file
+    """
+    from pathlib import Path
+
+    # Update the global MODEL_CONFIG_MAPPING
+    MODEL_CONFIG_MAPPING.update(new_config)
+
+    # Load existing configs if file exists
+    existing_configs = {}
+    config_path = Path(output_path)
+    if config_path.exists():
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                existing_configs = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            existing_configs = {}
+
+    # Merge existing configs with new ones
+    merged_configs = {}
+
+    # Convert existing JSON configs back to ModelConfig objects for serialization
+    for model_name in existing_configs.keys():
+        if model_name in MODEL_CONFIG_MAPPING:
+            merged_configs[model_name] = MODEL_CONFIG_MAPPING[model_name]
+
+    # Add the new config
+    merged_configs.update(new_config)
+
+    # Serialize and save all configs
+    serialize_model_config_to_json(merged_configs, str(config_path))
+    print(f"Dynamic model configurations saved to {output_path}")
+
+
+def load_model_config_from_json(json_path: str) -> dict:
+    """
+    Load and deserialize model configurations from JSON.
+
+    Args:
+        json_path: Path to the JSON file
+
+    Returns:
+        Dictionary of model configs (model_name -> ModelConfig)
+    """
+    if not os.path.exists(json_path):
+        return {}
+
+    with open(json_path, 'r', encoding='utf-8') as f:
+        serialized = json.load(f)
+
+    # Import dynamic handler creator
+    from bfcl_eval.model_handler.api_inference.dynamic_openai import create_dynamic_handler_class
+
+    configs = {}
+    for model_name, data in serialized.items():
+        handler_info = data["handler"]
+
+        if handler_info["type"] == "dynamic":
+            # Create dynamic handler
+            handler_class = create_dynamic_handler_class(
+                api_key=handler_info["params"].get("api_key"),
+                base_url=handler_info["params"].get("base_url"),
+                is_fc_model=handler_info["params"].get("is_fc_model", False)
+            )
+        else:
+            # Look up static handler from registry
+            class_name = handler_info["class_name"]
+            if class_name not in HANDLER_REGISTRY:
+                print(f"Warning: Handler class '{class_name}' not found in registry. Skipping model '{model_name}'")
+                continue
+            handler_class = HANDLER_REGISTRY[class_name]
+
+        configs[model_name] = ModelConfig(
+            model_name=data["model_name"],
+            display_name=data["display_name"],
+            url=data["url"],
+            org=data["org"],
+            license=data["license"],
+            model_handler=handler_class,
+            input_price=data["input_price"],
+            output_price=data["output_price"],
+            is_fc_model=data["is_fc_model"],
+            underscore_to_dot=data["underscore_to_dot"],
+        )
+
+    return configs
+
+
+# -----------------------------------------------------------------------------
+# Load custom configurations from JSON if exists
+# -----------------------------------------------------------------------------
+_custom_config_path = Path(__file__).parent / "model_config_custom.json"
+_custom_configs = load_model_config_from_json(str(_custom_config_path))
+
+# Merge custom configs into main mapping (custom configs override default ones)
+MODEL_CONFIG_MAPPING.update(_custom_configs)

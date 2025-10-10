@@ -18,8 +18,7 @@ from bfcl_eval.constants.eval_config import (
     TEST_IDS_TO_GENERATE_PATH,
 )
 from bfcl_eval.eval_checker.eval_runner_helper import load_file
-import bfcl_eval.constants.model_config
-from bfcl_eval.constants.model_config import MODEL_CONFIG_MAPPING
+from bfcl_eval.constants import model_config
 from bfcl_eval.model_handler.api_inference.dynamic_openai import create_dynamic_model_config
 from bfcl_eval.model_handler.model_style import ModelStyle
 from bfcl_eval.utils import is_multi_turn, parse_test_category_argument, sort_key
@@ -69,7 +68,7 @@ def get_args():
 
 def build_handler(model_name, temperature, config_mapping=None):
     # Use provided config mapping or fallback to global one
-    mapping = config_mapping if config_mapping is not None else MODEL_CONFIG_MAPPING
+    mapping = config_mapping if config_mapping is not None else model_config.MODEL_CONFIG_MAPPING
     config = mapping[model_name]
     handler = config.model_handler(model_name, temperature)
     # Propagate config flags to the handler instance
@@ -313,8 +312,13 @@ def main(args):
                         "• All models now use OpenAI-compatible API pattern for consistency"
                     )
 
-    # Replace the global MODEL_CONFIG_MAPPING temporarily
-    bfcl_eval.constants.model_config.MODEL_CONFIG_MAPPING = extended_model_config
+    # Update the global MODEL_CONFIG_MAPPING and save to JSON for persistence
+    from pathlib import Path
+    from bfcl_eval.constants.model_config import update_and_save_model_config
+
+    custom_config_path = Path(__file__).parent / "constants" / "model_config_custom.json"
+    update_and_save_model_config(extended_model_config, str(custom_config_path))
+
     print(f"Generating results for {args.model}")
     if args.run_ids:
         print("Running specific test cases. Ignoring `--test-category` argument.")
