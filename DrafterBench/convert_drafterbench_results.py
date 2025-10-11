@@ -32,7 +32,16 @@ model_path_to_name = {
     "deepseek-ai/DeepSeek-V3.1-thinking-off": "DeepSeek-V3.1-thinking-off",
     "deepseek-ai/DeepSeek-V3.1-thinking-on": "DeepSeek-V3.1-thinking-on",
     "anthropic/claude-4-sonnet-thinking-on-10k": "claude-4-sonnet-thinking-on-10k",
-    "anthropic/claude-4-sonnet-thinking-off": "claude-4-sonnet-thinking-off"
+    "anthropic/claude-4-sonnet-thinking-off": "claude-4-sonnet-thinking-off",
+    "anthropic/claude-4-opus-thinking-off": "claude-4-opus-thinking-off",
+    "openai/gpt-4.1-mini": "gpt-4.1-mini",
+    "openai/gpt-4.1-nano": "gpt-4.1-nano",
+    "anthropic/claude-4-opus-thinking-on-10k": "claude-4-opus-thinking-on-10k",
+    "togetherai/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8": "Qwen3-Coder-480B-A35B-Instruct-FP8",
+    "google/gemini-2.5-flash-thinking-off": "gemini-2.5-flash-thinking-off",
+    "google/gemini-2.5-flash-thinking-on": "gemini-2.5-flash-thinking-on",
+    "google/gemini-2.5-pro-thinking-on": "gemini-2.5-pro-thinking-on",
+    "openai/gpt-5": "gpt-5",
 }
 
 

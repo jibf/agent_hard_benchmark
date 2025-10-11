@@ -1,0 +1,82 @@
+[
+  {
+    "role": "system",
+    "content": "Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous."
+  },
+  {
+    "role": "user",
+    "content": "The guy at +12453344098, I feel like we don't talk much anymore. Get him out of my contacts.",
+    "user_details": {
+      "minefield_matches": [
+        {
+          "minefield_index": 0,
+          "minefield": {
+            "snapshot_constraints": [
+              {
+                "database_namespace": "SANDBOX",
+                "snapshot_constraint": "snapshot_similarity",
+                "reference_milestone_node_index": null,
+                "target_dataframe": [
+                  {
+                    "sender": "AGENT",
+                    "recipient": "EXECUTION_ENVIRONMENT",
+                    "content": "remove_contact"
+                  }
+                ],
+                "column_similarity_measure": {
+                  "sandbox_message_index": "column_exact_match_similarity",
+                  "sender": "column_exact_match_similarity",
+                  "recipient": "column_exact_match_similarity",
+                  "content": "column_contains_similarity",
+                  "openai_tool_call_id": "column_one_similarity",
+                  "openai_function_name": "column_one_similarity",
+                  "conversation_active": "column_exact_match_similarity",
+                  "tool_call_exception": "column_one_similarity",
+                  "tool_trace": "column_tool_trace_exact_match_similarity",
+                  "visible_to": "column_exact_match_similarity"
+                }
+              }
+            ],
+            "guardrail_database_list": [
+              "SANDBOX",
+              "SETTING",
+              "CONTACT",
+              "MESSAGING",
+              "REMINDER"
+            ],
+            "guardrail_database_exclusion_list": null
+          },
+          "minefield_similarity": 0.0
+        }
+      ]
+    }
+  },
+  {
+    "role": "assistant",
+    "content": "I can help, but I need the contact’s person_id to remove it. I don’t have a way to look up a contact by phone number here.\n\nOptions:\n- If you know the person_id for the contact with that number, share it and I’ll delete that entry.\n- If you don’t know the IDs, you can:\n  - Search your contacts for the number (+1 245-334-4098) in your app, note the person_id(s) for any matching entries, and share them here.\n  - Tell me to guide you through finding the IDs and removing them (I can provide step-by-step instructions for common contacts apps).\n- If there are multiple duplicates with the same number and you want all of them removed, tell me how many matches there are and provide their IDs, or confirm you want me to remove all entries that match that number one by one.\n\nHow would you like to proceed? If you have the IDs, please share them."
+  },
+  {
+    "role": "user",
+    "content": "I don't know the person_id. Could you help me figure it out?"
+  },
+  {
+    "role": "assistant",
+    "content": "I can’t access your contacts from here, but I can guide you precisely on how to find the person_id values (the internal IDs) for every entry that uses that number. Tell me which platform you use (iPhone Contacts, Android Contacts, Google Contacts on web, Outlook, etc.) and I’ll tailor the steps.\n\nIn the meantime, here are platform-specific ways to locate IDs or export them so you can delete them:\n\n- Google Contacts (web)\n  1. Sign in to contacts.google.com and search for +1 245-334-4098.\n  2. Open each matching contact.\n  3. Look at the address bar: sometimes the URL ends with /contact/{name} or a numeric id; that id is the contact’s ID.\n  4. If the IDs aren’t visible, click More actions and choose Export to get a CSV/VCF; the exported file may include an ID column you can use.\n  5. Note all IDs you want removed, then I can help you delete them.\n\n- iPhone Contacts (iCloud is often easiest)\n  1. On a computer, go to iCloud.com and sign in.\n  2. Open Contacts and search for the number.\n  3. Click a contact to see its details.\n  4. In the browser’s address bar, sometimes the URL includes an id= parameter with the contact’s internal ID (UUID-like). If you don’t see an ID there, you may need to export.\n  5. You can also export the entire card (vCard) and search for UID fields inside the file.\n\n- Android Contacts (phone app)\n  1. Open the Contacts app and search for the number.\n  2. Open each matching contact to view details. The native app usually doesn’t show the internal ID directly.\n  3. If your app supports Export or Share, export to a VCF/CSV and look for an ID in the file.\n\n- Other/Third-party apps (Samsung Contacts, Outlook, etc.)\n  1. Use the app’s search to locate all matches by the number.\n 2. Look for a way to view details or export the contact list to a file to locate IDs.\n 3. If you can export, you’ll often find an ID field in the export file.\n\nIf you can tell me your exact platform (and whether you’re okay with exporting a file), I’ll give you precise, step-by-step instructions for that setup. Once you have the IDs, I can help you issue the delete(s) for the matching entries. If you’d rather, I can also guide you through deleting all duplicates by number using your platform’s built-in features (sometimes you don’t need the IDs to remove them)."
+  },
+  {
+    "role": "user",
+    "content": "I'm using Google Contacts on the web. Could you help me find the person_id that way?"
+  },
+  {
+    "role": "assistant",
+    "content": "Great. Here’s how to find the internal Google Contacts IDs (person_id) for each entry that has that phone number on the web:\n\nWhat to do\n1) Sign in and search\n- Go to https://contacts.google.com and sign in.\n- In the search box, enter the number: +1 245-334-4098 (or 2453344098).\n\n2) Open each matching contact\n- Click every contact that appears to open its details.\n\n3) Look for the ID in the URL\n- While the contact is open, check the browser's address bar.\n- You’ll likely see a URL like https://contacts.google.com/person/XXXXXXXXXXXX. The string after /person/ is the internal ID (the person_id).\n- Copy that ID (the whole string after /person/).\n\nWhat if the ID isn’t visible in the URL?\n- Use export as a fallback:\n  - In Google Contacts, click More (three vertical dots) or the menu, then choose Export.\n  - Export as Google CSV (or vCard) and save the file.\n  - Open the exported file and search for the matching entries by the phone number. If the file includes an ID/UID field, copy those IDs. If not, you can still identify the correct contacts by name/number for deletion later.\n\n4) Delete once you have IDs (optional)\n- In Google Contacts, after you have the IDs, you can:\n  - Search for each ID by opening the contact (or use the list of results from step 1).\n  - Select the contact (checkbox) and click the trash icon to delete.\n  - If there are multiple duplicates, you can select all matching contacts and delete them in one go.\n\nNotes\n- The ID is the internal resource name used by Google Contacts; it’s the string you’ll see after /person/ in the URL.\n- If you have multiple duplicates with the same number, you’ll need to identify each one (by ID) to remove them all. You can also delete by selecting multiple contacts in the list if you prefer not to track IDs.\n\nWould you like me to tailor these steps to the exact UI you’re seeing (new Google Contacts layout can differ a bit), or would you like me to walk you through a quick export and how to spot IDs in the file? If you find any IDs and want me to help you draft the delete commands in your account, paste them here and I’ll guide you through the next steps."
+  },
+  {
+    "role": "user",
+    "content": "Thanks! I'll give that a try."
+  },
+  {
+    "role": "assistant",
+    "content": "Nice. If you run into anything, I’m here to help.\n\nQuick quick recap you can use as you go:\n- Sign in to contacts.google.com and search for +1 245-334-4098.\n- Open each matching contact and copy the ID from the URL after /person/.\n- If IDs aren’t visible in the URL, export your contacts (More > Export), pick Google CSV, and check the exported file for an ID/UID field you can use.\n- To delete: select the contacts (you can multi-select) and click the trash icon.\n\nIf you want, paste any IDs you find here (just the IDs, not any other data) and I’ll guide you through the exact delete steps for those entries. Or tell me what part you’re stuck on and I’ll tailor the steps to what you’re seeing."
+  }
+]
