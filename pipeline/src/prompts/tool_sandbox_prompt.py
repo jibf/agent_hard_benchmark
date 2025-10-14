@@ -1,45 +1,4 @@
-# Please fill in the prompts to resolve the identified issue. You can refer to the prompt in src/prompts/complex_func_bench_prompt.py
-# Make sure the output format is as follows. Beware the `reasoning` attribute needs to preceed the results (`is_flawed` or `score`) to encourage the model's chain-of-thought reasoning.
-
-# FILTERING: 
-# {{
-#   "reasoning": "Provide a clear, step-by-step explanation for your decision. If the ground-truth is flawed, specify which argument is incorrect and why it contradicts the prompt or schema. If it is not flawed, briefly explain why the ground-truth is a correct interpretation of the user's request."
-#   "reasoning_summary": "A shorter rationale for your decision. If the ground-truth is not flawed, just mention that it is not flawed. If the ground-truth is flawed, specify the issue concisely. e.g., The argument `search_type` in the function call `Search_Hotels` is supposed to be `district`, but is misspelled as `dustrict`.",
-#   "error_category": "<Argument Value Mismatch | Argument Type Mismatch | Unjustified Assumption | Misspelling | Not Flawed>",
-#   "is_flawed": <true_or_false>,
-# }}
-
-# SCORING: 
-# [
-#     {{
-#     "dimension": "tool necessity",
-#     "reasoning": "The user's goal of booking a flight and a taxi involves interacting with external reservation systems. This is fundamentally impossible to achieve with only the model's internal knowledge. However, small sub-tasks such as identifying the closest airport from the user's location could be handled without external APIs.",
-#     "score": 3
-#     }},
-#     {{
-#     "dimension": "planning and context depth",
-#     "reasoning": "The task requires a sequence: 1. Search for a flight, 2. Use the flight's arrival airport to book a taxi. This is a **standard multi-step plan with a clear, linear dependency**. However, it does not require **complex, non-linear planning or adaptation to unexpected results**, which would be necessary for a score of 5.",
-#     "score": 4
-#     }},
-#     {{
-#     "dimension": "parameter generation",
-#     "reasoning": "Assuming the user prompt mentioned 'tomorrow', the agent needs to calculate the exact date. This is a **form of basic reasoning**, fitting the 3-point criteria. It does not require **deep semantic inference or the generation of a long, complex value** (like a full JSON object for filtering).",
-#     "score": 3
-#     }},
-#     {{
-#     "dimension": "tool selection difficulty",
-#     "reasoning": "The user's intent to 'search for a flight' and 'book a taxi' maps directly to tools like `search_flights` and `book_taxi`. There are **no plausible or confusing distractor tools** mentioned. The choice is obvious and straightforward.",
-#     "score": 2
-#     }},
-#     {{
-#     "dimension": "real-world applicability",
-#     "reasoning": "Booking a flight and then arranging for transportation from the airport is a very common and practical real-world scenario for travelers. However, some of the conditions that the user demands are a bit unrealistic.",
-#     "score": 3
-#     }}
-# ]
-#
-
-
+import json
 
 FILTERING_PROMPT = """
 You are a rigorous evaluator for the **ToolSandbox** benchmark (Apple, 2024), a stateful, multi-turn tool-use benchmark.  
@@ -178,4 +137,137 @@ Output a JSON **array** (no extra commentary) following this template:
   }}
 ]
 ```
+
+## Target Sample
+
+### User Prompt
+```
+{instruction}
+```
+
+### Available Function List
+```json
+{available_function_list}
+```
+
+### Ground-Truth Conversation
+```json
+{gt_conv_traj}
+```
+
+### Expected Final Assistant Message
+```
+{expected_output}
+```
 """
+
+
+def _format_json_block(data):
+    if isinstance(data, str):
+        return data
+    return json.dumps(data, indent=2, ensure_ascii=False)
+
+
+def _build_prompt(question, prompt_type):
+    payload = {
+        "instruction": question.instruction or "",
+        "available_function_list": _format_json_block(question.available_function_list),
+        "gt_conv_traj": _format_json_block(question.gt_conv_traj),
+        "expected_output": (question.expected_output or "").strip(),
+    }
+    if prompt_type == "filtering":
+        return FILTERING_PROMPT.format(**payload)
+    if prompt_type == "scoring":
+        return SCORING_PROMPT.format(**payload)
+    raise ValueError(f"Unsupported prompt type: {prompt_type}")
+
+
+def _safe_stem(name: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in name)
+
+
+def _parse_args():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Render ToolSandbox prompts similar to NexusBench/Tau-Bench helpers."
+    )
+    parser.add_argument(
+        "-q",
+        "--question_id",
+        type=str,
+        help="Scenario name to render (e.g., sample_toolscenario_01).",
+    )
+    parser.add_argument(
+        "-p",
+        "--prompt-type",
+        choices=["filtering", "scoring"],
+        default="filtering",
+        help="Prompt template to render (default: filtering).",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        help="Output file path, or directory when --save-all is used.",
+    )
+    parser.add_argument(
+        "--save-all",
+        action="store_true",
+        help="Render prompts for all ToolSandbox samples into a directory.",
+    )
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    import os
+
+    from src.utils.types import Benchmark
+    from src.bench_loaders import get_bench_loader
+
+    args = _parse_args()
+
+    loader_cls = get_bench_loader(Benchmark.TOOL_SANDBOX)
+    toolsandbox_loader = loader_cls()
+    questions = toolsandbox_loader.load_questions()
+
+    prompt_type = args.prompt_type
+
+    if args.save_all:
+        output_dir = args.output or f"toolsandbox_{prompt_type}_prompts"
+        os.makedirs(output_dir, exist_ok=True)
+
+        saved = 0
+        for question in questions:
+            prompt_text = _build_prompt(question, prompt_type)
+            file_stem = _safe_stem(question.question_id)
+            filename = f"{file_stem}_{prompt_type}_prompt.txt"
+            output_path = os.path.join(output_dir, filename)
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(prompt_text)
+            saved += 1
+
+        print(f"Saved {saved} ToolSandbox {prompt_type} prompts to {output_dir}/")
+    else:
+        if not args.question_id:
+            print("Error: --question_id is required unless --save-all is specified.")
+        else:
+            selected = next(
+                (question for question in questions if question.question_id == args.question_id),
+                None,
+            )
+            if not selected:
+                print(f"No ToolSandbox sample found with ID '{args.question_id}'")
+            else:
+                print(
+                    f"ToolSandbox sample found - ID: {selected.question_id}"
+                )
+                prompt_text = _build_prompt(selected, prompt_type)
+                output_path = (
+                    args.output
+                    if args.output
+                    else f"tool_sandbox_{_safe_stem(selected.question_id)}_{prompt_type}_prompt.txt"
+                )
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write(prompt_text)
+                print(f"ToolSandbox {prompt_type} prompt saved to {output_path}")

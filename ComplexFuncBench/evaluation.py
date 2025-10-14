@@ -8,7 +8,7 @@ import datetime
 import sys
 from collections import defaultdict
 import multiprocessing
-from multiprocessing import Pool, Manager
+from multiprocessing import Pool
 from functools import partial
 from tqdm import tqdm
 from dotenv import load_dotenv
@@ -32,7 +32,7 @@ def get_args():
     parser.add_argument('--exp_name', type=str, default='full-1000')
     parser.add_argument("--vllm_url", type=str, default=os.environ['BASE_URL'])
     parser.add_argument("--proc_num", type=int, default=1)
-    parser.add_argument("--eval_model", type=str, default="gpt-4o-2024-08-06", help="The evaluation model for response evaluation (default: gpt-4o-2024-08-06)")
+    parser.add_argument("--eval_model", type=str, default="openai/gpt-4o-20240806", help="The evaluation model for response evaluation (default: openai/gpt-4o-20240806)")
     parser.add_argument("--debug", action="store_true")
 
     args = parser.parse_args()
@@ -138,24 +138,12 @@ def main():
     else:
         finised_ids = []
     test_data = [d for d in test_data if d['id'] not in finised_ids]
-            
-    with Manager() as manager:
-        pool = Pool(processes=args.proc_num)
-        process_example_partial = partial(process_example)
-        
+    
+    process_example_partial = partial(process_example, args=args)
+    with Pool(processes=args.proc_num) as pool:
         with tqdm(total=len(test_data), desc="Processing samples", unit="sample") as pbar:
-            results = []
-            for data in test_data:
-                result = pool.apply_async(process_example_partial, (data, args))
-                results.append(result)
-            
-            # Wait for completion and update progress bar
-            for result in results:
-                result.get()
+            for _ in pool.imap_unordered(process_example_partial, test_data):
                 pbar.update(1)
-        
-    pool.close()
-    pool.join()
 
 
 if __name__ == '__main__':

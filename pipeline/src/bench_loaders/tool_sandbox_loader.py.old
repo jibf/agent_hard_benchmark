@@ -1,0 +1,953 @@
+import ast
+import importlib
+import importlib.util
+import json
+import random
+import sys
+from dataclasses import dataclass, field
+from enum import Enum, auto
+from pathlib import Path
+from types import ModuleType
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+# Lightweight pydantic stub (avoids hard dependency during prompt generation)
+if "pydantic" not in sys.modules:
+    pydantic_stub = ModuleType("pydantic")
+
+    class BaseModel:  # pragma: no cover - minimal behaviour
+        def __init__(self, **kwargs: Any) -> None:
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+        def dict(self) -> Dict[str, Any]:
+            return self.__dict__
+
+    pydantic_stub.BaseModel = BaseModel
+    sys.modules["pydantic"] = pydantic_stub
+
+from . import BaseLoader
+from src.utils.types import Benchmark, ToolSandboxQuestion
+
+# --------------------------------------------------------------------------- #
+# Utility data classes used for tool metadata
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class ToolParameter:
+    name: str
+    annotation: Optional[str]
+    has_default: bool
+
+
+@dataclass(frozen=True)
+class ToolSpec:
+    module: str        # e.g., "contact"
+    actual_name: str   # e.g., "add_contact"
+    docstring: str
+    parameters: Tuple[ToolParameter, ...]
+
+
+# --------------------------------------------------------------------------- #
+# Stub infrastructure to execute ToolSandbox scenario definitions without the
+# heavy runtime dependencies present in the original project.
+# --------------------------------------------------------------------------- #
+
+
+class ScenarioNamespace(Enum):
+    SANDBOX = "SANDBOX"
+    SETTING = "SETTING"
+    CONTACT = "CONTACT"
+    MESSAGING = "MESSAGING"
+    REMINDER = "REMINDER"
+
+
+class RoleNamespace(Enum):
+    SYSTEM = "SYSTEM"
+    USER = "USER"
+    AGENT = "AGENT"
+    EXECUTION_ENVIRONMENT = "EXECUTION_ENVIRONMENT"
+
+
+class ScenarioCategory(Enum):
+    SINGLE_TOOL_CALL = auto()
+    MULTIPLE_TOOL_CALL = auto()
+    SINGLE_USER_TURN = auto()
+    MULTIPLE_USER_TURN = auto()
+    STATE_DEPENDENCY = auto()
+    CANONICALIZATION = auto()
+    COREFERENCE = auto()
+    DISAMBIGUATION = auto()
+    INSUFFICIENT_INFORMATION = auto()
+    NO_DISTRACTION_TOOLS = auto()
+    THREE_DISTRACTION_TOOLS = auto()
+    TEN_DISTRACTION_TOOLS = auto()
+    ALL_TOOLS_AVAILABLE = auto()
+    TOOL_NAME_SCRAMBLED = auto()
+    TOOL_DESCRIPTION_SCRAMBLED = auto()
+    ARG_DESCRIPTION_SCRAMBLED = auto()
+    ARG_NAME_SCRAMBLED = auto()
+    ARG_TYPE_SCRAMBLED = auto()
+
+
+class ToolBackend(Enum):
+    DEFAULT = auto()
+
+
+@dataclass
+class SimpleColumnExpression:
+    column_name: str
+    op: Optional[str] = None
+    alias_name: Optional[str] = None
+
+    def alias(self, name: str) -> "SimpleColumnExpression":
+        self.alias_name = name
+        return self
+
+    def apply(self, row: Dict[str, Any]) -> None:
+        target = self.alias_name or self.column_name
+        value = row.get(self.column_name)
+        if self.op == "invert":
+            value = not value
+        row[target] = value
+
+    def __invert__(self) -> "SimpleColumnExpression":
+        return SimpleColumnExpression(column_name=self.column_name, op="invert")
+
+
+class SimpleDataFrame:
+    def __init__(self, rows: Iterable[Dict[str, Any]] = ()):
+        self.rows = [dict(row) for row in rows]
+
+    def to_dicts(self) -> List[Dict[str, Any]]:
+        return [dict(row) for row in self.rows]
+
+    def with_columns(self, expressions: Iterable[SimpleColumnExpression]) -> "SimpleDataFrame":
+        new_rows: List[Dict[str, Any]] = []
+        for row in self.rows:
+            new_row = dict(row)
+            for expr in expressions:
+                expr.apply(new_row)
+            new_rows.append(new_row)
+        return SimpleDataFrame(new_rows)
+
+    def __getitem__(self, key: str) -> List[Any]:
+        return [row.get(key) for row in self.rows]
+
+
+def _ensure_list(value: Any) -> List[Any]:
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _normalize_value(value: Any) -> Any:
+    if isinstance(value, Enum):
+        return value.name
+    if isinstance(value, list):
+        return [_normalize_value(item) for item in value]
+    return value
+
+
+def _initial_databases() -> Dict[ScenarioNamespace, List[Dict[str, Any]]]:
+    data = {ns: [] for ns in ScenarioNamespace}
+    data[ScenarioNamespace.SETTING] = [
+        {
+            "sandbox_message_index": 0,
+            "device_id": "uuid-my_phone",
+            "cellular": True,
+            "wifi": True,
+            "location_service": True,
+            "low_battery_mode": False,
+            "latitude": 37.334606,
+            "longitude": -122.009102,
+        }
+    ]
+    return data
+
+
+@dataclass
+class ExecutionContextStub:
+    tool_allow_list: Optional[List[str]] = None
+    tool_deny_list: Optional[List[str]] = None
+    tool_augmentation_list: List[ScenarioCategory] = field(default_factory=list)
+    trace_tool: bool = False
+    preferred_tool_backend: ToolBackend = ToolBackend.DEFAULT
+    databases: Dict[ScenarioNamespace, List[Dict[str, Any]]] = field(default_factory=_initial_databases)
+
+    def add_to_database(self, namespace: ScenarioNamespace, rows: Iterable[Dict[str, Any]]) -> None:
+        storage = self.databases.setdefault(namespace, [])
+        for row in rows:
+            storage.append({key: _normalize_value(value) for key, value in row.items()})
+
+    def update_database(self, namespace: ScenarioNamespace, dataframe: "SimpleDataFrame") -> None:
+        self.databases[namespace] = dataframe.to_dicts()
+
+    def get_database(self, namespace: ScenarioNamespace, **_: Any) -> SimpleDataFrame:
+        return SimpleDataFrame(self.databases.get(namespace, []))
+
+
+class SnapshotConstraintStub:
+    def __init__(
+        self,
+        database_namespace: ScenarioNamespace,
+        snapshot_constraint: Any,
+        target_dataframe: SimpleDataFrame,
+        column_similarity_measure: Optional[Dict[str, Any]] = None,
+        reference_milestone_node_index: Optional[int] = None,
+        **extra: Any,
+    ) -> None:
+        self.database_namespace = database_namespace
+        self.snapshot_constraint = snapshot_constraint
+        self.target_dataframe = target_dataframe
+        self.column_similarity_measure = column_similarity_measure
+        self.reference_milestone_node_index = reference_milestone_node_index
+        self.extra = extra
+
+
+class MilestoneStub:
+    def __init__(self, snapshot_constraints: Optional[List[SnapshotConstraintStub]] = None, **extra: Any):
+        self.snapshot_constraints = snapshot_constraints or []
+        self.extra = extra
+
+
+@dataclass
+class MilestoneMatcherStub:
+    milestones: List[MilestoneStub] = field(default_factory=list)
+
+
+@dataclass
+class MinefieldStub:
+    snapshot_constraints: List[Any] = field(default_factory=list)
+
+
+@dataclass
+class EvaluationStub:
+    milestone_matcher: MilestoneMatcherStub = field(default_factory=MilestoneMatcherStub)
+    minefield_matcher: MilestoneMatcherStub = field(default_factory=MilestoneMatcherStub)
+
+
+@dataclass
+class ScenarioStub:
+    starting_context: ExecutionContextStub = field(default_factory=ExecutionContextStub)
+    evaluation: EvaluationStub = field(default_factory=EvaluationStub)
+    max_messages: int = 30
+    categories: List[ScenarioCategory] = field(default_factory=list)
+
+
+@dataclass
+class ScenarioExtensionStub:
+    name: str
+    base_scenario: ScenarioStub
+    messages: List[Dict[str, Any]] = field(default_factory=list)
+    tool_allow_list: Optional[List[str]] = None
+    tool_deny_list: Optional[List[str]] = None
+    milestones: List[MilestoneStub] = field(default_factory=list)
+    milestone_edge_list: Optional[List[Tuple[int, int]]] = None
+    minefields: List[MinefieldStub] = field(default_factory=list)
+    minefield_edge_list: Optional[List[Tuple[int, int]]] = None
+    categories: List[ScenarioCategory] = field(default_factory=list)
+
+    def get_extended_scenario(self) -> Dict[str, ScenarioStub]:
+        scenario = ScenarioStub(
+            starting_context=ExecutionContextStub(
+                tool_allow_list=(
+                    list(self.base_scenario.starting_context.tool_allow_list)
+                    if self.base_scenario.starting_context.tool_allow_list is not None
+                    else None
+                ),
+                tool_deny_list=(
+                    list(self.base_scenario.starting_context.tool_deny_list)
+                    if self.base_scenario.starting_context.tool_deny_list is not None
+                    else None
+                ),
+                tool_augmentation_list=list(self.base_scenario.starting_context.tool_augmentation_list),
+                trace_tool=self.base_scenario.starting_context.trace_tool,
+                preferred_tool_backend=self.base_scenario.starting_context.preferred_tool_backend,
+                databases={
+                    ns: [
+                        {key: _normalize_value(value) for key, value in row.items()}
+                        for row in self.base_scenario.starting_context.databases.get(ns, [])
+                    ]
+                    for ns in ScenarioNamespace
+                },
+            ),
+            evaluation=EvaluationStub(
+                milestone_matcher=MilestoneMatcherStub(
+                    milestones=[
+                        MilestoneStub(snapshot_constraints=list(m.snapshot_constraints))
+                        for m in self.base_scenario.evaluation.milestone_matcher.milestones
+                    ]
+                ),
+                minefield_matcher=MilestoneMatcherStub(
+                    milestones=[
+                        MilestoneStub(snapshot_constraints=list(m.snapshot_constraints))
+                        for m in self.base_scenario.evaluation.minefield_matcher.milestones
+                    ]
+                ),
+            ),
+            max_messages=self.base_scenario.max_messages,
+            categories=list(self.base_scenario.categories),
+        )
+
+        scenario.starting_context.add_to_database(ScenarioNamespace.SANDBOX, self.messages)
+
+        if self.tool_allow_list is not None:
+            if scenario.starting_context.tool_allow_list is None:
+                scenario.starting_context.tool_allow_list = []
+            scenario.starting_context.tool_allow_list.extend(self.tool_allow_list)
+
+        if self.tool_deny_list is not None:
+            if scenario.starting_context.tool_deny_list is None:
+                scenario.starting_context.tool_deny_list = []
+            scenario.starting_context.tool_deny_list.extend(self.tool_deny_list)
+
+        scenario.evaluation = EvaluationStub(
+            milestone_matcher=MilestoneMatcherStub(milestones=list(self.milestones)),
+            minefield_matcher=MilestoneMatcherStub(milestones=list(self.minefields)),
+        )
+
+        scenario.categories.extend(self.categories)
+        return {self.name: scenario}
+
+
+# --------------------------------------------------------------------------- #
+# Loader implementation
+# --------------------------------------------------------------------------- #
+
+
+class ToolSandBoxLoader(BaseLoader):
+    def __init__(self) -> None:
+        self.project_root = Path(__file__).resolve().parents[3]
+        self.data_root = self.project_root / "pipeline" / "data" / "tool_sandbox"
+        self.tools_root = self.data_root / "tools"
+        self.scenarios_root = self.data_root / "scenarios"
+
+        self.tool_specs: Dict[str, ToolSpec] = self._parse_tool_specs()
+        self._ensure_stub_environment()
+        self.scenario_objects: Dict[str, ScenarioStub] = self._load_scenarios()
+
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
+    def load_questions(self) -> List[ToolSandboxQuestion]:
+        questions: List[ToolSandboxQuestion] = []
+        for name, scenario in self.scenario_objects.items():
+            try:
+                question = self._scenario_to_question(name, scenario)
+            except Exception:
+                continue
+            questions.append(question)
+        return questions
+
+    # ------------------------------------------------------------------ #
+    # Tool parsing
+    # ------------------------------------------------------------------ #
+    def _parse_tool_specs(self) -> Dict[str, ToolSpec]:
+        specs: Dict[str, ToolSpec] = {}
+        for path in sorted(self.tools_root.glob("*.py")):
+            if path.name == "__init__.py":
+                continue
+            module_name = path.stem
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+            for node in tree.body:
+                if not isinstance(node, ast.FunctionDef):
+                    continue
+                if not self._has_register_as_tool(node.decorator_list):
+                    continue
+                parameters = self._extract_parameters(node)
+                docstring = ast.get_docstring(node) or ""
+                specs[node.name] = ToolSpec(
+                    module=module_name,
+                    actual_name=node.name,
+                    docstring=docstring.strip(),
+                    parameters=parameters,
+                )
+        return specs
+
+    @staticmethod
+    def _has_register_as_tool(decorators: Iterable[ast.expr]) -> bool:
+        for dec in decorators:
+            if isinstance(dec, ast.Name) and dec.id == "register_as_tool":
+                return True
+            if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name) and dec.func.id == "register_as_tool":
+                return True
+        return False
+
+    @staticmethod
+    def _extract_parameters(node: ast.FunctionDef) -> Tuple[ToolParameter, ...]:
+        params: List[ToolParameter] = []
+        positional = list(node.args.args)
+        defaults = list(node.args.defaults)
+        default_start = len(positional) - len(defaults)
+
+        for idx, arg in enumerate(positional):
+            if arg.arg == "self":
+                continue
+            has_default = idx >= default_start
+            annotation = ToolSandBoxLoader._annotation_to_string(arg.annotation)
+            params.append(ToolParameter(arg.arg, annotation, has_default))
+
+        for kw_arg, kw_default in zip(node.args.kwonlyargs, node.args.kw_defaults or []):
+            has_default = kw_default is not None
+            annotation = ToolSandBoxLoader._annotation_to_string(kw_arg.annotation)
+            params.append(ToolParameter(kw_arg.arg, annotation, has_default))
+
+        return tuple(params)
+
+    @staticmethod
+    def _annotation_to_string(annotation: Optional[ast.expr]) -> Optional[str]:
+        if annotation is None:
+            return None
+        if isinstance(annotation, ast.Name):
+            return annotation.id
+        if isinstance(annotation, ast.Attribute):
+            value = ToolSandBoxLoader._annotation_to_string(annotation.value)
+            return f"{value}.{annotation.attr}" if value else annotation.attr
+        if isinstance(annotation, ast.Subscript):
+            value = ToolSandBoxLoader._annotation_to_string(annotation.value)
+            slice_value = ToolSandBoxLoader._annotation_to_string(annotation.slice)
+            if value and slice_value:
+                return f"{value}[{slice_value}]"
+        if isinstance(annotation, ast.Tuple):
+            elements = [
+                ToolSandBoxLoader._annotation_to_string(elt) or ""
+                for elt in annotation.elts
+            ]
+            return ", ".join(elements)
+        if isinstance(annotation, ast.Constant):
+            return str(annotation.value)
+        return None
+
+    # ------------------------------------------------------------------ #
+    # Stub environment setup
+    # ------------------------------------------------------------------ #
+    def _ensure_stub_environment(self) -> None:
+        if getattr(ToolSandBoxLoader, "_stubs_ready", False):
+            return
+
+        self._install_polars_stub()
+        self._install_toolsandbox_package()
+
+        ToolSandBoxLoader._stubs_ready = True
+
+    def _install_polars_stub(self) -> None:
+        if "polars" in sys.modules:
+            return
+
+        polars_module = ModuleType("polars")
+
+        def DataFrame(data=None, schema=None):
+            if isinstance(data, dict):
+                keys = list(data.keys())
+                if not keys:
+                    rows = []
+                else:
+                    first_value = data[keys[0]]
+                    if isinstance(first_value, (list, tuple)):
+                        length = len(first_value)
+                    else:
+                        length = 1
+                rows: List[Dict[str, Any]] = []
+                for idx in range(length):
+                    row: Dict[str, Any] = {}
+                    for key in keys:
+                        value = data[key]
+                        if isinstance(value, (list, tuple)):
+                            row[key] = value[idx]
+                        else:
+                            row[key] = value
+                    rows.append(row)
+            elif isinstance(data, list):
+                rows = [dict(row) for row in data]
+            elif data is None:
+                rows = []
+            else:
+                rows = list(data)
+            return SimpleDataFrame(rows)
+
+        def col(name: str) -> SimpleColumnExpression:
+            return SimpleColumnExpression(column_name=name)
+
+        polars_module.DataFrame = DataFrame
+        polars_module.col = col
+        polars_module.String = str
+        polars_module.Boolean = bool
+        polars_module.Float64 = float
+        polars_module.Int32 = int
+        polars_module.Enum = lambda values: list(values)
+
+        sys.modules["polars"] = polars_module
+
+    def _install_toolsandbox_package(self) -> None:
+        if "tool_sandbox" in sys.modules:
+            return
+
+        # Root package
+        package = ModuleType("tool_sandbox")
+        package.__path__ = [str(self.data_root)]
+        sys.modules["tool_sandbox"] = package
+
+        # Common package
+        common_pkg = ModuleType("tool_sandbox.common")
+        common_pkg.__path__ = []
+        sys.modules["tool_sandbox.common"] = common_pkg
+        setattr(package, "common", common_pkg)
+
+        # Execution context stub module
+        exec_mod = ModuleType("tool_sandbox.common.execution_context")
+        exec_mod.DatabaseNamespace = ScenarioNamespace
+        exec_mod.RoleType = RoleNamespace
+        exec_mod.ExecutionContext = ExecutionContextStub
+        exec_mod.get_current_context = lambda: None
+        exec_mod.set_current_context = lambda _: None
+        exec_mod.ScenarioCategories = ScenarioCategory
+        sys.modules["tool_sandbox.common.execution_context"] = exec_mod
+        setattr(common_pkg, "execution_context", exec_mod)
+
+        # Utils module
+        utils_mod = ModuleType("tool_sandbox.common.utils")
+
+        def deterministic_uuid(payload: str) -> str:
+            return f"uuid-{payload}"
+
+        def register_as_tool(visible_to=None, backend=ToolBackend.DEFAULT):
+            def decorator(func):
+                func.is_tool = True
+                func.visible_to = visible_to if visible_to is not None else (RoleNamespace.AGENT,)
+                func.backend = backend
+                return func
+            return decorator
+
+        import datetime as _datetime
+
+        utils_mod.deterministic_uuid = deterministic_uuid
+
+        def get_tomorrow_datetime() -> _datetime.datetime:
+            return _datetime.datetime.now() + _datetime.timedelta(days=1)
+
+        def get_next_iso_weekday_datetime(next_iso_weekday: int) -> _datetime.datetime:
+            today = _datetime.datetime.now()
+            current = today.isoweekday()
+            delta = (next_iso_weekday - current) % 7 or 7
+            return today + _datetime.timedelta(days=delta)
+
+        utils_mod.get_tomorrow_datetime = get_tomorrow_datetime
+        utils_mod.get_next_iso_weekday_datetime = get_next_iso_weekday_datetime
+        utils_mod.register_as_tool = register_as_tool
+        sys.modules["tool_sandbox.common.utils"] = utils_mod
+        setattr(common_pkg, "utils", utils_mod)
+
+        # Evaluation module
+        evaluation_mod = ModuleType("tool_sandbox.common.evaluation")
+        evaluation_mod.Milestone = MilestoneStub
+        evaluation_mod.MilestoneMatcher = MilestoneMatcherStub
+        evaluation_mod.SnapshotConstraint = SnapshotConstraintStub
+        evaluation_mod.Minefield = MinefieldStub
+        evaluation_mod.Evaluation = EvaluationStub
+        evaluation_mod.addition_similarity = lambda *_: "addition_similarity"
+        evaluation_mod.snapshot_similarity = lambda *_: "snapshot_similarity"
+        evaluation_mod.column_exact_match_similarity = lambda *_: "column_exact_match_similarity"
+        evaluation_mod.column_tool_trace_exact_match_similarity = lambda *_: "column_tool_trace_exact_match_similarity"
+        evaluation_mod.tool_trace_dependant_similarity = lambda *_: "tool_trace_dependant_similarity"
+        evaluation_mod.removal_similarity = lambda *_: "removal_similarity"
+        evaluation_mod.update_similarity = lambda *_: "update_similarity"
+        evaluation_mod.guardrail_similarity = lambda *_: "guardrail_similarity"
+        evaluation_mod.column_contains_similarity = lambda *_: "column_contains_similarity"
+        evaluation_mod.column_rouge_l_similarity = lambda *_: "column_rouge_l_similarity"
+        evaluation_mod.column_one_similarity = lambda *_: "column_one_similarity"
+        evaluation_mod.column_close_similarity = lambda *_: "column_close_similarity"
+        sys.modules["tool_sandbox.common.evaluation"] = evaluation_mod
+        setattr(common_pkg, "evaluation", evaluation_mod)
+
+        # Tool trace extractors module
+        tool_trace_mod = ModuleType("tool_sandbox.common.tool_trace_extractors")
+        tool_trace_mod.search_weather_around_lat_lon_temperature_extractor = lambda *_: "weather_extractor"
+        tool_trace_mod.current_temperature_extractor = lambda *_: "current_temperature"
+        tool_trace_mod.days_extractor = lambda *_: "days_extractor"
+        tool_trace_mod.lat_lon_dict_extractor = lambda *_: "lat_lon_dict"
+        tool_trace_mod.result_to_reminder_timestamp_lowerbound_extractor = lambda *_: "reminder_timestamp_lb"
+        tool_trace_mod.result_to_temperature_extractor = lambda *_: "temperature_value"
+        tool_trace_mod.result_to_timestamp0_extractor = lambda *_: "timestamp0"
+        tool_trace_mod.result_to_timestamp1_extractor = lambda *_: "timestamp1"
+
+        def _dynamic_extractor(name: str):
+            def _extractor(*args: Any, **kwargs: Any) -> str:
+                return name
+
+            return _extractor
+
+        def __getattr__(attr: str):
+            extractor = _dynamic_extractor(attr)
+            setattr(tool_trace_mod, attr, extractor)
+            return extractor
+
+        tool_trace_mod.__getattr__ = __getattr__  # type: ignore[attr-defined]
+        sys.modules["tool_sandbox.common.tool_trace_extractors"] = tool_trace_mod
+        setattr(common_pkg, "tool_trace_extractors", tool_trace_mod)
+
+        # Scenario module
+        scenario_mod = ModuleType("tool_sandbox.common.scenario")
+        scenario_mod.Scenario = ScenarioStub
+        scenario_mod.ScenarioExtension = ScenarioExtensionStub
+        scenario_mod.ScenarioCategories = ScenarioCategory
+        sys.modules["tool_sandbox.common.scenario"] = scenario_mod
+        setattr(common_pkg, "scenario", scenario_mod)
+
+        # Tool discovery module
+        discovery_mod = ModuleType("tool_sandbox.common.tool_discovery")
+        discovery_mod.ToolBackend = ToolBackend
+
+        def find_tools_by_module(module: ModuleType, preferred_tool_backend: ToolBackend) -> Dict[str, Any]:
+            functions: Dict[str, Any] = {}
+            for name, value in module.__dict__.items():
+                if callable(value) and getattr(value, "is_tool", False):
+                    functions[name] = value
+            for attr in dir(module):
+                sub = getattr(module, attr)
+                if isinstance(sub, ModuleType) and sub.__name__.startswith(module.__name__ + "."):
+                    functions.update(find_tools_by_module(sub, preferred_tool_backend))
+            return functions
+
+        def rank_tools_by_similarity(
+            target_tool_names: Optional[List[str]],
+            module: ModuleType,
+            preferred_tool_backend: ToolBackend,
+        ) -> List[str]:
+            all_tools = find_tools_by_module(module, preferred_tool_backend)
+            if not target_tool_names:
+                return [name for name in all_tools.keys()]
+
+            module_lookup: Dict[str, str] = {}
+            for name in all_tools:
+                spec = self.tool_specs.get(name)
+                module_lookup[name] = spec.module if spec else ""
+
+            target_modules = {module_lookup.get(name, "") for name in target_tool_names}
+            same_module: List[str] = []
+            other_module: List[str] = []
+            for name in all_tools:
+                if name in target_tool_names:
+                    continue
+                if module_lookup.get(name, "") in target_modules:
+                    same_module.append(name)
+                else:
+                    other_module.append(name)
+            same_module.sort()
+            other_module.sort()
+            return same_module + other_module
+
+        discovery_mod.find_tools_by_module = find_tools_by_module
+        discovery_mod.rank_tools_by_similarity = rank_tools_by_similarity
+
+        def get_all_tools(preferred_tool_backend: ToolBackend) -> Dict[str, Any]:
+            import tool_sandbox.tools  # type: ignore
+            return find_tools_by_module(tool_sandbox.tools, preferred_tool_backend)
+
+        def get_scrambled_tool_names(tools: Iterable[Any]) -> Dict[str, str]:
+            counters: Dict[str, int] = {}
+            mapping: Dict[str, str] = {}
+            for tool in sorted(tools, key=lambda t: f"{getattr(t, '__module__', '')}.{getattr(t, '__name__', '')}"):
+                module_name = getattr(tool, "__module__", "").split(".")[-1]
+                index = counters.get(module_name, 0)
+                mapping[tool.__name__] = f"{module_name}_{index}"
+                counters[module_name] = index + 1
+            return mapping
+
+        discovery_mod.get_all_tools = get_all_tools
+        discovery_mod.get_scrambled_tool_names = get_scrambled_tool_names
+        sys.modules["tool_sandbox.common.tool_discovery"] = discovery_mod
+        setattr(common_pkg, "tool_discovery", discovery_mod)
+
+        # Tools package and modules
+        tools_pkg = ModuleType("tool_sandbox.tools")
+        tools_pkg.__path__ = []
+        sys.modules["tool_sandbox.tools"] = tools_pkg
+        setattr(package, "tools", tools_pkg)
+
+        grouped: Dict[str, List[ToolSpec]] = {}
+        for spec in self.tool_specs.values():
+            grouped.setdefault(spec.module, []).append(spec)
+
+        for module_name, specs in grouped.items():
+            mod = ModuleType(f"tool_sandbox.tools.{module_name}")
+            mod.__dict__["__package__"] = "tool_sandbox.tools"
+            for spec in specs:
+                def _factory(name: str):
+                    def _tool(*args: Any, **kwargs: Any) -> None:
+                        return None
+                    _tool.__name__ = name
+                    _tool.__module__ = mod.__name__
+                    _tool.is_tool = True
+                    _tool.visible_to = (RoleNamespace.AGENT,)
+                    _tool.backend = ToolBackend.DEFAULT
+                    return _tool
+                tool_func = _factory(spec.actual_name)
+                mod.__dict__[spec.actual_name] = tool_func
+            sys.modules[mod.__name__] = mod
+            setattr(tools_pkg, module_name, mod)
+
+    # ------------------------------------------------------------------ #
+    # Scenario loading
+    # ------------------------------------------------------------------ #
+    def _load_scenarios(self) -> Dict[str, ScenarioStub]:
+        random.seed(0)
+        module_name = "tool_sandbox.scenarios"
+        scenarios_init = self.scenarios_root / "__init__.py"
+        spec = importlib.util.spec_from_file_location(module_name, scenarios_init)
+        module = importlib.util.module_from_spec(spec)  # type: ignore
+        module.__package__ = "tool_sandbox"
+        module.__path__ = [str(self.scenarios_root)]
+        sys.modules[module_name] = module
+        assert spec.loader is not None
+        spec.loader.exec_module(module)  # type: ignore
+
+        named_scenarios = getattr(module, "named_scenarios")
+        scenarios = named_scenarios(preferred_tool_backend=ToolBackend.DEFAULT)
+        return scenarios
+
+    # ------------------------------------------------------------------ #
+    # Scenario conversion helpers
+    # ------------------------------------------------------------------ #
+    def _scenario_to_question(self, name: str, scenario: ScenarioStub) -> ToolSandboxQuestion:
+        sandbox_messages = scenario.starting_context.databases.get(ScenarioNamespace.SANDBOX, [])
+        system_to_agent = self._find_latest_message(sandbox_messages, "SYSTEM", "AGENT")
+        system_to_user = self._find_latest_message(sandbox_messages, "SYSTEM", "USER")
+        first_user_message = self._find_first_message(sandbox_messages, "USER", "AGENT")
+        import_snippet = self._find_latest_message(sandbox_messages, "SYSTEM", "EXECUTION_ENVIRONMENT")
+
+        instruction_parts = [f"Scenario: {name}"]
+        if system_to_user:
+            instruction_parts.append("\nUSER Task Description (system→user):\n" + system_to_user)
+        if system_to_agent:
+            instruction_parts.append("\nSystem Policy (system→agent):\n" + system_to_agent)
+        if first_user_message:
+            instruction_parts.append("\nFirst user utterance:\n" + first_user_message)
+        instruction = "\n\n".join(instruction_parts)
+
+        augmentations = scenario.starting_context.tool_augmentation_list or []
+        augmentations_set = {cat.name for cat in augmentations}
+
+        available_functions = self._build_available_functions(
+            scenario.starting_context.tool_allow_list or [],
+            augmentations_set,
+        )
+
+        gt_calls, final_response = self._extract_ground_truth(name, scenario)
+        gt_conversation = []
+        if import_snippet:
+            gt_conversation.append({"role": "observation", "content": import_snippet})
+        for call in gt_calls:
+            agent_name = call["agent_name"]
+            arguments = call["arguments"]
+            gt_conversation.append(
+                {
+                    "role": "assistant",
+                    "function_call": [
+                        {
+                            "name": agent_name,
+                            "arguments": arguments,
+                        }
+                    ],
+                }
+            )
+            gt_conversation.append(
+                {
+                    "role": "observation",
+                    "content": json.dumps({"result": "success"}, ensure_ascii=False),
+                }
+            )
+        if final_response:
+            gt_conversation.append({"role": "assistant", "content": final_response})
+
+        meta = {
+            "categories": [category.name for category in scenario.categories],
+            "tool_augmentation_list": list(augmentations_set),
+        }
+
+        return ToolSandboxQuestion(
+            question_id=name,
+            instruction=instruction,
+            gt_conv_traj=gt_conversation,
+            available_function_list=available_functions,
+            expected_output=final_response or "",
+            benchmark=Benchmark.TOOL_SANDBOX,
+            meta=meta,
+        )
+
+    def _find_latest_message(
+        self,
+        messages: List[Dict[str, Any]],
+        sender: str,
+        recipient: str,
+    ) -> Optional[str]:
+        for message in reversed(messages):
+            if message.get("sender") == sender and message.get("recipient") == recipient:
+                content = message.get("content")
+                if content:
+                    return content
+        return None
+
+    def _find_first_message(
+        self,
+        messages: List[Dict[str, Any]],
+        sender: str,
+        recipient: str,
+    ) -> Optional[str]:
+        for message in messages:
+            if message.get("sender") == sender and message.get("recipient") == recipient:
+                content = message.get("content")
+                if content:
+                    return content
+        return None
+
+    def _build_available_functions(
+        self,
+        tool_names: List[str],
+        augmentations: set,
+    ) -> List[Dict[str, Any]]:
+        functions: List[Dict[str, Any]] = []
+        scrambled_mapping = self._scrambled_name_mapping() if "TOOL_NAME_SCRAMBLED" in augmentations else {}
+
+        for actual_name in tool_names:
+            spec = self.tool_specs.get(actual_name)
+            if not spec:
+                continue
+
+            agent_name = scrambled_mapping.get(actual_name, actual_name)
+            description = ""
+            if spec.docstring and "TOOL_DESCRIPTION_SCRAMBLED" not in augmentations:
+                description = spec.docstring.split("\n\n")[0].strip()
+
+            properties: Dict[str, Any] = {}
+            required: List[str] = []
+            for idx, param in enumerate(spec.parameters, start=1):
+                param_name = param.name
+                if "ARG_NAME_SCRAMBLED" in augmentations:
+                    param_name = f"arg_{idx}"
+                param_type = "string"
+                if "ARG_TYPE_SCRAMBLED" not in augmentations and param.annotation:
+                    annotation = param.annotation.lower()
+                    if "int" in annotation and "float" not in annotation:
+                        param_type = "integer"
+                    elif "float" in annotation or "number" in annotation or "timestamp" in annotation:
+                        param_type = "number"
+                    elif "bool" in annotation:
+                        param_type = "boolean"
+                    elif "list" in annotation or "tuple" in annotation:
+                        param_type = "array"
+                    elif "dict" in annotation:
+                        param_type = "object"
+                properties[param_name] = {"type": param_type}
+                if not param.has_default:
+                    required.append(param_name)
+
+            functions.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": agent_name,
+                        "description": description,
+                        "parameters": {
+                            "type": "object",
+                            "properties": properties,
+                            "required": required,
+                        },
+                    },
+                }
+            )
+
+        return functions
+
+    def _scrambled_name_mapping(self) -> Dict[str, str]:
+        import tool_sandbox.common.tool_discovery as discovery  # type: ignore
+        import tool_sandbox.tools  # type: ignore
+
+        all_tools = discovery.get_all_tools(ToolBackend.DEFAULT)
+        return discovery.get_scrambled_tool_names(all_tools.values())
+
+    def _extract_ground_truth(
+        self,
+        scenario_name: str,
+        scenario: ScenarioStub,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        tool_calls: List[Dict[str, Any]] = []
+        final_response: Optional[str] = None
+        augmentations = scenario.starting_context.tool_augmentation_list or []
+        augmentations_set = {cat.name for cat in augmentations}
+        scrambled_mapping = self._scrambled_name_mapping() if "TOOL_NAME_SCRAMBLED" in augmentations_set else {}
+
+        milestones = scenario.evaluation.milestone_matcher.milestones
+        for milestone in milestones:
+            for constraint in milestone.snapshot_constraints:
+                if constraint.database_namespace == ScenarioNamespace.SANDBOX:
+                    for row in constraint.target_dataframe.to_dicts():
+                        tool_trace_str = row.get("tool_trace")
+                        if tool_trace_str:
+                            parsed = json.loads(tool_trace_str)
+                            traces = parsed if isinstance(parsed, list) else [parsed]
+                            for trace in traces:
+                                actual_name = trace["tool_name"]
+                                agent_name = scrambled_mapping.get(actual_name, actual_name)
+                                tool_calls.append(
+                                    {
+                                        "agent_name": agent_name,
+                                        "arguments": trace.get("arguments", {}),
+                                    }
+                                )
+                        sender = row.get("sender")
+                        recipient = row.get("recipient")
+                        content = row.get("content")
+                        if isinstance(sender, Enum):
+                            sender = sender.name
+                        if isinstance(recipient, Enum):
+                            recipient = recipient.name
+                        if sender == "AGENT" and recipient == "USER" and content:
+                            final_response = content
+        if not tool_calls:
+            inferred = self._infer_tool_from_name(
+                scenario_name,
+                scenario.starting_context.tool_allow_list or [],
+                augmentations_set,
+                scrambled_mapping,
+            )
+            if inferred is not None:
+                tool_calls.append(inferred)
+
+        return tool_calls, final_response
+
+    def _infer_tool_from_name(
+        self,
+        scenario_name: str,
+        tool_allow_list: List[str],
+        augmentations: set,
+        scrambled_mapping: Dict[str, str],
+    ) -> Optional[Dict[str, Any]]:
+        hints = [
+            ("add_contact", "add_contact"),
+            ("remove_contact", "remove_contact"),
+            ("modify_contact", "modify_contact"),
+            ("add_reminder", "add_reminder"),
+            ("remove_reminder", "remove_reminder"),
+            ("modify_reminder", "modify_reminder"),
+            ("send_message", "send_message_with_phone_number"),
+            ("turn_on_wifi", "set_wifi_status"),
+            ("turn_off_wifi", "set_wifi_status"),
+            ("turn_on_cellular", "set_cellular_service_status"),
+            ("turn_off_cellular", "set_cellular_service_status"),
+            ("turn_on_location", "set_location_service_status"),
+            ("turn_off_location", "set_location_service_status"),
+            ("turn_on_low_battery_mode", "set_low_battery_mode_status"),
+            ("turn_off_low_battery_mode", "set_low_battery_mode_status"),
+        ]
+        lower_name = scenario_name.lower()
+        for key, tool in hints:
+            if key in lower_name and tool in tool_allow_list:
+                agent_name = (
+                    scrambled_mapping.get(tool, tool)
+                    if "TOOL_NAME_SCRAMBLED" in augmentations
+                    else tool
+                )
+                return {"agent_name": agent_name, "arguments": {}}
+        return None

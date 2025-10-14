@@ -20,8 +20,8 @@ class GPTModel:
         self.model_name = model_name
         if is_user:
             self.client = OpenAI(
-                api_key=os.getenv("USER_API_KEY"),
-                base_url=os.getenv("USER_BASE_URL")
+                api_key=os.getenv("API_KEY"),
+                base_url=os.getenv("BASE_URL")
             )
         else:
             self.client = OpenAI(

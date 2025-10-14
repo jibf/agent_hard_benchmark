@@ -1,8 +1,18 @@
 from enum import Enum
-from pydantic import BaseModel
-from typing import Optional, Dict, List, Any, Union
 import re
 import json
+from typing import Optional, Dict, List, Any, Union
+
+try:
+    from pydantic import BaseModel
+except ModuleNotFoundError:
+    class BaseModel:  # pragma: no cover - lightweight fallback
+        def __init__(self, **kwargs: Any) -> None:
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+        def dict(self) -> Dict[str, Any]:
+            return self.__dict__
 
 class Benchmark(Enum):
     TAU_BENCH = "tau-bench"
@@ -92,6 +102,10 @@ class NexusBenchQuestion(FormattedQuestion):
 
 class ToolSandboxQuestion(FormattedQuestion):
     expected_output: Optional[str] = None
+    starting_messages: Optional[List[Dict[str, Any]]] = None
+    initial_databases: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    milestones: Optional[List[Dict[str, Any]]] = None
+    minefields: Optional[List[Dict[str, Any]]] = None
 
 class DrafterBenchQuestion(FormattedQuestion):
     agent_system_prompt: str    # system prompt for the agent
