@@ -23,7 +23,11 @@ def execute_code(code_string):
         exec(code_string, variables)
         signal.alarm(0)
         code_information = copy.deepcopy(variables["testf"].functions.taskinformation)
-    except Exception as e:
+    except SystemExit:
+        signal.alarm(0)
+        code_information = []
+    except Exception:
+        signal.alarm(0)
         code_information = []
     return code_information
 

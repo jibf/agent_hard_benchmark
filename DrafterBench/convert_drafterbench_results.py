@@ -31,8 +31,19 @@ model_path_to_name = {
     "deepseek-ai/DeepSeek-R1-0528": "DeepSeek-R1-0528",
     "deepseek-ai/DeepSeek-V3.1-thinking-off": "DeepSeek-V3.1-thinking-off",
     "deepseek-ai/DeepSeek-V3.1-thinking-on": "DeepSeek-V3.1-thinking-on",
+    "deepseek-ai/DeepSeek-V3.1-Terminus-thinking-off": "DeepSeek-V3.1-Terminus-thinking-off",
+    "deepseek-ai/DeepSeek-V3.1-Terminus-thinking-on": "DeepSeek-V3.1-Terminus-thinking-on",
+    "deepseek-ai/DeepSeek-V3.2-Exp-thinking-off": "DeepSeek-V3.2-Exp-thinking-off",
+    "deepseek-ai/DeepSeek-V3.2-Exp-thinking-on": "DeepSeek-V3.2-Exp-thinking-on",
     "anthropic/claude-4-sonnet-thinking-on-10k": "claude-4-sonnet-thinking-on-10k",
-    "anthropic/claude-4-sonnet-thinking-off": "claude-4-sonnet-thinking-off"
+    "anthropic/claude-4-sonnet-thinking-off": "claude-4-sonnet-thinking-off",
+    "anthropic/claude-4-opus-thinking-off": "claude-4-opus-thinking-off",
+    "anthropic/claude-4-opus-thinking-on-10k": "claude-4-opus-thinking-on-10k",
+    "anthropic/claude-4.5-sonnet-thinking-off": "claude-4.5-sonnet-thinking-off",
+    "anthropic/claude-4.5-sonnet-thinking-on-10k": "claude-4.5-sonnet-thinking-on-10k",
+    "google/gemini-2.5-flash-thinking-off": "gemini-2.5-flash-thinking-off",
+    "google/gemini-2.5-flash-thinking-on": "gemini-2.5-flash-thinking-on",
+    "google/gemini-2.5-pro-thinking-on": "gemini-2.5-pro-thinking-on",
 }
 
 
@@ -164,7 +175,10 @@ def convert_drafterbench_file(input_file: str, output_dir: str, model_path: str 
         model_path = extract_model_path_from_filename(dir_name)
     
     # Get model_name from mapping
-    model_name = model_path_to_name[model_path]
+    if model_path not in model_path_to_name:
+        model_name = model_path.split('/')[-1]
+    else:
+        model_name = model_path_to_name[model_path]
     
     # Group results by subtask
     subtask_groups = {}
