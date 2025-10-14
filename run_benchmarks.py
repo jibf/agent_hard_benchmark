@@ -322,7 +322,7 @@ class BenchmarkRunner:
         benchmark_output_dir = self.output_dir / benchmark_name
         benchmark_output_dir.mkdir(parents=True, exist_ok=True)
 
-        provider = self.get_provider_from_model()
+        provider = "openai"
 
         # Extract model name without provider prefix
         model_safe_name = self.model_name.replace("/", "_")
