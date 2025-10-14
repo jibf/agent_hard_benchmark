@@ -11,10 +11,13 @@ def convert_input_argument(**kwargs):
     if messages is not None:
         for message in messages:
             model_extra = getattr(message, "model_extra", None)
-            if model_extra is None or model_extra.get("reasoning_content", None) is None:
+            if model_extra is None:
                 continue
             # remove reasoning content
-            model_extra["reasoning_content"] = None
+            if model_extra.get("reasoning_content", None) is not None:
+                model_extra["reasoning_content"] = None
+            if model_extra.get("reasoning", None) is not None:
+                model_extra["reasoning"] = None
 
     kwargs["max_tokens"] = 16384
 
