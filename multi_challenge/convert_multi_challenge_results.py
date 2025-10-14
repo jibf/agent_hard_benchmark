@@ -58,7 +58,8 @@ def extract_model_path_from_filename(filename: str) -> str:
         'Qwen235B_instruct': 'togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8',
         'qwen_thinking': 'togetherai/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8',
     }
-    
+    if base_name not in model_mapping:
+        return base_name.replace('_', '/')
     return model_mapping[base_name]
 
 
@@ -131,7 +132,10 @@ def convert_multi_challenge_file(input_file: str, output_dir: str, model_path: s
         model_path = extract_model_path_from_filename(filename)
     
     # Get model_name from mapping
-    model_name = model_path_to_name[model_path]
+    if model_path not in model_path_to_name:
+        model_name = model_path.split("/")[-1]
+    else:
+        model_name = model_path_to_name[model_path]
     
     # Create output directory structure
     output_base_dir = os.path.join(output_dir, "multi_challenge", model_path.replace('/', '_'))
