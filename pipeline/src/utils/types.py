@@ -23,6 +23,7 @@ class Benchmark(Enum):
     COMPLEX_FUNC_BENCH = "complex-func-bench"
     DRAFTER_BENCH = "DrafterBench"
     BFCL = "BFCL"
+    BFCL_V4 = "BFCLv4"
     MULTI_CHALLENGE = "multi_challenge"
     
     def __str__(self):
@@ -101,7 +102,7 @@ class NexusBenchQuestion(FormattedQuestion):
 
 
 class ToolSandboxQuestion(FormattedQuestion):
-    expected_output: Optional[str] = None
+    user_system_prompt: str
     starting_messages: Optional[List[Dict[str, Any]]] = None
     initial_databases: Optional[Dict[str, List[Dict[str, Any]]]] = None
     milestones: Optional[List[Dict[str, Any]]] = None
@@ -129,6 +130,10 @@ class BFCLQuestion(FormattedQuestion):
     exclude_state_log: bool = False            # Whether to exclude state logging for multi-turn
     default_states: Optional[str] = None        # Human-readable snapshot of tool default states
 
+
+class BFCLv4Question(BFCLQuestion):
+    sources: List[Dict] = []
+    memory_context: List = []
 
 
 class MultiChallengeQuestion(FormattedQuestion):

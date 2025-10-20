@@ -7,6 +7,7 @@ from .tool_sandbox_loader import ToolSandBoxLoader
 from .complex_func_bench_loader import ComplexFuncBenchLoader
 from .drafter_bench_loader import DrafterBenchLoader
 from .bfcl_loader import BfclLoader
+from .bfcl_v4_loader import BfclV4Loader
 from .multi_challenge_loader import MultiChallengeLoader
 
 from ..utils.types import Benchmark
@@ -21,6 +22,7 @@ def get_bench_loader(benchmark: Benchmark):
         Benchmark.DRAFTER_BENCH: DrafterBenchLoader,
         Benchmark.ACE_BENCH: AceBenchLoader,
         Benchmark.BFCL: BfclLoader,
+        Benchmark.BFCL_V4: BfclV4Loader,
         Benchmark.MULTI_CHALLENGE: MultiChallengeLoader,
         Benchmark.TOOL_SANDBOX: ToolSandBoxLoader
     }

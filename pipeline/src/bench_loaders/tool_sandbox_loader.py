@@ -31,7 +31,11 @@ if str(PIPELINE_DATA_ROOT) not in os.sys.path:
 
 from tool_sandbox.scenarios import named_scenarios
 from tool_sandbox.common.tool_discovery import ToolBackend, get_all_tools
-from tool_sandbox.common.execution_context import DatabaseNamespace, RoleType, new_context
+from tool_sandbox.common.execution_context import (
+    DatabaseNamespace,
+    RoleType,
+    new_context,
+)
 from tool_sandbox.common.scenario import Scenario
 from tool_sandbox.common.tool_conversion import convert_to_openai_tools
 
@@ -58,9 +62,16 @@ class ToolSandBoxLoader(BaseLoader):
         return questions
 
     def _convert_scenario_to_question(self, scenario_name: str, scenario: Scenario) -> ToolSandboxQuestion:
-        print("="*10, scenario_name, "="*10)
-
         starting_context = scenario.starting_context
+        agent_to_execution_name = starting_context.get_agent_to_execution_facing_tool_name()
+        actual_to_agent_name = {
+            execution_name: agent_name
+            for agent_name, execution_name in agent_to_execution_name.items()
+        }
+        tool_names_scrambled = any(
+            agent_name != execution_name
+            for agent_name, execution_name in agent_to_execution_name.items()
+        )
 
         starting_db = starting_context.get_database(
             DatabaseNamespace.SANDBOX,
@@ -78,7 +89,8 @@ class ToolSandBoxLoader(BaseLoader):
             available_functions = convert_to_openai_tools(available_tools)
         
         # 2. Extract instruction (to the user model)
-        
+        instruction = None
+        user_system_prompt = None
         for i in range(len(starting_db)-1, -1, -1):      # fetch the last message sent from the system to the user
             entry = starting_db[i]
             if entry["sender"][0] == RoleType.SYSTEM and entry["recipient"][0] == RoleType.USER:
@@ -95,14 +107,14 @@ class ToolSandBoxLoader(BaseLoader):
         # 3. Extract milestone and minefield and serialize them.
         # TODO: add more context, e.g., description of each matching method
 
-
-
-
         evaluation = scenario.evaluation
         milestone_matcher = evaluation.milestone_matcher
         minefield_matcher = evaluation.minefield_matcher
         milestones = self._remove_irrelevants_from_milestone(self._serialize_milestones(milestone_matcher.milestones))
         minefields = self._remove_irrelevants_from_milestone(self._serialize_milestones(minefield_matcher.milestones))
+        if tool_names_scrambled:
+            milestones = self._anonymize_tool_name_references(milestones, actual_to_agent_name)
+            minefields = self._anonymize_tool_name_references(minefields, actual_to_agent_name)
 
         #4. Extract initial status of relevant database entries, adaptively to each scenario
         all_initial_databases = {
@@ -120,8 +132,8 @@ class ToolSandBoxLoader(BaseLoader):
             if not milestones:
                 return
             for milestone in milestones:
-                for constraint in getattr(milestone.snapshot_constraints, "snapshot_constraints", []):
-                    if constraint.target_dataframe:
+                for constraint in milestone.snapshot_constraints:
+                    if constraint.target_dataframe is not None and not constraint.target_dataframe.is_empty():
                         relevant_namespaces.add(constraint.database_namespace)
                 guardrail_list = getattr(milestone, "guardrail_database_list", None)
                 if guardrail_list:
@@ -139,19 +151,19 @@ class ToolSandBoxLoader(BaseLoader):
             rows = all_initial_databases.get(namespace.value)
             if rows:
                 initial_databases[namespace.value] = rows
-
-
-        import pdb; pdb.set_trace()
-
-        # return ToolSandboxQuestion(
-        #     question_id=scenario_name,
-        #     instruction=instruction,
-        #     available_function_list=available_functions,
-        #     benchmark=Benchmark.TOOL_SANDBOX,
-        #     initial_databases=initial_databases
-        #     milestones=milestones,
-        #     minefields=minefields
-        # )
+        
+        return ToolSandboxQuestion(
+            benchmark=Benchmark.TOOL_SANDBOX,
+            task_name=scenario_name,
+            question_id=scenario_name,
+            instruction=instruction,
+            user_system_prompt=user_system_prompt,
+            gt_conv_traj=[],
+            available_function_list=available_functions,
+            initial_databases=initial_databases,
+            milestones=milestones,
+            minefields=minefields
+        )
     
 
 
@@ -177,6 +189,71 @@ class ToolSandBoxLoader(BaseLoader):
             entry["snapshot_constraints"] = new_snapshot_constraints
         
         return milestone
+
+    def _anonymize_tool_name_references(
+        self,
+        milestones: List[Dict[str, Any]],
+        actual_to_agent_name: Dict[str, str],
+    ) -> List[Dict[str, Any]]:
+        if not milestones or not actual_to_agent_name:
+            return milestones
+        anonymized = copy.deepcopy(milestones)
+        for milestone in anonymized:
+            constraints = milestone.get("snapshot_constraints", [])
+            for constraint in constraints:
+                target_rows = constraint.get("target_dataframe")
+                if not isinstance(target_rows, list):
+                    continue
+                for row in target_rows:
+                    if isinstance(row, dict):
+                        self._anonymize_tool_fields(row, actual_to_agent_name)
+        return anonymized
+
+    def _anonymize_tool_fields(
+        self,
+        row: Dict[str, Any],
+        actual_to_agent_name: Dict[str, str],
+    ) -> None:
+        for key, value in list(row.items()):
+            if key == "tool_trace":
+                row[key] = self._anonymize_tool_trace_value(value, actual_to_agent_name)
+            elif key in {"tool_name", "openai_function_name"} and isinstance(value, str):
+                row[key] = actual_to_agent_name.get(value, value)
+            elif isinstance(value, dict):
+                self._anonymize_tool_fields(value, actual_to_agent_name)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        self._anonymize_tool_fields(item, actual_to_agent_name)
+
+    def _anonymize_tool_trace_value(
+        self,
+        trace_value: Any,
+        actual_to_agent_name: Dict[str, str],
+    ) -> Any:
+        if isinstance(trace_value, str):
+            try:
+                parsed = json.loads(trace_value)
+            except json.JSONDecodeError:
+                return trace_value
+            anonymized = self._anonymize_tool_trace_value(parsed, actual_to_agent_name)
+            return json.dumps(anonymized, ensure_ascii=False, separators=(",", ":"))
+        if isinstance(trace_value, list):
+            return [
+                self._anonymize_tool_trace_value(item, actual_to_agent_name)
+                for item in trace_value
+            ]
+        if isinstance(trace_value, dict):
+            updated: Dict[str, Any] = {}
+            for key, value in trace_value.items():
+                if key == "tool_name" and isinstance(value, str):
+                    updated[key] = actual_to_agent_name.get(value, value)
+                else:
+                    updated[key] = self._anonymize_tool_trace_value(
+                        value, actual_to_agent_name
+                    )
+            return updated
+        return trace_value
 
     def _find_message(
         self,
