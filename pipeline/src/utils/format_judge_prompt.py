@@ -6,9 +6,17 @@ import re
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.utils.types import FormattedQuestion, Benchmark, LLMJudgeStep
 from src.prompts import (
-    tau_bench_prompt, tau2_bench_prompt, ace_bench_prompt,
-    nexus_bench_prompt, tool_sandbox_prompt, complex_func_bench_prompt,
-    drafter_bench_prompt, bfcl_prompt, multi_challenge_prompt, universal_prompt
+    tau_bench_prompt,
+    tau2_bench_prompt,
+    ace_bench_prompt,
+    nexus_bench_prompt,
+    tool_sandbox_prompt,
+    complex_func_bench_prompt,
+    drafter_bench_prompt,
+    bfcl_prompt,
+    multi_challenge_prompt,
+    universal_prompt,
+    bfcl_v4_prompt,
 )
 
 
@@ -21,6 +29,7 @@ PROMPT_MODULES = {
     Benchmark.COMPLEX_FUNC_BENCH: complex_func_bench_prompt,
     Benchmark.DRAFTER_BENCH: drafter_bench_prompt,
     Benchmark.BFCL: bfcl_prompt,
+    Benchmark.BFCL_V4: bfcl_v4_prompt,
     Benchmark.MULTI_CHALLENGE: multi_challenge_prompt
 }
 
@@ -87,4 +96,3 @@ def _serialize_value(value):
         return value.value
     else:
         return str(value)
-

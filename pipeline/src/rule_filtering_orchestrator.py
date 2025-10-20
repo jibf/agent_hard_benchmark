@@ -21,6 +21,7 @@ class RuleFilteringOrchestrator:
             Benchmark.ACE_BENCH: ACEBenchFilter(),
             Benchmark.COMPLEX_FUNC_BENCH: ComplexFuncBenchFilter(),
             Benchmark.BFCL: BFCLFilter(),
+            Benchmark.BFCL_V4: BFCLFilter(),
             Benchmark.NEXUS_BENCH: NexusBenchFilter(),
             Benchmark.TAU_BENCH: TAUBenchFilter(),
             Benchmark.TAU2_BENCH: TAU2BenchFilter()
@@ -129,4 +130,3 @@ class RuleFilteringOrchestrator:
             print(f"Saved {len(samples)} samples to {file_path}")
         except Exception as e:
             print(f"Error saving to {file_path}: {e}")
-

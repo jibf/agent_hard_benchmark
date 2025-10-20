@@ -132,7 +132,7 @@ class BFCLQuestion(FormattedQuestion):
 
 
 class BFCLv4Question(BFCLQuestion):
-    sources: List[Dict] = []
+    sources: Any = []
     memory_context: List = []
 
 
