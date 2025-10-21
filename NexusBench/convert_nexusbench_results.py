@@ -25,6 +25,8 @@ model_path_to_name = {
     "togetherai/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8": "Qwen3-235B-A22B-Thinking-2507-FP8",
     "togetherai/Qwen/Qwen3-235B-A22B-FP8": "Qwen3-235B-A22B-FP8",
     "togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8": "Qwen3-235B-A22B-Instruct-2507-FP8",
+    "togetherai/openai/gpt-oss-20b": "gpt-oss-20b",
+    "togetherai/openai/gpt-oss-120b": "gpt-oss-120b",
     "openai/o4-mini-high": "o4-mini-high",
     "openai/o3-high": "o3-high",
     "openai/gpt-4o-20240806": "gpt-4o-20240806",
@@ -32,6 +34,8 @@ model_path_to_name = {
     "openai/gpt-4.1": "gpt-4.1",
     "openai/gpt-4.1-mini": "gpt-4.1-mini",
     "openai/gpt-4.1-nano": "gpt-4.1-nano",
+    "openai/gpt-5": "gpt-5",
+    "openai/gpt-5-nano": "gpt-5-nano",
     "deepseek-ai/DeepSeek-V3-0324": "DeepSeek-V3-0324",
     "deepseek-ai/DeepSeek-R1-0528": "DeepSeek-R1-0528",
     "anthropic/claude-4-sonnet-thinking-on-10k": "claude-4-sonnet-thinking-on-10k",
@@ -58,6 +62,8 @@ def extract_model_path_from_filename(filename: str) -> str:
             'togetherai-Qwen-Qwen3-235B-A22B-Thinking-2507-FP8': 'togetherai/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8',
             'togetherai-Qwen-Qwen3-235B-A22B-Instruct-2507-FP8': 'togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8',
             'togetherai-moonshotai-Kimi-K2-Instruct': 'togetherai/moonshotai/Kimi-K2-Instruct',
+            'togetherai-openai-gpt-oss-20b': 'togetherai/openai/gpt-oss-20b',
+            'togetherai-openai-gpt-oss-120b': 'togetherai/openai/gpt-oss-120b',
             'deepseek-ai-DeepSeek-R1-0528': 'deepseek-ai/DeepSeek-R1-0528',
             'deepseek-ai-DeepSeek-V3-0324': 'deepseek-ai/DeepSeek-V3-0324',
             'openai-o3-high': 'openai/o3-high',
@@ -66,6 +72,9 @@ def extract_model_path_from_filename(filename: str) -> str:
             'openai-gpt-4.1': 'openai/gpt-4.1',
             'openai-gpt-4.1-mini': 'openai/gpt-4.1-mini',
             'openai-gpt-4.1-nano': 'openai/gpt-4.1-nano',
+            'openai-gpt-5': 'openai/gpt-5',
+            'openai-gpt-5-nano': 'openai/gpt-5-nano',
+
         }
         # Return mapped value if explicitly provided above
         if model_part in model_mapping:
