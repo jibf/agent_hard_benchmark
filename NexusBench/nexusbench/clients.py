@@ -134,7 +134,7 @@ class OpenAIFCClient(BaseClient):
                 tools=prompt["tools"],
                 tool_choice="auto",
                 max_tokens=2048,
-                temperature=0.0,
+                temperature=1.0 if "gpt-5" in model.lower() else 0.0,
                 parallel_tool_calls=False,
             )
         return response
