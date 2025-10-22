@@ -23,7 +23,7 @@ class Benchmark(Enum):
     COMPLEX_FUNC_BENCH = "complex-func-bench"
     DRAFTER_BENCH = "DrafterBench"
     BFCL = "BFCL"
-    BFCL_V4 = "BFCLv4"
+    BFCL_V4 = "BFCL_V4"
     MULTI_CHALLENGE = "multi_challenge"
     
     def __str__(self):
@@ -134,6 +134,7 @@ class BFCLQuestion(FormattedQuestion):
 class BFCLv4Question(BFCLQuestion):
     sources: Any = []
     memory_context: List = []
+    question_turns: Optional[List[List[Dict[str, Any]]]] = None
 
 
 class MultiChallengeQuestion(FormattedQuestion):

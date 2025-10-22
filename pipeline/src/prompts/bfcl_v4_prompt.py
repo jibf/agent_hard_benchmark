@@ -18,7 +18,7 @@ You will be provided with the following information:
 
 * **Question**: The question that was asked to the LLM model. It often requires accessing previous conversation memory to answer. 
 * **Ground-Truth Answer**: The canonical answer string(s) that must be contained (after normalization) in a model’s output for it to be marked correct. If multiple ground-truth answers are provided, matching any one of them is sufficient for the sample to be considered correct.
-  Normalization converts text to lowercase and strips punctuation marks such as ,./-\_*^() so that superficial differences (e.g., “eiffel-tower” vs “Eiffel Tower”) do not affect scoring.
+  Normalization converts text to lowercase and strips punctuation marks such as ,./-\\_*^() so that superficial differences (e.g., “eiffel-tower” vs “Eiffel Tower”) do not affect scoring.
 * **Reference Sources**: A full of partial excerpt of previous conversation where the required information is located in. 
 * **Conversation Memory**: A full multi-turn dialogue history between the user and the model, representing the memory state that the model is expected to recall from.
 
@@ -53,10 +53,7 @@ Your final output must be a JSON object with the following structure, with no ad
 }}
 """
 
-MEMORY_SCORING_PROMPT = """
-Score the difficulty of this BFCL v4 **Memory** sample. Consider how much synthesis is required across the stored conversation, ambiguity in the user query, and risk of conflicting memory slots.
-Return a JSON array of objects with fields: dimension, reasoning, score (1-5).
-"""
+MEMORY_SCORING_PROMPT = """"""
 
 WEB_SEARCH_FILTERING_PROMPT = """
 You are an expert evaluator for **Berkeley Function Calling Leaderboard (BFCL) V4 Agentic, Part 1: Web Search**, which examines an LLM’s ability to use a web search API to answer knowledge-seeking questions that lie beyond its training data.
@@ -66,7 +63,7 @@ You will be provided with the following information:
 
 * **Question**: The question that was asked to the LLM model. It often requires multi-hop reasoning and evidence retrieval through web search.
 * **Ground-Truth Answer**: The canonical answer string(s) that must be contained (after normalization) in a model’s output for it to be marked correct.  
-  Normalization converts text to lowercase and strips punctuation marks such as ,./-\_*^() so that superficial differences (e.g., “eiffel-tower” vs “Eiffel Tower”) do not affect scoring.
+  Normalization converts text to lowercase and strips punctuation marks such as ,./-\\_*^() so that superficial differences (e.g., “eiffel-tower” vs “Eiffel Tower”) do not affect scoring.
 * **Reference Sources**: Example URLs or text passages that the benchmark used to construct or validate this question.
 
 ## Instruction
@@ -98,39 +95,122 @@ Your final output must be a JSON object with the following structure, with no ad
 }}
 """
 
-WEB_SEARCH_SCORING_PROMPT = """
-Score the difficulty of this BFCL v4 **Web Search** sample. Consider hop count, source reliability requirements, temporal freshness, and ambiguity in the linking facts.
-Return a JSON array of objects with fields: dimension, reasoning, score (1-5).
-"""
+WEB_SEARCH_SCORING_PROMPT = """"""
 
 FORMAT_SENSITIVITY_FILTERING_PROMPT = """
-You are auditing a BFCL v4 **Format Sensitivity** sample. These cases vary the system prompt and formatting instructions to test whether models obey strict output policies.
 
-Metadata:
-- Task ID: {question_id}
-- Underlying Category: {base_category}
-- Format Profile: {format_profile}
+You are an expert evaluator for BFCL, a benchmark designed to assess an agent's multi-turn and multi-step function calling abilities.
+Your task is to determine if a given benchmark sample has a fundamental flaw in its user prompt, environment, or ground-truths, which would make it unable to be incorporated in the evaluation.
 
-### System Prompt / Format Requirements
-{system_prompt}
 
-### User Instruction
+You will be provided with the following information:
+* **Instruction**: The description of the task given to the agent. 
+* **Agent System Prompt**: the system prompt used to initialize the agent model. This may contain a specific instruction on the answer style, domain-specific policy that the agent needs to follow, a list of available functions and their schema (in JSON format), etc.
+* **Available Functions**: a list of functions available for the agents and their schema. Note that functions related to the file system (e.g., `wc`, `ls`, `sort`, etc.), if provied, abide by the standard Unix semantics unless specified otherwise directly.
+* **Missed Functions**: This is only provided in the category `multi_turn_miss_func`. This is the function that is not provided to the agent at the first turn, but will be provided after a specified number of agent responses.  
+* **Initial Configuration**: The initial environment setup and conditions before the task begins. 
+* **Ground-Truth Milestone Function Call Trajectory**: the provided ground-truth trajectory of crucial function calls. When this is empty or None, it means that the agent needs to call nothing to be scored as correct. Note that entries with `"role": "tool"` are the results of the directly preceding agent tool calls.
+A sample is **flawed** if it exhibits one or more of the issues described below.
+
+
+## Flaw Categories
+
+Below is the categorization of benchmark issues, outlined according to its **relevant benchmark component**. A sample is considered flawed if it has one or more of the issues below.
+
+### Environment
+
+This category covers flaws within the agent's operating environment—the tools and API results—which can make a task unsolvable regardless of the agent's logic.
+
+* Insufficient toolsets: The environment does not provide the necessary tools for the agent to complete the task. 
+  * Look for:  
+    * Empty Function List: No functions are provided but the test expects function calls.
+    * Missing Core Functionality: Essential functions for completing the task are absent from the functions list.
+
+* Flawed tool design: Tools exist, but their interface or description makes them unusable or misleading.
+  * Look for:  
+    * Incompatible Parameters: Functions exist but their parameters don't match requirements.
+    * Environment–Function Mismatch: Available functions don't match the described environment.
+
+### Ground-Truth
+
+This category addresses errors in the provided ground-truth trajectory, where the supposed correct solution is itself incorrect, forcing any correct agent to fail the evaluation.
+
+* Malformed function calls: A technical error where a ground-truth function call violates the provided API schema.
+  * Example: A parameter requires a string but is given a number (e.g., dest_id: 123 instead of dest_id: "123"), a required parameter is missing, the function name is wrong, or a parameter value v
+  * Note that If a function has only one parameter, it may be invoked without using a keyword argument. This is not a flaw. e.g., `sort('final_report.pdf')`
+
+* Incorrect function calls: A function call is syntactically valid but logically flawed. The function choice or a parameter value contradicts the user's request or the context from previous steps.
+  * Unjustified/Hallucinated Parameters: A value (e.g., a file name, user name) that appears without any grounding context. For example, searching for a hotel on a date that was not returned by a preceding flight search.
+  * Contradictory: A value that directly contradicts a constraint in the user's prompt. However, it is NOT a flaw if there is any chance that the agent's action was a necessary alternative due to constraints like an insufficient budget or a lack of available seats.
+  * Policy Violation: A function call in the ground truth trajectory directly violates the provided system policy. Example: The ground truth where the agent calls a specific function twice, although it is mentioned in the system policy that the function can only be called once.
+  * Misspelled or Incorrectly Identified Parameter Values: A misspelled name or an ID/slug that points to the wrong entity (e.g., selecting the wrong airport ID).
+
+* Redundant/ungrounded function calls: The ground truth function call trajectory consists of function calls that are redundant in solving the task, ungrounded by the context, or irrelevant in solving the task.
+  * Irrelevant tool call: A function call in the ground truth trajectory is totally irrelevant to the task or belongs to a completely different domain. Example: agent calls a function to reserve a flight, though it was asked to process product exchange.
+  * Redundant tool call: A function call that is not necessary in solving the task. Example: the agent is asked to search for attractions until it finds one that meets a certain condition; However, the agent performs the search in an arbitrary order, resulting in an excessive number of function calls.
+
+## Crucial Rules
+
+### Actively Reconstruct the Conversation
+
+The ground-truth trajectory only contains crucial function calls from the agent's response. It intentionally omits agents responses in natural language (e.g., confirmations, request, clarifications, or follow-up questions), or less important and obvious function calls, such as `get_user_id`.
+Your task is to find undeniable flaws. Therefore, you MUST operate under the following assumption:
+
+* For example, the user may provide an additional information or permits to use a new function after an agent prints an empty response with no tool call. This is not a flaw, since the agent would have requested for the information or the function, though it is not revealed in the provided ground truth.
+* If a sequence of function calls can be justified by a plausible, un-shown conversation, then it is NOT a flaw.
+
+### Do NOT Judge Tool Results
+
+The tool results in the ground-truth trajectory are automatically generated via actually calling the corresponding tools, and are not subject to judgement. Flaws in tool results should NOT be the reason you mark a sample as flawed.
+ 
+## Evaluation and Output Format
+Carefully analyze the provided sample. Think step-by-step to determine if the ground-truth trajectory is a correct and logical solution to the user's prompt.
+
+Your final output must be a JSON object with the following structure, with no additional commentary:
+
+```json
+{{
+  "reasoning": "Provide a clear, step-by-step explanation for your decision. If the sample is flawed, specify what is incorrect and why it contradicts the user's prompt, system policies, or the user's role. If it is not flawed, briefly explain why the sample is valid.",
+  "reasoning_summary": "A shorter rationale for your decision. If the sample is not flawed, just mention that it is not flawed. If it is flawed, specify the issue concisely. e.g., The ground truth books a connecting flight, but the user requested a direct flight.",
+  "error_category": "The category that corresponds to the issue. e.g., \"Incorrect function calls\". If the sample is not flawed, use \"Not Flawed\".",
+  "is_flawed": <true or false>
+}}
+```
+
+## Sample to be evaluated
+
+### Category 
+* category: {category}
+* subcategory: {subcategory}
+
+### Instruction
+
 {instruction}
 
-### Expected Behaviour (Ground Truth)
-{ground_truth}
+### Agent System Prompt
 
-Return a JSON object with fields:
-  * "is_flawed": boolean
-  * "reason": concise explanation referencing the format requirements
-  * "error_category": one of ["environment", "ground_truth", "instruction", "other"] when flawed, else null
+{system_prompt}
+
+{missed_function}
+
+### Initial Config
+
+{initial_pwd_description}
+```json
+{initial_config}
+```
+
+### Tool Default States
+
+{default_states}
+
+### Ground-Truth Function Call(s):
+```json
+{gt_conv_traj}
+```
 """
 
-FORMAT_SENSITIVITY_SCORING_PROMPT = """
-Score the difficulty of this BFCL v4 **Format Sensitivity** sample. Consider strictness of the formatting policy, conflicting instructions, and ambiguity between the format and actual task.
-Return a JSON array of objects with fields: dimension, reasoning, score (1-5).
-"""
-
+FORMAT_SENSITIVITY_SCORING_PROMPT = """"""
 
 _DEFAULT_PROMPTS: Dict[LLMJudgeStep, str] = {
     LLMJudgeStep.UNIVERSAL_FILTER: DEFAULT_FILTERING_PROMPT,
@@ -156,7 +236,7 @@ _FORMAT_SENSITIVITY_PROMPTS: Dict[LLMJudgeStep, str] = {
     LLMJudgeStep.SCORE: FORMAT_SENSITIVITY_SCORING_PROMPT,
 }
 
-_DOMAIN_PROMPT_OVERRIDES: Dict[str, Dict[LLMJudgeStep, str]] = {
+_DOMAIN_PROMPT_OVERRIDES = {
     "memory": _MEMORY_PROMPTS,
     "web_search": _WEB_SEARCH_PROMPTS,
     "format_sensitivity": _FORMAT_SENSITIVITY_PROMPTS,
@@ -181,11 +261,11 @@ def _infer_domain(question: BFCLv4Question) -> str:
 
 def _render_field(question: BFCLv4Question, field: str) -> str:
     if field == "memory_context":
-        return _format_memory_context(getattr(question, "memory_context", None))
+        return _to_pretty_json(getattr(question, "memory_context", None))
     if field == "memory_source":
-        return _format_memory_source(getattr(question, "sources", None))
+        return _to_pretty_json(getattr(question, "sources", None))
     if field == "research_trail":
-        return _format_research_trail(getattr(question, "sources", None))
+        return _to_pretty_json(getattr(question, "sources", None))
     if field == "ground_truth":
         return _to_pretty_json(_get_value(question, "ground_truth"))
     if field == "gt_conv_traj":
@@ -193,9 +273,13 @@ def _render_field(question: BFCLv4Question, field: str) -> str:
     if field == "num_hops":
         return _as_text(_get_value(question, "num_hops"), "N/A")
     if field == "format_profile":
-        return _as_text(_get_format_metadata(question, "format_profile"), "N/A")
+        return _as_text(_get_format_metadata(question, "config"), "N/A")
     if field == "base_category":
         return _as_text(_get_format_metadata(question, "base_category"), "N/A")
+    if field == "question_turns":
+        return _to_pretty_json(getattr(question, "question_turns", None))
+    if field == "available_function_list":
+        return _to_pretty_json(getattr(question, "available_function_list", []))
 
     value = _get_value(question, field)
     if isinstance(value, (dict, list)):
@@ -215,30 +299,10 @@ def _get_value(question: BFCLv4Question, field: str):
 def _get_format_metadata(question: BFCLv4Question, key: str):
     meta = getattr(question, "meta", None)
     if isinstance(meta, dict):
-        format_meta = meta.get("format_sensitivity", meta)
-        if isinstance(format_meta, dict):
-            return format_meta.get(key)
+        fs_meta = meta.get("format_sensitivity", {})
+        if isinstance(fs_meta, dict):
+            return fs_meta.get(key)
     return None
-
-
-def _format_memory_context(context: Any) -> str:
-    if not context:
-        return "N/A"
-    return _to_pretty_json(context)
-
-
-def _format_memory_source(source: Any) -> str:
-    if source is None:
-        return "N/A"
-    if isinstance(source, (dict, list)):
-        return _to_pretty_json(source)
-    return str(source)
-
-
-def _format_research_trail(sources: Any) -> str:
-    if not sources:
-        return "N/A"
-    return _to_pretty_json(sources)
 
 
 def _extract_format_fields(template: str) -> List[str]:

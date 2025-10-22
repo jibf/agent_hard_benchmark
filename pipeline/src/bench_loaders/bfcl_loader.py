@@ -9,7 +9,11 @@ import copy
 import re
 import inspect
 import ast
-from . import BaseLoader
+
+try:
+    from src.bench_loaders import BaseLoader  # absolute import for standalone usage
+except ImportError:  # pragma: no cover - fallback when package context available
+    from . import BaseLoader
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 # Add the BFCL data directory to Python path so bfcl_eval can be imported
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'BFCL'))

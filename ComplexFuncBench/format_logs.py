@@ -140,7 +140,7 @@ for model_path in model_paths:
 
     for task_name, formatted_logs in formatted_logs_by_category.items():
         formatted_logs.sort(key=lambda x: int(x['meta']['id'].split("-")[-1]))  # Sort by sample ID
-        output_path = os.path.join(OUTPUT_BASE_DIR, f"{model_path.split("/")[-1]}_{task_name.lower()}.jsonl")
+        output_path = os.path.join(OUTPUT_BASE_DIR, f"{model_path.split('/')[-1]}_{task_name.lower()}.jsonl")
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as out_file:
             for log in formatted_logs:
