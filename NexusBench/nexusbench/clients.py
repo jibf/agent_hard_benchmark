@@ -1,4 +1,5 @@
 from typing import Optional
+import copy
 
 from nexusflowai import NexusflowAI
 
@@ -8,7 +9,9 @@ from anthropic import Anthropic
 
 from mistralai.client import MistralClient
 
-from nexusbench.utils import handle_exceptions
+from nexusbench.utils import handle_exceptions, as_dict, gemini_normalize_messages, gemini_sanitize_tools
+
+import copy, json
 
 
 class BaseClient:
@@ -111,13 +114,15 @@ class QwenFCClient(BaseClient):
 
 class OpenAIFCClient(BaseClient):
     def create_client(self):
-        return OpenAI(**self.get_client_params())
+        return OpenAI(**self.get_client_params(), max_retries=6, timeout=60.0)
 
     @handle_exceptions
     def get_completion(
         self, prompt, model="gpt-4-0125-preview", contextual_history=None
     ):
-        if "claude" in model.lower() or "anthropic/" in model.lower():
+        model_lower = model.lower() if isinstance(model, str) else ""
+
+        if "claude" in model_lower or "anthropic/" in model_lower:
             # Claude models expect `tool_choice` to be a dict
             response = self.client.chat.completions.create(
                 model=model,
@@ -125,7 +130,19 @@ class OpenAIFCClient(BaseClient):
                 tools=prompt["tools"],
                 tool_choice={"type": "auto"},
                 max_tokens=2048,
-                temperature=1.0 if "thinking-on-10k" in model.lower() else 0.0,
+                temperature=1.0 if "thinking-on-10k" in model_lower else 0.0,
+            )
+        elif "gemini" in model_lower:
+            sanitized_tools = gemini_sanitize_tools(prompt.get("tools", []))
+            fixed_messages  = gemini_normalize_messages([as_dict(m) for m in prompt["messages"]])
+
+            response = self.client.chat.completions.create(
+                model=model,
+                messages=fixed_messages,
+                tools=sanitized_tools,
+                tool_choice="auto",
+                max_tokens=2048,
+                temperature=1.0 if "thinking-on" in model_lower else 0.0,
             )
         else:
             response = self.client.chat.completions.create(
@@ -134,7 +151,7 @@ class OpenAIFCClient(BaseClient):
                 tools=prompt["tools"],
                 tool_choice="auto",
                 max_tokens=2048,
-                temperature=1.0 if "gpt-5" in model.lower() else 0.0,
+                temperature=1.0 if "gpt-5" in model_lower else 0.0,
                 parallel_tool_calls=False,
             )
         return response
