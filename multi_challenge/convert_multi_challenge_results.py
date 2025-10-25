@@ -109,7 +109,7 @@ def convert_multi_challenge_result(row: Dict[str, Any], model_path: str, origina
             "score": score
         },
         "meta": {
-            "id": question_id,
+            "id": row.get('axis', 'unknown') + "_" + question_id,
             "axis": row.get('axis', ''),
             "target_question": row.get('target_question', ''),
             "pass_criteria": row.get('pass_criteria', ''),
