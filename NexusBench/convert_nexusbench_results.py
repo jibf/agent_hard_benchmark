@@ -20,7 +20,9 @@ from typing import Any, Callable, Dict
 model_path_to_name = {
     "xai/grok-4": "grok-4",
     "togetherai/moonshotai/Kimi-K2-Instruct": "Kimi-K2-Instruct",
+    "togetherai/moonshotai/Kimi-K2-Instruct-0905": "Kimi-K2-Instruct-0905",
     "togetherai/Qwen/Qwen3-8B": "Qwen3-8B",
+    "togetherai/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8": "Qwen3-Coder-480B-A35B-Instruct-FP8",
     "togetherai/Qwen/Qwen3-32B": "Qwen3-32B",
     "togetherai/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8": "Qwen3-235B-A22B-Thinking-2507-FP8",
     "togetherai/Qwen/Qwen3-235B-A22B-FP8": "Qwen3-235B-A22B-FP8",
@@ -38,8 +40,19 @@ model_path_to_name = {
     "openai/gpt-5-nano": "gpt-5-nano",
     "deepseek-ai/DeepSeek-V3-0324": "DeepSeek-V3-0324",
     "deepseek-ai/DeepSeek-R1-0528": "DeepSeek-R1-0528",
+    "deepseek-ai/DeepSeek-V3.1-Terminus-thinking-off": "DeepSeek-V3.1-thinking-off",
+    "deepseek-ai/DeepSeek-V3.1-Terminus-thinking-on": "DeepSeek-V3.1-thinking-on",
+    "deepseek-ai/DeepSeek-V3.2-Exp-thinking-off": "DeepSeek-V3.2-thinking-off",
+    "deepseek-ai/DeepSeek-V3.2-Exp-thinking-on": "DeepSeek-V3.2-thinking-on",
     "anthropic/claude-4-sonnet-thinking-on-10k": "claude-4-sonnet-thinking-on-10k",
-    "anthropic/claude-4-sonnet-thinking-off": "claude-4-sonnet-thinking-off"
+    "anthropic/claude-4-sonnet-thinking-off": "claude-4-sonnet-thinking-off",
+    "anthropic/claude-4.5-sonnet-thinking-on-10k": "claude-4.5-sonnet-thinking-on-10k",
+    "anthropic/claude-4.5-sonnet-thinking-off": "claude-4.5-sonnet-thinking-off",
+    "anthropic/claude-4-opus-thinking-on-10k": "claude-4-opus-thinking-on-10k",
+    "anthropic/claude-4-opus-thinking-off": "claude-4-opus-thinking-off",
+    "google/gemini-2.5-flash-thinking-off": "gemini-2.5-flash-thinking-off",
+    "google/gemini-2.5-flash-thinking-on": "gemini-2.5-flash-thinking-on",
+    "google/gemini-2.5-pro-thinking-on": "gemini-2.5-pro-thinking-on"
 }
 
 prompt_to_id = {}
@@ -61,11 +74,18 @@ def extract_model_path_from_filename(filename: str) -> str:
             'togetherai-Qwen-Qwen3-235B-A22B-FP8': 'togetherai/Qwen/Qwen3-235B-A22B-FP8',
             'togetherai-Qwen-Qwen3-235B-A22B-Thinking-2507-FP8': 'togetherai/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8',
             'togetherai-Qwen-Qwen3-235B-A22B-Instruct-2507-FP8': 'togetherai/Qwen/Qwen3-235B-A22B-Instruct-2507-FP8',
+            'Qwen3-8B-QwenFC': 'togetherai/Qwen/Qwen3-8B',
+            'Qwen3-32B-QwenFC': 'togetherai/Qwen/Qwen3-32B',
             'togetherai-moonshotai-Kimi-K2-Instruct': 'togetherai/moonshotai/Kimi-K2-Instruct',
+            'togetherai-m-Kimi-K2-Instruct-0905': 'togetherai/moonshotai/Kimi-K2-Instruct-0905',
             'togetherai-openai-gpt-oss-20b': 'togetherai/openai/gpt-oss-20b',
             'togetherai-openai-gpt-oss-120b': 'togetherai/openai/gpt-oss-120b',
             'deepseek-ai-DeepSeek-R1-0528': 'deepseek-ai/DeepSeek-R1-0528',
             'deepseek-ai-DeepSeek-V3-0324': 'deepseek-ai/DeepSeek-V3-0324',
+            'd-DeepSeek-V3.1-Terminus-thinking-off': 'deepseek-ai/DeepSeek-V3.1-Terminus-thinking-off',
+            'd-DeepSeek-V3.1-Terminus-thinking-on': 'deepseek-ai/DeepSeek-V3.1-Terminus-thinking-on',
+            'd-DeepSeek-V3.2-Exp-thinking-off': 'deepseek-ai/DeepSeek-V3.2-Exp-thinking-off',
+            'd-DeepSeek-V3.2-Exp-thinking-on': 'deepseek-ai/DeepSeek-V3.2-Exp-thinking-on',
             'openai-o3-high': 'openai/o3-high',
             'openai-o4-mini-high': 'openai/o4-mini-high',
             'openai-gpt-4o-20240806': 'openai/gpt-4o-20240806',
@@ -74,7 +94,7 @@ def extract_model_path_from_filename(filename: str) -> str:
             'openai-gpt-4.1-nano': 'openai/gpt-4.1-nano',
             'openai-gpt-5': 'openai/gpt-5',
             'openai-gpt-5-nano': 'openai/gpt-5-nano',
-
+            'a-claude-4.5-sonnet-thinking-on-10k': 'anthropic/claude-4.5-sonnet-thinking-on-10k',
         }
         # Return mapped value if explicitly provided above
         if model_part in model_mapping:
@@ -83,7 +103,7 @@ def extract_model_path_from_filename(filename: str) -> str:
         # Generic handling: convert provider-prefixed strings like
         #   "openai-gpt-4.1-mini"  -> "openai/gpt-4.1-mini"
         #   "anthropic-claude-4-sonnet-thinking-off" -> "anthropic/claude-4-sonnet-thinking-off"
-        for provider in ("openai", "anthropic", "deepseek-ai", "togetherai"):
+        for provider in ("openai", "anthropic", "deepseek-ai", "togetherai", "google", ""):
             prefix = f"{provider}-"
             if model_part.startswith(prefix):
                 return f"{provider}/" + model_part[len(prefix):]
@@ -263,8 +283,10 @@ def convert_nexusbench_results(parquets_dir: str, output_dir: str):
     
     # Save combined files for each model
     for model_path, results in model_results.items():
-        model_name = model_path_to_name.get(model_path, model_path.replace('/', '_'))
+        model_name = model_path_to_name.get(model_path, model_path)
+        model_name = model_name.split('/', 1)[-1]
         output_base_dir = os.path.join(output_dir, "nexusbench", model_path.replace('/', '_'))
+        print(output_base_dir)
         
         combined_output_file = os.path.join(output_base_dir, f"{model_name}.jsonl")
         with open(combined_output_file, 'w', encoding='utf-8') as f:

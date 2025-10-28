@@ -10,6 +10,8 @@ import re
 
 import json
 
+import sys
+
 from re import sub  # Added for slug sanitization
 
 
@@ -212,6 +214,8 @@ class FCAPIPrompter:
         Returns:
             Dict containing the formatted tool message.
         """
+        sys.set_int_max_str_digits(1000000)  # allows very large ints
+
         return {
             "role": "tool",
             "tool_call_id": tool_calls.id,
