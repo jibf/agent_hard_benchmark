@@ -3,7 +3,7 @@ from .tau_bench_loader import TauBenchLoader
 from .tau2_bench_loader import Tau2BenchLoader
 from .ace_bench_loader import AceBenchLoader
 from .nexus_bench_loader import NexusBenchLoader
-from .tool_sandbox_loader import ToolSandBoxLoader
+# from .tool_sandbox_loader import ToolSandBoxLoader
 from .complex_func_bench_loader import ComplexFuncBenchLoader
 from .drafter_bench_loader import DrafterBenchLoader
 from .bfcl_loader import BfclLoader
@@ -24,7 +24,7 @@ def get_bench_loader(benchmark: Benchmark):
         Benchmark.BFCL: BfclLoader,
         Benchmark.BFCL_V4: BfclV4Loader,
         Benchmark.MULTI_CHALLENGE: MultiChallengeLoader,
-        Benchmark.TOOL_SANDBOX: ToolSandBoxLoader
+        # Benchmark.TOOL_SANDBOX: ToolSandBoxLoader
     }
     
     if benchmark not in loader_map:

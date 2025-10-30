@@ -47,23 +47,41 @@ from metric.irt_metric import compute_irt_metric
 # Logger will be configured in main() function
 logger = logging.getLogger(__name__)
 
-COMMON_MODEL_SET = {
+COMMON_MODEL_SET = { # Updated common model set
     'Kimi-K2-Instruct',
-    'gpt-4.1-mini',
-    'Qwen3-235B-A22B-Thinking-2507-FP8',
-    'gpt-4.1-nano',
-    'DeepSeek-V3.1-thinking-off',
-    'Qwen3-235B-A22B-FP8',
+    'Kimi-K2-Instruct-0905',
+    # 'DeepSeek-V3.1-thinking-off',
+    # 'DeepSeek-V3.1-thinking-on',
+    'DeepSeek-R1-0528',
+    'DeepSeek-V3-0324',
+    # 'DeepSeek-V3.1-Terminus-thinking-off',
+    # 'DeepSeek-V3.1-Terminus-thinking-on',
+    'DeepSeek-V3.2-Exp-thinking-off',
+    'DeepSeek-V3.2-Exp-thinking-on',
     'o4-mini-high',
     'o3-high',
     'gpt-4.1',
+    'gpt-4.1-nano',
+    'gpt-4.1-mini',
     'gpt-4o-mini',
-    'gpt-4o-20240806',
+    'gpt-4o-202408016',
+    'gpt-5',
+    'gpt-5-nano',
+    'gpt-oss-120b',
+    'gpt-oss-20b',
     'claude-4-sonnet-thinking-on-10k',
     'claude-4-sonnet-thinking-off',
-    'Qwen3-235B-A22B-Instruct-2507-FP8',
-    'DeepSeek-V3-0324',
     'claude-4-opus-thinking-off',
+    'claude-4-opus-thinking-on-10k',
+    'claude-4.5-sonnet-thinking-off',
+    'claude-4.5-sonnet-thinking-on-10k',
+    'Qwen3-235B-A22B-Instruct-2507-FP8',
+    'Qwen3-235B-A22B-Thinking-2507-FP8',
+    'Qwen3-Coder-480B-A35B-Instruct-FP8',
+    'Qwen3-235B-A22B-FP8',
+    'gemini-2.5-pro-thinking-on',
+    'gemini-2.5-flash-thinking-off',
+    'gemini-2.5-flash-thinking-on',
 }
 
 
@@ -81,8 +99,11 @@ class BenchmarkFilteringPipeline:
             "separability": [],
             "separability_baseline": [],
             "diversity": None,
+            "diversity_baseline": None,
             "irt": None,
+            "irt_baseline": None,
             "agreement": {},
+            "agreement_baseline": {},
             "human_alignment": {
                 "precision": None,
                 "recall": None,
@@ -103,6 +124,7 @@ class BenchmarkFilteringPipeline:
             "step2": deepcopy(results_template),
             "step3": deepcopy(results_template),
             "step4": deepcopy(results_template),
+            "step5": deepcopy(results_template),
         }
 
         # Determine which LLM judge steps to run based on filtering scheme
@@ -146,9 +168,9 @@ class BenchmarkFilteringPipeline:
 
         # Whether to embed the concatenation of all initial prompts (system & user)
         # before the first assistant/tool call, instead of only the last user prompt.
-        self.embed_all_initial_prompts: bool = self.config.get(
-            "embed_all_initial_prompts", False
-        )
+        # self.embed_all_initial_prompts: bool = self.config.get(
+        #     "embed_all_initial_prompts", False
+        # )
         self.fitering_template = {
             "Benchmark": None,
             "task_type": None,
@@ -355,7 +377,7 @@ class BenchmarkFilteringPipeline:
 
 
     def run_pipeline(
-        self, skip_llm_judge: bool = False, skip_rule_based: bool = False
+        self, skip_llm_judge: bool = False, skip_rule_based: bool = False, skip_quality: bool = False, skip_diversity: bool = False, no_system_prompt: bool = False
     ) -> Dict[UniqueQuestionID, PipelineOutput]:
         """Run the complete filtering pipeline."""
         logger.info("Starting benchmark filtering pipeline")
@@ -386,6 +408,7 @@ class BenchmarkFilteringPipeline:
             phase="initial",
             human_labelled_questions=current_human_labelled,
             baseline_source=responses_by_question,
+            no_system_prompt=no_system_prompt,
         )
 
         current_responses = responses_by_question
@@ -562,6 +585,23 @@ class BenchmarkFilteringPipeline:
             )
             # Update human labelled questions to only include those that passed step4
             current_human_labelled = current_human_labelled & set(step4_passed.keys())
+
+            # Only run separate diversity selection if not using joint filtering
+            if not skip_diversity: # and not self.config.get("joint_filtering", False):
+                current_responses = step4_passed
+
+                step5_passed = self._run_diversity_selection(current_responses)
+                self.compute_and_log_metrics(
+                        passed_responses=step5_passed,
+                        input_ids=set(current_responses.keys()),
+                        phase="step5",
+                        human_labelled_questions=current_human_labelled,
+                        baseline_source=responses_by_question,
+                    )
+                current_responses = step5_passed
+                # Update human labelled questions to only include those that passed step5
+                current_human_labelled = current_human_labelled & set(step5_passed.keys())
+
         else:
             logger.info("Skipping Step 4: Comprehensive rule-based filtering")
 
@@ -599,6 +639,262 @@ class BenchmarkFilteringPipeline:
             f"Step 3 diversity selection: passed {len(filterd_results)} questions from {N_samples} questions"
         )
         return filterd_results
+
+    # def _run_joint_separability_diversity_filtering(self, responses_by_question: Dict[str, List[Dict]], all_responses_by_question: Dict[str, List[Dict]]) -> Dict[str, List[Dict]]:
+    #     """
+    #     Joint separability-diversity filtering with iterative analysis.
+        
+    #     For each task:
+    #     1. Compute separability (mean score variance across models)
+    #     2. Compute diversity (average semantic distance to other tasks)
+    #     3. Rank tasks by combined score
+    #     4. Iteratively filter worst tasks and track metric changes
+    #     5. Identify conflicting tasks that hurt one metric while helping another
+    #     """
+    #     logger.info("Running joint separability-diversity filtering with iterative analysis...")
+        
+    #     # Step 1: Compute separability and diversity scores for each task
+    #     task_scores = {}
+    #     question_ids = list(responses_by_question.keys())
+    #     embeddings = np.array([self.embeddings_dict[qid] for qid in question_ids])
+        
+    #     for i, question_id in enumerate(question_ids):
+    #         samples = responses_by_question[question_id]
+            
+    #         # Compute separability (variance in model performance)
+    #         mean_score, var_score, is_binary = self._compute_mean_var_score(samples)
+    #         if mean_score is None or var_score is None:
+    #             continue
+                
+    #         # Compute diversity (average distance to other tasks)
+    #         distances = 1 - np.dot(embeddings[i], embeddings.T)
+    #         diversity_score = np.mean(distances)
+            
+    #         # Store scores
+    #         task_scores[question_id] = {
+    #             'separability': var_score,
+    #             'diversity': diversity_score,
+    #             'mean_score': mean_score,
+    #             'is_binary': is_binary
+    #         }
+        
+    #     # Step 2: Compute combined ranking scores
+    #     # Normalize scores to [0, 1] range
+    #     sep_scores = [data['separability'] for data in task_scores.values()]
+    #     div_scores = [data['diversity'] for data in task_scores.values()]
+        
+    #     if sep_scores and div_scores:
+    #         sep_min, sep_max = min(sep_scores), max(sep_scores)
+    #         div_min, div_max = min(div_scores), max(div_scores)
+            
+    #         # Normalize and compute combined score
+    #         for question_id, data in task_scores.items():
+    #             if sep_max > sep_min:
+    #                 norm_sep = (data['separability'] - sep_min) / (sep_max - sep_min)
+    #             else:
+    #                 norm_sep = 0.5
+                    
+    #             if div_max > div_min:
+    #                 norm_div = (data['diversity'] - div_min) / (div_max - div_min)
+    #             else:
+    #                 norm_div = 0.5
+                
+    #             # Combined score (equal weight by default)
+    #             data['combined_score'] = 0.5 * norm_sep + 0.5 * norm_div
+    #             data['normalized_separability'] = norm_sep
+    #             data['normalized_diversity'] = norm_div
+        
+    #     # Step 3: Iterative filtering analysis
+    #     logger.info("Starting iterative filtering analysis...")
+    #     filtering_results = self._analyze_iterative_filtering(
+    #         responses_by_question, task_scores, embeddings
+    #     )
+        
+    #     # Step 4: Select optimal filtering level
+    #     optimal_result = self._select_optimal_filtering_level(filtering_results)
+        
+    #     logger.info(f"Selected filtering level: {optimal_result['filtering_level']:.1%}")
+    #     logger.info(f"Final metrics - Separability: {optimal_result['separability']:.3f}, Diversity: {optimal_result['diversity']:.3f}")
+        
+    #     return optimal_result['filtered_responses']
+
+    # def _analyze_iterative_filtering(self, responses_by_question, task_scores, embeddings):
+    #     """Analyze how metrics change at different filtering levels."""
+    #     results = []
+    #     question_ids = list(responses_by_question.keys())
+        
+    #     # Sort tasks by combined score (worst first for removal)
+    #     sorted_tasks = sorted(
+    #         [(qid, data['combined_score']) for qid, data in task_scores.items()],
+    #         key=lambda x: x[1]
+    #     )
+        
+    #     # Test different filtering levels: 0%, 5%, 10%, 15%, 20%, 25%, 30%
+    #     filtering_levels = [0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30]
+        
+    #     for level in filtering_levels:
+    #         num_to_remove = int(len(question_ids) * level)
+    #         if num_to_remove >= len(question_ids):
+    #             continue
+                
+    #         # Remove worst tasks
+    #         tasks_to_remove = [qid for qid, _ in sorted_tasks[:num_to_remove]]
+    #         remaining_tasks = [qid for qid in question_ids if qid not in tasks_to_remove]
+            
+    #         if len(remaining_tasks) < 2:
+    #             continue
+                
+    #         # Compute metrics for remaining tasks
+    #         remaining_embeddings = np.array([self.embeddings_dict[qid] for qid in remaining_tasks])
+            
+    #         # Compute separability (average variance of remaining tasks)
+    #         remaining_separability = np.mean([
+    #             task_scores[qid]['separability'] for qid in remaining_tasks
+    #         ])
+            
+    #         # Compute diversity (average pairwise distance)
+    #         diversity = self._compute_set_diversity(remaining_embeddings)
+            
+    #         # Compute conflicting tasks (tasks that hurt one metric while helping another)
+    #         conflicting_tasks = self._identify_conflicting_tasks(
+    #             remaining_tasks, task_scores, embeddings
+    #         )
+            
+    #         results.append({
+    #             'filtering_level': level,
+    #             'num_remaining': len(remaining_tasks),
+    #             'separability': remaining_separability,
+    #             'diversity': diversity,
+    #             'conflicting_tasks': len(conflicting_tasks),
+    #             'remaining_tasks': remaining_tasks,
+    #             'filtered_responses': {qid: responses_by_question[qid] for qid in remaining_tasks}
+    #         })
+            
+    #         logger.info(f"Level {level:.1%}: {len(remaining_tasks)} tasks, "
+    #                    f"Separability: {remaining_separability:.3f}, "
+    #                    f"Diversity: {diversity:.3f}, "
+    #                    f"Conflicting: {len(conflicting_tasks)}")
+        
+    #     return results
+
+    # def _identify_conflicting_tasks(self, remaining_tasks, task_scores, embeddings):
+    #     """Identify tasks that hurt one metric while helping another."""
+    #     conflicting = []
+        
+    #     for task_id in remaining_tasks:
+    #         # Compute metrics with and without this task
+    #         other_tasks = [t for t in remaining_tasks if t != task_id]
+            
+    #         if len(other_tasks) < 2:
+    #             continue
+                
+    #         # Separability with and without this task
+    #         sep_with = np.mean([task_scores[t]['separability'] for t in remaining_tasks])
+    #         sep_without = np.mean([task_scores[t]['separability'] for t in other_tasks])
+            
+    #         # Diversity with and without this task
+    #         emb_with = np.array([self.embeddings_dict[t] for t in remaining_tasks])
+    #         emb_without = np.array([self.embeddings_dict[t] for t in other_tasks])
+            
+    #         div_with = self._compute_set_diversity(emb_with)
+    #         div_without = self._compute_set_diversity(emb_without)
+            
+    #         # Check if task is conflicting (hurts one metric while helping another)
+    #         sep_improvement = sep_without - sep_with  # Positive means removing helps separability
+    #         div_improvement = div_without - div_with  # Positive means removing helps diversity
+            
+    #         if (sep_improvement > 0 and div_improvement < 0) or (sep_improvement < 0 and div_improvement > 0):
+    #             conflicting.append({
+    #                 'task_id': task_id,
+    #                 'separability_impact': sep_improvement,
+    #                 'diversity_impact': div_improvement,
+    #                 'conflict_strength': abs(sep_improvement) + abs(div_improvement)
+    #             })
+        
+    #     return conflicting
+
+    # def _select_optimal_filtering_level(self, results):
+    #     """Select the optimal filtering level based on metric trade-offs."""
+    #     if not results:
+    #         return results[0] if results else None
+            
+    #     # Find the level that maximizes the product of separability and diversity
+    #     # while minimizing conflicting tasks
+    #     best_result = None
+    #     best_score = -float('inf')
+        
+    #     for result in results:
+    #         # Combined score: separability * diversity, penalized by conflicting tasks
+    #         base_score = result['separability'] * result['diversity']
+    #         conflict_penalty = result['conflicting_tasks'] * 0.01  # Small penalty for conflicts
+    #         final_score = base_score - conflict_penalty
+            
+    #         if final_score > best_score:
+    #             best_score = final_score
+    #             best_result = result
+        
+    #     return best_result
+
+    # def _compute_set_diversity(self, embeddings):
+    #     """Compute diversity of a set of embeddings."""
+    #     if len(embeddings) < 2:
+    #         return 0
+        
+    #     # Compute pairwise cosine distances
+    #     embeddings = np.array(embeddings)
+    #     sim_matrix = np.dot(embeddings, embeddings.T)
+    #     triu_indices = np.triu_indices(len(embeddings), k=1)
+    #     distances = 1 - sim_matrix[triu_indices]
+        
+    #     return np.mean(distances)
+
+    # def _compute_mean_var_score(self, question_samples: List[Dict]) -> Tuple[float, float, bool]:
+    #     """
+    #     Compute mean and variance of scores for a question.
+    #     Returns: (mean_score, variance, is_binary)
+    #     """
+    #     if len(question_samples) < 2:
+    #         return None, None, False
+
+    #     # Extract scores for this question
+    #     scores = []
+    #     for sample in question_samples:
+    #         # Try different possible score locations
+    #         if "eval_result" in sample and "score" in sample["eval_result"]:
+    #             scores.append(sample["eval_result"]["score"])
+    #         elif "eval_result" in sample and "scores" in sample["eval_result"]:
+    #             scores.extend(sample["eval_result"]["scores"])
+    #         elif "score" in sample:
+    #             scores.append(sample["score"])
+    #         elif "scores" in sample:
+    #             scores.extend(sample["scores"])
+
+    #     if not scores:
+    #         return None, None, False
+
+    #     # Convert to numeric scores
+    #     numeric_scores = []
+    #     for score in scores:
+    #         if isinstance(score, (int, float)):
+    #             numeric_scores.append(float(score))
+    #         elif isinstance(score, dict) and "score" in score:
+    #             try:
+    #                 numeric_scores.append(float(score["score"]))
+    #             except (ValueError, TypeError):
+    #                 continue
+
+    #     if len(numeric_scores) < 2:
+    #         return None, None, False
+
+    #     # Calculate statistics
+    #     mean_score = np.mean(numeric_scores)
+    #     variance = np.var(numeric_scores)
+
+    #     # Check if numeric_scores are binary (all close to 0 or 1) or continuous (0~1)
+    #     is_binary = all(
+    #         np.isclose(score, 0.0) or np.isclose(score, 1.0) for score in numeric_scores
+    #     )
+    #     return float(mean_score), float(variance), is_binary
 
     def _run_comprehensive_filtering(
         self, responses_by_question: Dict[str, List[Dict]], all_responses_by_question: Dict[str, List[Dict]]
@@ -682,7 +978,8 @@ class BenchmarkFilteringPipeline:
         input_ids: set,
         phase: str,
         human_labelled_questions: set,
-        baseline_source: Dict = None
+        baseline_source: Dict = None,
+        no_system_prompt: bool = False, # Use system prompt for embeddings  
     ) -> None:
         """Compute and log all metrics for a given filtering phase.
 
@@ -723,12 +1020,16 @@ class BenchmarkFilteringPipeline:
 
         # ============================== compute embeddings (initial phase only) ==============================
         if phase == "initial":
-            embed_file = f"./{benchmark_name}_embed_dict.pkl"
+            # Use system prompt for embeddings
+            if not no_system_prompt:
+                embed_file = f"./{benchmark_name}_embed_dict.pkl"
+            else:
+                embed_file = f"./{benchmark_name}_embed_dict_only_instruction.pkl"
             if os.path.exists(embed_file):
                 with open(embed_file, "rb") as f:
                     self.embeddings_dict = pickle.load(f)
             else:
-                self._compute_embeddings_dict(passed_responses)
+                self._compute_embeddings_dict(passed_responses, no_system_prompt)
                 with open(embed_file, "wb") as f:
                     pickle.dump(self.embeddings_dict, f)
 
@@ -773,7 +1074,8 @@ class BenchmarkFilteringPipeline:
             "step1": "After Step 1 (Rule-based Filtering)",
             "step2": "After Step 2 (LLM-as-Judge Filtering)",
             "step3": "After Step 3 (Top-K Selection)",
-            "step4": "After Step 4 (Comprehensive Rule-based Filtering)"
+            "step4": "After Step 4 (Comprehensive Rule-based Filtering)",
+            "step5": "After Step 5 (Diversity Selection)"
         }
         title = phase_titles.get(phase, f"After {phase}")
         filename = f"{phase}_filtered_performance" if phase != "initial" else "original_performance"
@@ -826,6 +1128,20 @@ class BenchmarkFilteringPipeline:
                 sep_list.append(baseline_separability)
             self.metrics_summary[summary_key]["separability_baseline"] = sep_list
 
+            # Compute baseline diversity
+            baseline_diversity = self._compute_diversity(set(baseline_responses.keys()))
+            self.metrics_summary[summary_key]["diversity_baseline"] = baseline_diversity
+            logger.info(f"Benchmark diversity baseline (vs. {phase}): {json.dumps(baseline_diversity, indent=2)}")
+
+            # Compute baseline IRT
+            baseline_irt_values = [self.irt_discrimination_dict[qid] for qid in baseline_responses.keys() if qid in self.irt_discrimination_dict]
+            baseline_irt_discrimination = np.mean(baseline_irt_values) if baseline_irt_values else None
+            self.metrics_summary[summary_key]["irt_baseline"] = baseline_irt_discrimination
+            logger.info(f"Benchmark IRT baseline (vs. {phase}): {baseline_irt_discrimination:.4f}")
+
+            # Store filtered agreement stats before computing baseline (to avoid overwriting)
+            filtered_agreement_stats = self._current_agreement_stats.copy() if hasattr(self, '_current_agreement_stats') else {}
+
             stored_model_ranking = getattr(self, 'model_ranking', None)
             self._visualize_model_performance(
                 baseline_responses,
@@ -833,6 +1149,20 @@ class BenchmarkFilteringPipeline:
                 f"{phase}_baseline_performance",
                 model_ranking=stored_model_ranking
             )
+
+            # Compute baseline agreement (now that _visualize_model_performance has updated _current_agreement_stats)
+            baseline_agreement_by_benchmark = {}
+            for benchmark_name, benchmark_stats in self._current_agreement_stats.items():
+                baseline_agreement_by_benchmark[benchmark_name] = {
+                    "min": float(benchmark_stats["min_agreement"]),
+                    "max": float(benchmark_stats["max_agreement"]),
+                    "avg": float(benchmark_stats["avg_agreement"])
+                }
+            self.metrics_summary[summary_key]["agreement_baseline"] = baseline_agreement_by_benchmark
+            logger.info(f"Benchmark agreement baseline (vs. {phase}): {json.dumps(baseline_agreement_by_benchmark, indent=2)}")
+
+            # Restore filtered agreement stats for future use
+            self._current_agreement_stats = filtered_agreement_stats
             
             # self._visualize_diversity(
             #     set(baseline_responses.keys()),
@@ -1001,7 +1331,7 @@ class BenchmarkFilteringPipeline:
             "subtask_details": subtask_details
         }
 
-    def _compute_embeddings_dict(self, responses_by_question: Dict[str, List[Dict]]) -> None:
+    def _compute_embeddings_dict(self, responses_by_question: Dict[str, List[Dict]], no_system_prompt: bool = False) -> None: # Use system prompt for embeddings
         """Compute embeddings for all questions and store them for reuse.
 
         This function should be called once at the beginning to compute embeddings
@@ -1022,11 +1352,19 @@ class BenchmarkFilteringPipeline:
                 if question not in responses_by_question:
                     continue
                 # Extract text for embedding
-                system_prompt = getattr(question, "agent_system_prompt",
-                                      getattr(question, "system_prompt", "")
-                                    )
+
                 instruction = question.instruction
-                text = system_prompt + "\n" + instruction
+                
+                if not no_system_prompt:
+                    system_prompt = getattr(question, "agent_system_prompt",
+                                          getattr(question, "system_prompt", "")
+                                        )
+                    print("system_prompt: ", system_prompt)
+                    print("instruction: ", instruction)
+                    text = system_prompt + "\n" + instruction
+                else:
+                    print("instruction: ", instruction)
+                    text = instruction
 
                 texts.append(text)
                 question_ids.append(question)
@@ -1794,23 +2132,32 @@ class BenchmarkFilteringPipeline:
 
         # Header row for metrics comparison
         # rows.append(["Metrics Comparison", "Baseline", "Step1", "Step2", "Step3", "Step4"])
-        rows.append(["Metrics Comparison", "Baseline", "Step1", "Step2", "Step4"])
+        rows.append(["Metrics Comparison", "Baseline", "Step1", "Step2", "Step4", "Step5"])
 
         # Get baseline data and benchmark name (from "original" step)
         baseline_data = self.metrics_summary.get("original", {})
-        steps = ["step1", "step2", "step4"]
+        steps = ["step1", "step2", "step4", "step5"]
         # steps = ["step1", "step2", "step3", "step4"]
 
         # Get benchmark name from the first available data (assuming single benchmark)
         benchmark_name = list(baseline_data["diversity"].keys())[0]
 
         # Add benchmark name row
-        rows.append([f"Benchmark: {benchmark_name or 'Unknown'}", "", "", "", ""])
+        rows.append([f"Benchmark: {benchmark_name or 'Unknown'}", "", "", "", "", ""])
         # rows.append([f"Benchmark: {benchmark_name or 'Unknown'}", "", "", "", "", ""])
         rows.append([])  # Empty row for separation
 
+        # Add command-line arguments row
+        args = self.config.get("command_args", {})
+        if args:
+            rows.append(["Command Arguments", "", "", "", "", ""])
+            for arg_name, arg_value in args.items():
+                if arg_value is not None:
+                    rows.append([f"  {arg_name}: {arg_value}", "", "", "", "", ""])
+            rows.append([])  # Empty row for separation
+
         # Agreement in format (avg/min/max) - extract using benchmark_name
-        agreement_row = ["Agreement (avg/min/max)"]
+        agreement_row = ["Agreement (sampled_baseline/after_step)"]
         baseline_agreement_data = baseline_data.get("agreement", {})
         baseline_bench_data = baseline_agreement_data[benchmark_name]
         baseline_avg = baseline_bench_data.get("avg")
@@ -1821,13 +2168,23 @@ class BenchmarkFilteringPipeline:
 
         for step in steps:
             step_data = self.metrics_summary.get(step, {})
+            # Current step agreement
             current_agreement_data = step_data.get("agreement", {})
             current_bench_data = current_agreement_data.get(benchmark_name, {})
             current_avg = current_bench_data.get("avg")
             current_min = current_bench_data.get("min")
             current_max = current_bench_data.get("max")
             current_formatted = f"{format_value(current_avg)}/{format_value(current_min)}/{format_value(current_max)}"
-            agreement_row.append(current_formatted)
+            
+            # Step-specific baseline agreement
+            step_baseline_agreement = step_data.get("agreement_baseline", {})
+            step_baseline_bench_data = step_baseline_agreement.get(benchmark_name, {})
+            step_baseline_avg = step_baseline_bench_data.get("avg")
+            step_baseline_min = step_baseline_bench_data.get("min")
+            step_baseline_max = step_baseline_bench_data.get("max")
+            step_baseline_formatted = f"{format_value(step_baseline_avg)}/{format_value(step_baseline_min)}/{format_value(step_baseline_max)}"
+            
+            agreement_row.append(f"{step_baseline_formatted}/{current_formatted}")
         rows.append(agreement_row)
 
         # CI Overlap (separability with step-specific baselines)
@@ -1853,24 +2210,40 @@ class BenchmarkFilteringPipeline:
         rows.append(ci_overlap_row)
 
         # Diversity (extract value using benchmark_name)
-        diversity_row = ["Diversity"]
+        diversity_row = ["Diversity (sampled_baseline/after_step)"]
         baseline_div_value = baseline_data["diversity"][benchmark_name]
         diversity_row.append(format_value(baseline_div_value))
 
         for step in steps:
-            current_diversity = self.metrics_summary[step].get("diversity", {})
+            step_data = self.metrics_summary.get(step, {})
+            # Current step diversity
+            current_diversity = step_data.get("diversity", {})
             current_div_value = current_diversity.get(benchmark_name) if current_diversity is not None else None
-            diversity_row.append(format_value(current_div_value))
+
+            # Step-specific baseline diversity
+            step_baseline_diversity = step_data.get("diversity_baseline", {})
+            step_baseline_value = step_baseline_diversity.get(benchmark_name) if step_baseline_diversity is not None else None
+
+            baseline_val = format_value(step_baseline_value)
+            current_val = format_value(current_div_value)
+            diversity_row.append(f"{baseline_val}/{current_val}")
         rows.append(diversity_row)
 
-        # IRT (direct values, no baseline comparison)
-        irt_row = ["IRT"]
+        # IRT (with baseline comparison)
+        irt_row = ["IRT (sampled_baseline/after_step)"]
         baseline_irt = baseline_data.get("irt")
         irt_row.append(format_value(baseline_irt))
         for step in steps:
             step_data = self.metrics_summary.get(step, {})
+            # Current step IRT
             current_irt = step_data.get("irt")
-            irt_row.append(format_value(current_irt))
+            
+            # Step-specific baseline IRT
+            step_baseline_irt = step_data.get("irt_baseline")
+            
+            baseline_val = format_value(step_baseline_irt)
+            current_val = format_value(current_irt)
+            irt_row.append(f"{baseline_val}/{current_val}")
         rows.append(irt_row)
 
         # Precision
@@ -2168,10 +2541,12 @@ class BenchmarkFilteringPipeline:
             "step2": "After Step 2 (LLM-as-Judge)",
             "step3": "After Step 3 (Top-K Selection)",
             "step4": "After Step 4 (Comprehensive Rule-based)",
+            "step5": "After Step 5 (Diversity Selection)",
             "step1_baseline": "Step 1 Baseline",
             "step2_baseline": "Step 2 Baseline",
             "step3_baseline": "Step 3 Baseline",
             "step4_baseline": "Step 4 Baseline",
+            "step5_baseline": "Step 5 Baseline",
         }
 
         for step_key, step_name in step_names.items():
@@ -2322,6 +2697,21 @@ def main():
         help="Skip Step 1 (rule-based filtering) and run LLM judge on questions independently",
     )
     parser.add_argument(
+        "--skip-quality",
+        action="store_true",
+        help="Skip Step 4 (quality filtering)",
+    )
+    parser.add_argument(
+        "--skip-diversity",
+        action="store_true",
+        help="Skip Step 5 (diversity selection)",
+    )
+    # parser.add_argument(
+    #     "--joint-filtering",
+    #     action="store_true",
+    #     help="Use joint separability-diversity filtering with iterative analysis",
+    # )
+    parser.add_argument(
         "--llm-model",
         default="google/gemini-2.5-pro-thinking-on",
         help="LLM model to use for Step 2 (default: google/gemini-2.5-pro-thinking-on)",
@@ -2366,11 +2756,11 @@ def main():
         help="Batch size when encoding texts for diversity (default: 8)",
     )
 
-    parser.add_argument(
-        "--embed-all-initial-prompts",
-        action="store_true",
-        help="Diversity calculation: If set, embed the concatenation of all initial (system & user) prompts before the first assistant call instead of only the last user prompt.",
-    )
+    # parser.add_argument(
+    #     "--embed-all-initial-prompts",
+    #     action="store_true",
+    #     help="Diversity calculation: If set, embed the concatenation of all initial (system & user) prompts before the first assistant call instead of only the last user prompt.",
+    # )
     parser.add_argument(
         "--skip-measurement",
         action="store_true",
@@ -2381,7 +2771,11 @@ def main():
         type=str,
         help="Path to CSV file with precomputed filtering results to skip actual filtering steps",
     )
-
+    parser.add_argument(
+        "--no-system-prompt",
+        action="store_true",
+        help="Do not use system prompt for embeddings",
+    )
     args = parser.parse_args()
 
     output_dir = "pipeline_results"
@@ -2398,6 +2792,25 @@ def main():
     csv_filename = f"{output_dir}/{benchmark_prefix}_{timestamp}_filtering_summary.csv"
     report_filename = f"{output_dir}/{benchmark_prefix}_{timestamp}_report.csv"
 
+    # Store command-line arguments for logging
+    command_args = {
+        "skip_llm_judge": args.skip_llm_judge,
+        "skip_rule_based": args.skip_rule_based,
+        "skip_quality": args.skip_quality,
+        "skip_diversity": args.skip_diversity,
+        "llm_model": args.llm_model,
+        "llm_max_samples": args.llm_max_samples,
+        "num_proc": args.num_proc,
+        "target_benchmark": args.target_benchmark,
+        "llm_filter_mode": args.llm_filter_mode,
+        "skip_scoring": args.skip_scoring,
+        "embedding_model": args.embedding_model,
+        "embedding_batch_size": args.embedding_batch_size,
+        "skip_measurement": args.skip_measurement,
+        "precomputed_results": args.precomputed_results,
+        "no_system_prompt": args.no_system_prompt,
+    }
+
     # Configuration
     config = {
         "llm_model": args.llm_model,
@@ -2408,11 +2821,13 @@ def main():
         "skip_scoring": args.skip_scoring,
         "embedding_model": args.embedding_model,
         "embedding_batch_size": args.embedding_batch_size,
-        "embed_all_initial_prompts": args.embed_all_initial_prompts,
+        # "embed_all_initial_prompts": args.embed_all_initial_prompts,
         "skip_measurement": args.skip_measurement,
         "csv_filename": csv_filename,
         "report_filename": report_filename,
         "precomputed_results": args.precomputed_results,
+        "command_args": command_args,
+        # "joint_filtering": args.joint_filtering,
     }
 
     # Set up logging with dynamic filename
@@ -2424,14 +2839,15 @@ def main():
     )
 
     # Validate arguments
-    if args.skip_rule_based and args.skip_llm_judge:
-        logger.error("Cannot skip both rule-based and LLM judge filtering")
+    if args.skip_rule_based and args.skip_llm_judge and args.skip_quality:
+        logger.error("Cannot skip both rule-based, LLM judge, and quality filtering")
         sys.exit(1)
 
     # Run pipeline
     pipeline = BenchmarkFilteringPipeline(config)
     pipeline.run_pipeline(
-        skip_llm_judge=args.skip_llm_judge, skip_rule_based=args.skip_rule_based
+        skip_llm_judge=args.skip_llm_judge, skip_rule_based=args.skip_rule_based, skip_quality=args.skip_quality, skip_diversity=args.skip_diversity,
+        no_system_prompt=args.no_system_prompt,
     )
 
 
