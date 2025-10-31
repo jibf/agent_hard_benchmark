@@ -21,10 +21,18 @@ def get_benchmark_from_name(benchmark_name: str) -> Benchmark:
 def group_responses_by_question(responses: List[Dict]) -> Dict[UniqueQuestionID, List[Dict]]:
     result = defaultdict(list)
     for response in responses:
+
+        # align question id manually
+        task_name = response.get("task_name", None)
+        benchmark = response["benchmark_name"]
+        question_id = response["meta"]["id"]
+        if task_name and not question_id.startswith(task_name):
+            question_id = task_name + "_" + response["meta"]["id"]
+
         unique_question_id = UniqueQuestionID(
-            benchmark=response["benchmark_name"],  
-            task_name=response.get("task_name", None),
-            question_id=response["meta"]["id"]
+            benchmark=benchmark,
+            task_name=task_name,
+            question_id=question_id
         )
         result[unique_question_id].append(response)
     return dict(result)
