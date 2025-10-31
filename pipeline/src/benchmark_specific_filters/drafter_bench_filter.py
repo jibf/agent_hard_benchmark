@@ -162,17 +162,13 @@ class DrafterBenchFilter(BaseBenchmarkFilter):
         valid_samples = {}
         for question_id, sample_list in question_dict.items():
             task_type = question_id.rsplit("_", 1)[0]
-            system_prompt = None
-            user_prompt = None
             for message in sample_list[0]["messages"]:
                 if message["role"] == "user":
                     user_prompt = message["content"]
-                if message["role"] == "system":
-                    system_prompt = message["content"]
 
-            assert user_prompt and system_prompt
+            assert user_prompt
 
-            question = task_type + "_" + system_prompt.strip() + "_" + user_prompt.strip()
+            question = task_type + "_" + user_prompt.strip()
             if question not in known_questions:
                 known_questions.add(question)
                 valid_samples[question_id] = sample_list
