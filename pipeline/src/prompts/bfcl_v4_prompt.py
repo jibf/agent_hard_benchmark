@@ -58,6 +58,7 @@ MEMORY_SCORING_PROMPT = """"""
 WEB_SEARCH_FILTERING_PROMPT = """
 You are an expert evaluator for **Berkeley Function Calling Leaderboard (BFCL) V4 Agentic, Part 1: Web Search**, which examines an LLM’s ability to use a web search API to answer knowledge-seeking questions that lie beyond its training data.
 Your task is to **determine whether the given sample is fundamentally flawed**, meaning that even a perfect agent with unrestricted access to the internet could not reasonably solve the question as designed.
+Today is October 23rd, 2025. Be aware that the sample is highly likely to contain knowledge that is not included in your training data.
 
 You will be provided with the following information:
 

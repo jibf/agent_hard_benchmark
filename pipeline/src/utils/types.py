@@ -148,12 +148,25 @@ class RuleBasedOutput(BaseModel):
     passed: bool
     reason: Optional[str] = None
 
+
+class RebuttalInfo(BaseModel):
+    applied: bool = False
+    initial_is_flawed: Optional[bool] = None
+    final_is_flawed: Optional[bool] = None
+    overturned: Optional[bool] = None
+    model_name: Optional[str] = None
+    response_score: Optional[float] = None
+    supporting_response_id: Optional[str] = None
+    reason: Optional[str] = None
+
+
 class FilterResult(BaseModel):
     """Individual filter result (universal or specific)"""
     is_flawed: bool
     error_category: Optional[str]
     reasoning: Optional[str]
     reasoning_summary: Optional[str]
+    rebuttal: Optional[RebuttalInfo] = None
 
 class LLMJudgeOutput(BaseModel):
     # filtering results (separated by filter type)

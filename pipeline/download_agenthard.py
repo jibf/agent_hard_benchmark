@@ -38,6 +38,7 @@ DEFAULT_DATASETS = [
     "AgentHard/ACEBench-evaluation",
     "AgentHard/tau2-bench-evaluation",
     "AgentHard/tau-bench-evaluation",
+    "AgentHard/BFCL_V4-evaluation",
 ]
 
 def download_dataset(repo_id: str, allow_patterns: Optional[List[str]] = None, base_dir: Path = Path(".")) -> Path:
