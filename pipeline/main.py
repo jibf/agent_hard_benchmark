@@ -151,6 +151,7 @@ class BenchmarkFilteringPipeline:
             retry_delay=self.config.get("llm_retry_delay", 1.0),
             num_proc=self.config.get("num_proc", 1),
             steps=llm_steps,
+            enable_rebuttal=self.config.get("enable_rebuttal", False),
         )
 
         # ----- Embedding model for semantic diversity -----
@@ -2745,6 +2746,11 @@ def main():
         help="Skip scoring step even when using 'both' filtering scheme",
     )
     parser.add_argument(
+        "--rebuttal",
+        action="store_true",
+        help="Enable rebuttal that leverages successful responses to contest flawed judgments",
+    )
+    parser.add_argument(
         "--embedding-model",
         default="Qwen/Qwen3-Embedding-8B",
         help="SentenceTransformer model for semantic diversity computation (default: Qwen/Qwen3-Embedding-8B)",
@@ -2804,6 +2810,7 @@ def main():
         "target_benchmark": args.target_benchmark,
         "llm_filter_mode": args.llm_filter_mode,
         "skip_scoring": args.skip_scoring,
+        "rebuttal": args.rebuttal,
         "embedding_model": args.embedding_model,
         "embedding_batch_size": args.embedding_batch_size,
         "skip_measurement": args.skip_measurement,
@@ -2819,6 +2826,7 @@ def main():
         "target_benchmark": args.target_benchmark,
         "llm_filter_mode": args.llm_filter_mode,
         "skip_scoring": args.skip_scoring,
+        "enable_rebuttal": args.rebuttal,
         "embedding_model": args.embedding_model,
         "embedding_batch_size": args.embedding_batch_size,
         # "embed_all_initial_prompts": args.embed_all_initial_prompts,

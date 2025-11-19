@@ -57,6 +57,7 @@ class LLMJudgeConfig:
     max_samples: Optional[int] = None   # Limit for testing
     steps: List[LLMJudgeStep] = None            # Which steps to run (default: both FILTER and SCORE)
     partial_log_dir: Optional[str] = "llm_judge_partial_logs"
+    enable_rebuttal: bool = False
 
 
 class LLMJudge:
@@ -325,6 +326,11 @@ class LLMJudge:
         entry: Dict[str, Any]
     ) -> Dict[str, Any]:
         summary = {"applied": False}
+
+        if not self.config.enable_rebuttal:
+            summary["reason"] = "rebuttal_disabled"
+            entry["rebuttal_summary"] = summary
+            return entry
 
         # Only applicable for filtering steps that produced a dict assessment
         assessment = entry.get("assessment")
