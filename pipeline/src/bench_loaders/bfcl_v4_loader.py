@@ -10,6 +10,7 @@ from functools import lru_cache
 
 from . import BaseLoader
 from src.utils.types import BFCLv4Question, Benchmark
+from src.utils.bfcl_v4 import normalize_bfcl_v4_task_info
 
 
 class BfclV4Loader(BaseLoader):
@@ -67,13 +68,14 @@ class BfclV4Loader(BaseLoader):
     
 
     def format_question_sample(self, question: dict, answer: dict) -> BFCLv4Question:
-        question_id = question["id"]
+        raw_question_id = question["id"]
         domain = self._resolve_domain(question)
+        task_name, question_id = normalize_bfcl_v4_task_info(domain, raw_question_id)
     
         if domain == "memory":
-            return self._format_memory_question_sample(question, answer)
+            return self._format_memory_question_sample(question, answer, question_id, raw_question_id, task_name)
         elif domain == "web_search":
-            return self._format_web_search_question_sample(question, answer)
+            return self._format_web_search_question_sample(question, answer, question_id, raw_question_id, task_name)
         else:
             raise ValueError(f"Domain {domain} is not contained in BFCLv4")
     
@@ -90,8 +92,7 @@ class BfclV4Loader(BaseLoader):
         return memory_list
 
 
-    def _format_memory_question_sample(self, question: dict, answer: dict) -> BFCLv4Question:
-        question_id = question["id"]
+    def _format_memory_question_sample(self, question: dict, answer: dict, question_id: str, raw_question_id: str, task_name: str) -> BFCLv4Question:
         domain = self._resolve_domain(question)
         instruction = question["question"][0][0]["content"] # first user message
         scenario = question["scenario"]
@@ -102,19 +103,18 @@ class BfclV4Loader(BaseLoader):
         return BFCLv4Question(
             benchmark=Benchmark.BFCL_V4,
             question_id=question_id,
-            task_name=domain,
+            task_name=task_name,
             instruction=instruction,
             ground_truth=ground_truth,
             gt_conv_traj=[],
             sources=[sources],
             memory_context=memory_context,
-            meta={"scenario": scenario},
+            meta={"scenario": scenario, "original_id": raw_question_id},
             available_function_list=[]
         )
 
 
-    def _format_web_search_question_sample(self, question: dict, answer: dict) -> BFCLv4Question:
-        question_id = question["id"]
+    def _format_web_search_question_sample(self, question: dict, answer: dict, question_id: str, raw_question_id: str, task_name: str) -> BFCLv4Question:
         domain = self._resolve_domain(question)
         instruction = question["question"][0][0]["content"] # first user message
         ground_truth = answer["ground_truth"]
@@ -124,12 +124,13 @@ class BfclV4Loader(BaseLoader):
         return BFCLv4Question(
             benchmark=Benchmark.BFCL_V4,
             question_id=question_id,
-            task_name=domain,
+            task_name=task_name,
             instruction=instruction,
             ground_truth=ground_truth,
             gt_conv_traj=[],
             sources=sources,
-            available_function_list=[]
+            available_function_list=[],
+            meta={"original_id": raw_question_id}
         )
 
     def _extract_format_config(self, question_id: str) -> str:

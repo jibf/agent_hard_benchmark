@@ -4,6 +4,7 @@ from enum import Enum
 import json
 import logging
 from .types import UniqueQuestionID, Benchmark
+from .bfcl_v4 import normalize_bfcl_v4_task_info
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +27,19 @@ def group_responses_by_question(responses: List[Dict]) -> Dict[UniqueQuestionID,
         task_name = response.get("task_name", None)
         benchmark = response["benchmark_name"]
         question_id = response["meta"]["id"]
+        if isinstance(benchmark, str):
+            try:
+                benchmark = get_benchmark_from_name(benchmark)
+            except ValueError:
+                pass
+        if benchmark == Benchmark.BFCL_V4:
+            task_name, question_id = normalize_bfcl_v4_task_info(
+                task_name or "", question_id
+            )
+            if task_name == "format_sensitivity" or question_id.startswith("format_sensitivity"):
+                continue
         if task_name and not question_id.startswith(task_name):
-            question_id = task_name + "_" + response["meta"]["id"]
+            question_id = task_name + "_" + question_id
 
         unique_question_id = UniqueQuestionID(
             benchmark=benchmark,
@@ -190,5 +202,3 @@ def log_confusion_matrix_human_labelled(human_labelled_questions: set, human_lab
         "fn": fn,
         "tn": tn
     }
-
-

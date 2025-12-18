@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 import logging
 from src.utils import normalize_benchmark_name
 from src.utils.types import Benchmark, UniqueQuestionID
+from src.utils.bfcl_v4 import normalize_bfcl_v4_task_info
 
 logger = logging.getLogger(__name__)
 
@@ -265,6 +266,9 @@ class BenchmarkDataLoader:
                         task_id = row.get("task_id")
                         is_issue = row.get("is_issue", "0")
                         issue_type = row.get("issue_type", "")
+
+                        if benchmark_name == Benchmark.BFCL_V4.value:
+                            task_name, task_id = normalize_bfcl_v4_task_info(task_name or "", task_id or "")
 
                         if task_name and task_id:
                             # Create UniqueQuestionID
