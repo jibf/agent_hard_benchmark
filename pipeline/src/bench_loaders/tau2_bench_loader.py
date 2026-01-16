@@ -94,13 +94,30 @@ class Tau2BenchLoader(BaseLoader):
             with open(file_path, "r") as f:
                 for response_str in f:
                     response = json.loads(response_str)
-                    question_id = f"{response['task_name']}-{response['meta']['id']}"
+                    task_name = response['task_name']
+                    meta_id = response['meta']['id']
+                    # For telecom, meta['id'] already includes the domain prefix (e.g., "telecom_[...]")
+                    # For airline/retail, meta['id'] is just a number
+                    # Standardize to underscore format (domain_id) to match pipeline conventions
+                    if meta_id.startswith(f"{task_name}_"):
+                        question_id = meta_id  # Already in correct underscore format
+                    elif meta_id.startswith(f"{task_name}-"):
+                        # Convert hyphen format to underscore format for consistency
+                        question_id = meta_id.replace(f"{task_name}-", f"{task_name}_", 1)
+                    else:
+                        # Format as domain_id (underscore) to match pipeline conventions
+                        question_id = f"{task_name}_{meta_id}"
                     responses_by_question_id[question_id].append(response)
         return dict(responses_by_question_id)
 
     def _format_tau2_task(self, task: Dict[str, Any], domain: str, env_data: Dict[str, Any] = None) -> Tau2BenchQuestion:
         """Format a tau2-bench task to Tau2BenchQuestion"""
         task_id = task.get('id', 'unknown')
+        
+        # For telecom domain, task IDs in tasks.json don't include the "telecom_" prefix,
+        # but response files do. Add the prefix to match response format.
+        if domain == "telecom" and not task_id.startswith("telecom_"):
+            task_id = f"telecom_{task_id}"
         
         # Extract user scenario information
         user_scenario = task.get('user_scenario', {})
@@ -315,12 +332,22 @@ class Tau2BenchLoader(BaseLoader):
         # Extract user ID from task
         user_id = self._extract_user_id(task, domain)
 
-        # If no user_id found, try to find by name from "You are [name]" pattern
+        # If no user_id found, try to find by email first (most accurate for retail)
+        if not user_id and domain == "retail":
+            email = self._extract_email_from_known_info(task)
+            if email:
+                user_id = self._find_user_id_by_email_in_db(email, env_data, domain)
+        
+        # If still no user_id found, try to find by name from "You are [name]" pattern
         if not user_id:
             name_info = self._extract_user_name_from_known_info(task)
             if name_info:
                 first_name, last_name = name_info
-                user_id = self._find_user_id_by_name_in_db(first_name, last_name, env_data, domain)
+                # For retail domain, also try to extract zip code for more accurate lookup
+                zip_code = None
+                if domain == "retail":
+                    zip_code = self._extract_zip_code_from_known_info(task)
+                user_id = self._find_user_id_by_name_in_db(first_name, last_name, env_data, domain, zip_code=zip_code)
 
         if not user_id:
             return f"User context for {domain} domain task - no user ID found."
@@ -360,7 +387,7 @@ class Tau2BenchLoader(BaseLoader):
                         if 'customer_id' in arguments:
                             return arguments['customer_id']
 
-        # If not found in known_info, check evaluation criteria actions for get_user_details
+        # If not found in known_info, check evaluation criteria actions for get_user_details or find_user_id_by_name_zip
         evaluation_criteria = task.get('evaluation_criteria', {})
         actions = evaluation_criteria.get('actions', [])
 
@@ -396,8 +423,55 @@ class Tau2BenchLoader(BaseLoader):
                 return name_match.group(1), name_match.group(2)
         return None
 
-    def _find_user_id_by_name_in_db(self, first_name: str, last_name: str, env_data: Dict[str, Any], domain: str) -> Optional[str]:
-        """Find user_id by searching for name in the database"""
+    def _extract_zip_code_from_known_info(self, task: Dict[str, Any]) -> Optional[str]:
+        """Extract zip code from known_info for retail domain"""
+        import re
+
+        known_info = task["user_scenario"]["instructions"]["known_info"]
+        # Pattern to match zip code: "your zip code is 78705", "zip code is 78705", "zip code 78705", or "zip 78705"
+        zip_patterns = [
+            r'(?:your\s+)?zip\s+code\s+is\s+(\d{5})',
+            r'zip\s+code\s+(\d{5})',
+            r'zip\s+(\d{5})'
+        ]
+
+        for pattern in zip_patterns:
+            zip_match = re.search(pattern, known_info, re.IGNORECASE)
+            if zip_match:
+                return zip_match.group(1)
+        return None
+
+    def _extract_email_from_known_info(self, task: Dict[str, Any]) -> Optional[str]:
+        """Extract email from known_info for retail domain"""
+        import re
+
+        known_info = task["user_scenario"]["instructions"]["known_info"]
+        # Pattern to match email: "your email is x@y.com", "email is x@y.com", "email x@y.com"
+        email_patterns = [
+            r'(?:your\s+)?email\s+is\s+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
+            r'email\s+is\s+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
+            r'email\s+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
+            r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'  # Fallback: any email pattern
+        ]
+
+        for pattern in email_patterns:
+            email_match = re.search(pattern, known_info, re.IGNORECASE)
+            if email_match:
+                return email_match.group(1).lower().strip()
+        return None
+
+    def _find_user_id_by_email_in_db(self, email: str, env_data: Dict[str, Any], domain: str) -> Optional[str]:
+        """Find user_id by searching for email in the database"""
+        if domain == "retail" or domain == "airline":
+            users = env_data.get('users', {})
+            for user_id, user_info in users.items():
+                user_email = user_info.get('email', '')
+                if user_email.lower() == email.lower():
+                    return user_id
+        return None
+
+    def _find_user_id_by_name_in_db(self, first_name: str, last_name: str, env_data: Dict[str, Any], domain: str, zip_code: Optional[str] = None) -> Optional[str]:
+        """Find user_id by searching for name in the database. For retail domain, zip_code can be used for disambiguation."""
         if domain == "airline" or domain == "retail":
             users = env_data.get('users', {})
             for user_id, user_info in users.items():
@@ -406,6 +480,16 @@ class Tau2BenchLoader(BaseLoader):
                     user_first = name_info.get('first_name', '').lower()
                     user_last = name_info.get('last_name', '').lower()
                     if user_first == first_name.lower() and user_last == last_name.lower():
+                        # For retail domain, if zip_code is provided, also match zip code
+                        if domain == "retail" and zip_code:
+                            address_info = user_info.get('address', {})
+                            if isinstance(address_info, dict):
+                                user_zip = address_info.get('zip', '')
+                                if user_zip == zip_code:
+                                    return user_id
+                            # If zip doesn't match, continue searching
+                            continue
+                        # If no zip_code provided or domain is airline, return first match
                         return user_id
         elif domain == "telecom":
             customers = env_data.get('customers', [])
@@ -530,7 +614,14 @@ class Tau2BenchLoader(BaseLoader):
 
         # Retrieve relevant product IDs from responses (for retail domain)
         relevant_product_ids = []
-        responses = self.responses_by_question_id.get(f"{domain}-{task_id}", [])
+        # Normalize question_id to match the format used in responses_by_question_id (underscore format)
+        if task_id.startswith(f"{domain}_"):
+            normalized_qid = task_id  # Already in correct underscore format
+        elif task_id.startswith(f"{domain}-"):
+            normalized_qid = task_id.replace(f"{domain}-", f"{domain}_", 1)
+        else:
+            normalized_qid = f"{domain}_{task_id}"
+        responses = self.responses_by_question_id.get(normalized_qid, [])
         for response in responses:
             messages = response.get("messages", [])
             for message in messages:
@@ -755,6 +846,13 @@ class Tau2BenchLoader(BaseLoader):
                 result = self._execute_tool_with_state_user(action_name, action_arguments, domain, environment)
             else:
                 result = self._execute_tool_with_state_agent(action_name, action_arguments, domain, environment)
+                # Sync tools after assistant tool execution to propagate state changes
+                # (e.g., payment requests need to be synced from assistant DB to user DB)
+                if hasattr(environment, 'sync_tools'):
+                    try:
+                        environment.sync_tools()
+                    except Exception:
+                        pass  # Ignore sync errors during reconstruction
 
             # Update current_env_data from environment state
             if hasattr(environment, '_data'):

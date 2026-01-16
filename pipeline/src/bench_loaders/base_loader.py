@@ -15,10 +15,20 @@ class BaseLoader(ABC):
 
     def load_responses_for_questions(self, questions: List[FormattedQuestion], responses_by_question: Dict[UniqueQuestionID, List[Dict]]):
         """add original contents of jsonl to questions, so each question can get all model's response"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         for question in questions:
             question_uid = UniqueQuestionID(
                 benchmark=question.benchmark,
                 task_name=question.task_name,
                 question_id=question.question_id
             )
-            question.model_responses = responses_by_question[question_uid]
+            if question_uid not in responses_by_question:
+                logger.warning(
+                    f"Question {question_uid} not found in responses_by_question. "
+                    f"Available keys: {[str(k) for k in list(responses_by_question.keys())[:5]]}"
+                )
+                question.model_responses = []
+            else:
+                question.model_responses = responses_by_question[question_uid]

@@ -67,7 +67,6 @@ Below is the categorization of benchmark issues, outlined according to its **rel
 This category covers flaws within the agent's operating environment—the tools and API results—which can make a task unsolvable regardless of the agent's logic.
 
 * Flawed function design: the naming or the description of an available function is misleading or contradicts its actual functionality.
-  * Example: A function named `vt_get_votes_on_ip_address` provides "example.com" as an example for its argument value in its schema. 
 
 ### Ground-Truth
 
@@ -75,10 +74,10 @@ This category addresses errors in the provided ground-truth trajectory, where th
 
 
 * Malformed function calls: A technical error where a ground-truth function call violates the provided API schema.
-  * Example: A parameter requires a string but is given a number (e.g., dest_id: 123 instead of dest_id: "123"), a required parameter is missing, the function name is wrong, or a parameter value is misspelled (e.g., sort_by: "popularitye" instead of "popularity").
+  * Example: A parameter requires a string but is given a number , a required parameter is missing, the function name is wrong, or a parameter value is misspelled .
 
 * Incorrect function calls: A function call is syntactically valid but logically flawed. The function choice or a parameter value contradicts the user's request or the context from previous steps.
-  * Unjustified/Hallucinated Parameters: A value (e.g., a date, a coordinate) that appears without any grounding context. For example, searching for a hotel on a date that was not returned by a preceding flight search.
+  * Unjustified/Hallucinated Parameters: A value that appears without any grounding context. For example, searching for a hotel on a date that was not returned by a preceding flight search.
   * Contradictory: A value that directly contradicts a constraint in the user's prompt. However, it is NOT a flaw if there is any chance that the agent's action was a necessary alternative due to constraints like an insufficient budget or a lack of available seats.
   * Policy Violation: A function call in the ground truth trajectory directly violates the provided system policy. Example: The ground truth where the agent calls a specific function twice, although it is mentioned in the system policy that the function can only be called once.
   * Misspelled or Incorrectly Identified Parameter Values: A misspelled name or an ID/slug that points to the wrong entity (e.g., selecting the wrong airport ID).

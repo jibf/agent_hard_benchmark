@@ -17,7 +17,6 @@ Below is the categorization of benchmark issues, outlined according to its **rel
 ### User
 
 * Vague instruction: The user's prompt is too ambiguous or underspecified for a single, correct function call, yet the benchmark expects one.
-  * Example: The user asks "Where's the Golden Gate Bridge?", but the ground truth arbitrarily expects a distance calculation from a specific, unmentioned point.
 
 
 ### Environment
@@ -26,14 +25,12 @@ This category covers flaws within the agent's operating environment—the tools 
 
 * Flawed function response: The pre-computed API response provided in the benchmark is incorrect, misleading, or doesn't contain the information needed to fulfill the user's request. Since the agent relies on these responses, a flawed API response makes the task unsolvable.
   * Look for:
-    * Incorrect resolution: An ambiguous name in the function call (e.g., "Lyon") is resolved to the wrong entity in the response (e.g., "Lyons-la-Forêt" instead of the major city in France).
-    * Irrelevant results: The API returns a list of items that are completely irrelevant to the user's request (e.g., hotels in a different city)
+    * Incorrect resolution: An ambiguous name in the function call is resolved to the wrong entity in the response.
+    * Irrelevant results: The API returns a list of items that are completely irrelevant to the user's request 
 
 * Insufficient toolsets: the environment does not provide the necessary tools (functions), making the agent impossible to solve the task even with a combination of multiple tools and reasoning.
-  * Example: A user asks for an advanced file manipulation, while the environment only provides basic tools like `mk` or `ls`.
 
 * Flawed function design: the naming or the description of an available function is misleading or contradicts its actual functionality.
-  * Example: A function named `vt_get_votes_on_ip_address` provides "example.com" as an example for its argument value in its schema. 
 
 
 ### Ground-Truth
@@ -42,16 +39,15 @@ This category addresses errors in the provided ground-truth trajectory, where th
 
 
 * Malformed function calls: A technical error where a ground-truth function call violates the provided API schema.
-  * Example: A parameter requires a string but is given a number (e.g., dest_id: 123 instead of dest_id: "123"), a required parameter is missing, the function name is wrong, or a parameter value is misspelled (e.g., sort_by: "popularitye" instead of "popularity").
 
 * Incorrect function calls: A function call is syntactically valid but logically flawed. The function choice or a parameter value contradicts the user's request or the context from previous steps.
-  * Unjustified/Hallucinated Parameters: A value (e.g., a date, a coordinate) that appears without any grounding context. For example, searching for a hotel on a date that was not returned by a preceding flight search.
-  * Contradictory Parameter Values: A value that directly contradicts a constraint in the user's prompt. For example, using the latitude of a hotel and the longitude of an airport to define a search coordinate, which is logically inconsistent.
-  * Misspelled or Incorrectly Identified Parameter Values: A misspelled name or an ID/slug that points to the wrong entity (e.g., selecting the wrong airport ID).
+  * Unjustified/Hallucinated Parameters: A value (e.g., a date, a coordinate) that appears without any grounding context. 
+  * Contradictory Parameter Values: A value that directly contradicts a constraint in the user's prompt. 
+  * Misspelled or Incorrectly Identified Parameter Values: A misspelled name or an ID/slug that points to the wrong entity.
 
 * Redundant/ungrounded function calls: The ground truth function call trajectory consists of function calls that are redundant in solving the task, ungrounded by the context, or irrelevant in solving the task.
-  * Irrelevant tool call: A function call in the ground truth trajectory is totally irrelevant to the task or belongs to a completely different domain. Example: agent calls a function to reserve a flight, though it was asked to process product exchange.
-  * Redundant tool call: A function call that is not necessary in solving the task. Example: the agent is asked to search for attractions until it finds one that meets a certain condition; However, the agent performs the search in an arbitrary order, resulting in an excessive number of function calls.
+  * Irrelevant tool call: A function call in the ground truth trajectory is totally irrelevant to the task or belongs to a completely different domain. 
+  * Redundant tool call: A function call that is not necessary in solving the task. 
 
 ## Evaluation and Output Format
 Carefully analyze the provided sample. Think step-by-step to determine if the ground-truth trajectory is a correct and logical solution to the user's prompt.
